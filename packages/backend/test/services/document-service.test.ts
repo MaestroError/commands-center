@@ -659,6 +659,121 @@ describe("document service", () => {
     });
   });
 
+  describe("selected folder traversal", () => {
+    it("lists documents only from selected folder subtrees", async () => {
+      const testDb = await createTestDatabase();
+      const service = makeService(testDb);
+
+      try {
+        await setupDocsDir(testDb);
+        await service.create({ path: "allowed/root.md" });
+        await service.create({ path: "allowed/nested/child.md" });
+        await service.create({ path: "hidden/secret.md" });
+
+        const documents = await service.listAllDocuments({ folderPaths: ["allowed"] });
+
+        expect(documents.map((document) => document.relativePath)).toEqual([
+          "allowed/nested/child.md",
+          "allowed/root.md",
+        ]);
+      } finally {
+        await testDb.cleanup();
+      }
+    });
+
+    it("returns no documents for an empty selected folder list", async () => {
+      const testDb = await createTestDatabase();
+      const service = makeService(testDb);
+
+      try {
+        await setupDocsDir(testDb);
+        await service.create({ path: "hidden/secret.md" });
+
+        const documents = await service.listAllDocuments({ folderPaths: [] });
+
+        expect(documents).toEqual([]);
+      } finally {
+        await testDb.cleanup();
+      }
+    });
+
+    it("treats a missing selected folder as an empty subtree", async () => {
+      const testDb = await createTestDatabase();
+      const service = makeService(testDb);
+
+      try {
+        await setupDocsDir(testDb);
+
+        const documents = await service.listAllDocuments({ folderPaths: ["missing"] });
+
+        expect(documents).toEqual([]);
+      } finally {
+        await testDb.cleanup();
+      }
+    });
+
+    it("keeps full Documents-relative paths for selected search candidates", async () => {
+      const testDb = await createTestDatabase();
+      const service = makeService(testDb);
+
+      try {
+        await setupDocsDir(testDb);
+        await service.create({ path: "allowed/nested/child.md" });
+        await service.create({ path: "hidden/secret.md" });
+
+        const documents = await service.listSearchCandidates({
+          folderPaths: ["allowed"],
+          maxCandidates: 10,
+        });
+
+        expect(documents.map((document) => document.relativePath)).toEqual([
+          "allowed/nested/child.md",
+        ]);
+      } finally {
+        await testDb.cleanup();
+      }
+    });
+
+    it("applies the search candidate cap across selected folders", async () => {
+      const testDb = await createTestDatabase();
+      const service = makeService(testDb);
+
+      try {
+        await setupDocsDir(testDb);
+        await service.create({ path: "alpha/one.md" });
+        await service.create({ path: "beta/two.md" });
+
+        const documents = await service.listSearchCandidates({
+          folderPaths: ["alpha", "beta"],
+          maxCandidates: 1,
+        });
+
+        expect(documents).toHaveLength(1);
+      } finally {
+        await testDb.cleanup();
+      }
+    });
+
+    it("rejects a selected symlinked folder", async () => {
+      const testDb = await createTestDatabase();
+      const service = makeService(testDb);
+
+      try {
+        await setupDocsDir(testDb);
+        const outside = join(testDb.config.paths.workspaceDir, "outside-selected-documents");
+        await mkdir(outside);
+        await writeFile(join(outside, "secret.md"), "Outside document root", "utf8");
+        await symlink(outside, service.fullPath("linked"));
+
+        await expect(service.listAllDocuments({ folderPaths: ["linked"] })).rejects.toThrow(
+          /symbolic link/i,
+        );
+      } finally {
+        await testDb.cleanup();
+      }
+    });
+  });
+
   describe("listFolder", () => {
     it("lists immediate children with folders first and includes non-markdown files", async () => {
       const testDb = await createTestDatabase();

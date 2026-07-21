@@ -791,7 +791,7 @@ describe("additional request wrapper coverage", () => {
       permissions: {
         capabilities: ["create_task"],
         templates: [],
-        documents: { global: false, privateSpecialistIds: [] },
+        documents: { global: false, globalFolderPaths: [], privateSpecialistIds: [] },
       },
     });
 
@@ -803,7 +803,7 @@ describe("additional request wrapper coverage", () => {
         permissions: {
           capabilities: ["create_task"],
           templates: [],
-          documents: { global: false, privateSpecialistIds: [] },
+          documents: { global: false, globalFolderPaths: [], privateSpecialistIds: [] },
         },
       }),
     });

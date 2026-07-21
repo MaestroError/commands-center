@@ -48,6 +48,10 @@ type ScopeInput = {
   ownerSpecialistId?: string | null;
 };
 
+type FolderScopedInput = ScopeInput & {
+  folderPaths?: string[];
+};
+
 type ResolvedScope = {
   scope: DocumentScope;
   ownerSlug: string | null;
@@ -65,7 +69,7 @@ type ListDocumentsInput = ScopeInput & {
   filter?: Partial<DocumentListFilter>;
 };
 
-type ListSearchCandidatesInput = ScopeInput & {
+type ListSearchCandidatesInput = FolderScopedInput & {
   maxCandidates: number;
 };
 
@@ -340,6 +344,47 @@ export function createDocumentService(options: {
     return await stat(resolve(target.root, relativePath), { bigint: false }).catch(() => null);
   }
 
+  async function resolveSafeFolderPath(
+    target: ResolvedScope,
+    relativePath: string,
+  ): Promise<string | null> {
+    if (relativePath) {
+      validateRelativePath(relativePath);
+    }
+
+    const dir = relativePath ? resolve(target.root, relativePath) : target.root;
+    assertDescendant(target.root, dir);
+
+    let current = target.root;
+    for (const segment of relativePath ? relativePath.split("/") : []) {
+      current = join(current, segment);
+      const segmentStat = await lstat(current).catch(() => null);
+      if (!segmentStat) {
+        return null;
+      }
+      if (segmentStat.isSymbolicLink()) {
+        throw new BadRequestError("Folder path must not contain symbolic links.");
+      }
+    }
+
+    const realRoot = await realpath(target.root).catch(() => null);
+    const realDir = await realpath(dir).catch(() => null);
+    if (!realRoot || !realDir) {
+      return null;
+    }
+    assertDescendant(realRoot, realDir);
+
+    const dirStat = await stat(dir).catch(() => null);
+    if (!dirStat) {
+      return null;
+    }
+    if (!dirStat.isDirectory()) {
+      throw new BadRequestError("Path is not a folder.");
+    }
+
+    return dir;
+  }
+
   function documentWhere(target: ResolvedScope, relativePath: string) {
     if (target.scope === "global") {
       return and(
@@ -499,14 +544,36 @@ export function createDocumentService(options: {
     }
   }
 
+  async function collectFilesFromFolders(
+    target: ResolvedScope,
+    folderPaths: string[],
+    items: DocumentListItem[],
+    options: CollectFilesOptions = {},
+  ): Promise<void> {
+    for (const folderPath of folderPaths) {
+      if (options.maxItems !== undefined && items.length >= options.maxItems) {
+        return;
+      }
+
+      const dir = await resolveSafeFolderPath(target, folderPath);
+      if (dir) {
+        await collectFiles(target, dir, folderPath, items, options);
+      }
+    }
+  }
+
   async function listGlobalDocuments(): Promise<DocumentListItem[]> {
     return listAllDocuments({ scope: "global" });
   }
 
-  async function listAllDocuments(input: ScopeInput): Promise<DocumentListItem[]> {
+  async function listAllDocuments(input: FolderScopedInput): Promise<DocumentListItem[]> {
     const target = await resolveScope(input);
     const items: DocumentListItem[] = [];
-    await collectFiles(target, target.root, "", items);
+    if (input.folderPaths) {
+      await collectFilesFromFolders(target, input.folderPaths, items);
+    } else {
+      await collectFiles(target, target.root, "", items);
+    }
     return items.sort((left, right) => left.relativePath.localeCompare(right.relativePath));
   }
 
@@ -534,10 +601,15 @@ export function createDocumentService(options: {
   ): Promise<DocumentListItem[]> {
     const target = await resolveScope(input);
     const items: DocumentListItem[] = [];
-    await collectFiles(target, target.root, "", items, {
+    const options = {
       maxItems: input.maxCandidates,
       includeDescription: false,
-    });
+    };
+    if (input.folderPaths) {
+      await collectFilesFromFolders(target, input.folderPaths, items, options);
+    } else {
+      await collectFiles(target, target.root, "", items, options);
+    }
     return items.sort((left, right) => left.relativePath.localeCompare(right.relativePath));
   }
 
@@ -567,47 +639,10 @@ export function createDocumentService(options: {
     input: ScopeInput & { path?: string },
   ): Promise<DocumentFolderListingResponse> {
     const relativePath = (input.path ?? "").trim();
-    if (relativePath) {
-      validateRelativePath(relativePath);
-    }
-
     const target = await resolveScope(input);
-    const dir = relativePath ? resolve(target.root, relativePath) : target.root;
-    assertDescendant(target.root, dir);
-
-    // Reject symlinks anywhere in the requested path. `stat`/`readdir` follow
-    // symlinks, and `assertDescendant` only checks the unresolved path, so a
-    // symlink inside the Documents tree (e.g. `Documents/design -> /etc`) could
-    // otherwise redirect the listing outside the scoped root. This mirrors the
-    // segment walk in `safeFileStat`.
-    let current = target.root;
-    for (const segment of relativePath ? relativePath.split("/") : []) {
-      current = join(current, segment);
-      const segmentStat = await lstat(current).catch(() => null);
-      if (!segmentStat) {
-        throw new NotFoundError(`Folder not found: ${relativePath}`);
-      }
-      if (segmentStat.isSymbolicLink()) {
-        throw new BadRequestError("Folder path must not contain symbolic links.");
-      }
-    }
-
-    // The relative segments are symlink-free; confirm the resolved directory
-    // (following only legitimate symlinks in the scoped root itself) still lands
-    // inside the scoped root before reading it.
-    const realRoot = await realpath(target.root).catch(() => null);
-    const realDir = await realpath(dir).catch(() => null);
-    if (!realRoot || !realDir) {
+    const dir = await resolveSafeFolderPath(target, relativePath);
+    if (!dir) {
       throw new NotFoundError(`Folder not found: ${relativePath || "/"}`);
-    }
-    assertDescendant(realRoot, realDir);
-
-    const dirStat = await stat(dir).catch(() => null);
-    if (!dirStat) {
-      throw new NotFoundError(`Folder not found: ${relativePath || "/"}`);
-    }
-    if (!dirStat.isDirectory()) {
-      throw new BadRequestError("Path is not a folder.");
     }
 
     // `dir` existence and type are validated above, so let readdir errors

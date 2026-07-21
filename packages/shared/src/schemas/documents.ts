@@ -5,6 +5,7 @@ import { fileManagerFileRevisionSchema } from "./file-manager.js";
 const MARKDOWN_EXTENSIONS = [".md", ".markdown"] as const;
 const DEFAULT_DOCUMENT_LIST_LIMIT = 50;
 const MAX_DOCUMENT_LIST_LIMIT = 200;
+export const MAX_DOCUMENT_FOLDER_DEPTH = 5;
 
 // Windows drive-letter prefix (e.g. `C:` in `C:\notes.md` or `C:/notes.md`),
 // which is absolute on Windows even without a leading separator.
@@ -51,6 +52,11 @@ const documentFolderPathSchema = z
   .refine((p) => !p.split("/").some((s) => s === "" || s.startsWith(".")), {
     message: "Path must not contain empty or hidden segments",
   });
+
+export const documentFolderGrantPathSchema = documentFolderPathSchema.refine(
+  (path) => path.split("/").length <= MAX_DOCUMENT_FOLDER_DEPTH,
+  { message: `Folder grants may be at most ${String(MAX_DOCUMENT_FOLDER_DEPTH)} levels deep` },
+);
 
 export const documentScopeSchema = z.enum(["global", "private"]);
 

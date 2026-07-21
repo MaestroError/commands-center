@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { agents } from "../../src/db/schema/index.js";
 import type { AppDb } from "../../src/db/client.js";
@@ -208,7 +208,7 @@ describe("public MCP client e2e", () => {
     });
     const token = apiTokenService.createToken("Document MCP E2E", {
       ...permissionsForPresets("documents"),
-      documents: { global: true, privateSpecialistIds: [agentId] },
+      documents: { global: true, globalFolderPaths: [], privateSpecialistIds: [agentId] },
     });
     const server = await startServer(testDb, {
       apiTokenService,
@@ -342,11 +342,138 @@ describe("public MCP client e2e", () => {
         ]),
       );
   });
+
+  describe("folder-limited global document access", () => {
+    const restrictedDisposers: Array<() => void | Promise<void>> = [];
+    let client: Client;
+
+    beforeAll(async () => {
+      const testDb = await makeTestDb(restrictedDisposers);
+      const apiTokenService = createApiTokenService({ db: testDb.client.db });
+      const tokenAuditService = createTokenAuditService({
+        db: testDb.client.db,
+        config: testDb.config,
+      });
+      const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+      const taskExecutionService = createTaskExecutionService({
+        db: testDb.client.db,
+        taskService,
+        defer: { initialDelayMs: 1, maxDelayMs: 1, jitterRatio: 0 },
+      });
+      restrictedDisposers.push(() => taskExecutionService.dispose());
+
+      const documents = createDocumentService({ db: testDb.client.db, config: testDb.config });
+      await documents.create({
+        path: "public/brief.md",
+        title: "Public Brief",
+        content: "Visible restriction needle.",
+      });
+      await documents.create({
+        path: "public/nested/details.md",
+        title: "Nested Details",
+        content: "Authorized descendant content.",
+      });
+      await documents.create({
+        path: "public-private/secret.md",
+        title: "Hidden Secret",
+        content: "Hidden restriction needle.",
+      });
+
+      const token = apiTokenService.createToken("Folder-limited MCP E2E", {
+        capabilities: ["list_documents", "search_documents", "read_document", "create_document"],
+        templates: [],
+        documents: {
+          global: false,
+          globalFolderPaths: ["public"],
+          privateSpecialistIds: [],
+        },
+      });
+      const server = await startServer(
+        testDb,
+        { apiTokenService, tokenAuditService, taskService, taskExecutionService },
+        restrictedDisposers,
+      );
+      client = await connectMcpClient(server.baseUrl, token.token);
+      restrictedDisposers.push(() => client.close());
+    });
+
+    afterAll(async () => {
+      while (restrictedDisposers.length > 0) {
+        await restrictedDisposers.pop()?.();
+      }
+    });
+
+    it("lists only documents in the granted folder and its descendants", async () => {
+      const listed = structured<{ documents: Array<{ relativePath: string }> }>(
+        await client.callTool({
+          name: "list_documents",
+          arguments: { scope: "global" },
+        }),
+      );
+
+      expect(listed.documents.map((document) => document.relativePath)).toEqual([
+        "public/brief.md",
+        "public/nested/details.md",
+      ]);
+    });
+
+    it("searches only content inside the granted folder", async () => {
+      const searched = structured<{ documents: Array<{ relativePath: string }> }>(
+        await client.callTool({
+          name: "search_documents",
+          arguments: { scope: "global", query: "restriction needle" },
+        }),
+      );
+
+      expect(searched.documents.map((document) => document.relativePath)).toEqual([
+        "public/brief.md",
+      ]);
+    });
+
+    it("returns an MCP tool error when reading outside the granted folder", async () => {
+      const result = await client.callTool({
+        name: "read_document",
+        arguments: { scope: "global", path: "public-private/secret.md" },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(JSON.stringify(result.content)).toContain("Document not found.");
+    });
+
+    it("creates documents inside the granted folder", async () => {
+      const created = structured<{ relativePath: string }>(
+        await client.callTool({
+          name: "create_document",
+          arguments: {
+            scope: "global",
+            path: "public/nested/created.md",
+            content: "Authorized MCP creation.",
+          },
+        }),
+      );
+
+      expect(created.relativePath).toBe("public/nested/created.md");
+    });
+
+    it("returns an MCP tool error when creating outside the granted folder", async () => {
+      const result = await client.callTool({
+        name: "create_document",
+        arguments: {
+          scope: "global",
+          path: "public-private/created.md",
+          content: "Unauthorized MCP creation.",
+        },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(JSON.stringify(result.content)).toContain("Document root not found.");
+    });
+  });
 });
 
-async function makeTestDb(): Promise<TestDb> {
+async function makeTestDb(disposerStack = disposers): Promise<TestDb> {
   const testDb = await createTestDatabase();
-  disposers.push(() => testDb.cleanup());
+  disposerStack.push(() => testDb.cleanup());
   return testDb;
 }
 
@@ -358,6 +485,7 @@ async function startServer(
     taskService: ReturnType<typeof createTaskService>;
     taskExecutionService: ReturnType<typeof createTaskExecutionService>;
   },
+  disposerStack = disposers,
 ): Promise<{ server: TestServer; baseUrl: string }> {
   const server = createServer({
     config: testDb.config,
@@ -374,7 +502,7 @@ async function startServer(
     taskExecutionService: deps.taskExecutionService,
   });
   await server.listen({ host: "127.0.0.1", port: 0 });
-  disposers.push(() => server.close());
+  disposerStack.push(() => server.close());
 
   const address = server.server.address();
   if (address === null || typeof address === "string") {

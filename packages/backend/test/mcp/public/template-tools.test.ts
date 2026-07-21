@@ -21,7 +21,7 @@ function tokenWithTemplates(templateIds: string[], capabilities: string[] = []):
     permissions: {
       capabilities,
       templates: templateIds,
-      documents: { global: false, privateSpecialistIds: [] },
+      documents: { global: false, globalFolderPaths: [], privateSpecialistIds: [] },
     },
     createdAt: Date.now(),
     lastUsedAt: null,

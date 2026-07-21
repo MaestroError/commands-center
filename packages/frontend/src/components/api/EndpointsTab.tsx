@@ -77,7 +77,8 @@ export function EndpointsTab(props: { onGoToTokens?: () => void }) {
             Authorization: Bearer cc_…
           </code>{" "}
           header. Each tool is gated by the token&apos;s permissions — a client only sees the tools
-          its token allows.
+          its token allows. Document tools also enforce the token&apos;s document roots and
+          recursive global-folder grants.
         </p>
         <div className="mt-4 grid gap-4">
           <CopyableCode code={mcpEndpoint} label="MCP endpoint" />
@@ -276,14 +277,14 @@ export function EndpointsTab(props: { onGoToTokens?: () => void }) {
 
       <SectionHeading
         title="Documents"
-        subtitle="Read global project documents and selected specialists' private documents. Capabilities choose the operations; each token's Document access section chooses the visible roots. Scope and owner filters only narrow that access."
+        subtitle="Capabilities choose the operations; each token's Document access section chooses the visible roots. A global-folder grant includes that folder and every descendant. Unselected paths are omitted from list and search results and behave as missing on direct access. Scope and owner filters only narrow access."
       />
 
       <EndpointBlock
         method="GET"
         path="/api/public/v1/documents"
         scope="List documents"
-        description="List metadata from every document root selected on the token. Optional scope, owner, query, limit, and offset parameters narrow the result. MCP tool: list_documents."
+        description="List metadata from authorized private roots and global folders, including every descendant of a granted folder. Hidden documents are excluded from totals and pagination. Optional scope, owner, query, limit, and offset parameters only narrow the result. MCP tool: list_documents."
         snippets={[{ label: "curl", code: documentDocs.listCurl }]}
         responseExample={{
           documents: [
@@ -305,7 +306,7 @@ export function EndpointsTab(props: { onGoToTokens?: () => void }) {
         method="GET"
         path="/api/public/v1/documents/search"
         scope="Search documents"
-        description="Search metadata and authorized markdown content. Results contain bounded line-numbered excerpts. MCP tool: search_documents."
+        description="Search metadata and markdown content only inside authorized roots and recursive global-folder grants. Results contain bounded line-numbered excerpts and reveal nothing from hidden folders. MCP tool: search_documents."
         snippets={[{ label: "curl", code: documentDocs.searchCurl }]}
         responseExample={{
           documents: [
@@ -330,7 +331,7 @@ export function EndpointsTab(props: { onGoToTokens?: () => void }) {
         method="GET"
         path="/api/public/v1/documents/read"
         scope="Read document"
-        description="Read one document by scope and path. Private reads also require the current specialist slug in owner. MCP tool: read_document."
+        description="Read one authorized document by scope and path. A global path outside the token's recursive folder grants returns the same not-found response as a missing document. Private reads also require the current specialist slug in owner. MCP tool: read_document."
         snippets={[{ label: "curl", code: documentDocs.readCurl }]}
         responseExample={{
           scope: "private",
@@ -350,7 +351,7 @@ export function EndpointsTab(props: { onGoToTokens?: () => void }) {
         method="POST"
         path="/api/public/v1/documents"
         scope="Create document"
-        description="Create a new markdown document in an authorized root. The path must live in at least one subfolder and end with .md or .markdown; private writes require the owning specialist slug in owner. MCP tool: create_document."
+        description="Create a new markdown document inside an authorized root or recursive global-folder grant. Destinations outside the grant return not found. The path must live in at least one subfolder and end with .md or .markdown; private writes require the owning specialist slug in owner. MCP tool: create_document."
         snippets={[{ label: "curl", code: documentDocs.createCurl }]}
         responseExample={{
           scope: "global",

@@ -86,7 +86,7 @@ describe("createApiTokenService", () => {
         service.createToken("Bad", {
           capabilities: ["not_a_real_capability"],
           templates: [],
-          documents: { global: false, privateSpecialistIds: [] },
+          documents: { global: false, globalFolderPaths: [], privateSpecialistIds: [] },
         }),
       ).toThrow(/Unknown token capability/);
     } finally {
@@ -191,7 +191,7 @@ describe("createApiTokenService", () => {
         service.createToken("No access", {
           capabilities: [],
           templates: [],
-          documents: { global: false, privateSpecialistIds: [] },
+          documents: { global: false, globalFolderPaths: [], privateSpecialistIds: [] },
         }),
       ).toThrow();
     } finally {
@@ -237,14 +237,75 @@ describe("createApiTokenService", () => {
         templates: [],
         documents: {
           global: true,
+          globalFolderPaths: ["ignored/folder"],
           privateSpecialistIds: ["specialist-b", "specialist-a", "specialist-b"],
         },
       });
 
       expect(created.record.permissions.documents).toEqual({
         global: true,
+        globalFolderPaths: [],
         privateSpecialistIds: ["specialist-a", "specialist-b"],
       });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("normalizes global folder grants deterministically", async () => {
+    const testDb = await createTestDatabase();
+    const service = createApiTokenService({ db: testDb.client.db });
+
+    try {
+      const created = service.createToken("Folder docs", {
+        capabilities: ["read_document"],
+        templates: [],
+        documents: {
+          global: false,
+          globalFolderPaths: ["public/reports", "public", "guides", "guides"],
+          privateSpecialistIds: [],
+        },
+      });
+
+      expect(created.record.permissions.documents.globalFolderPaths).toEqual(["guides", "public"]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("accepts a document capability with only global folder access", async () => {
+    const testDb = await createTestDatabase();
+    const service = createApiTokenService({ db: testDb.client.db });
+
+    try {
+      expect(() =>
+        service.createToken("Folder docs", {
+          capabilities: ["read_document"],
+          templates: [],
+          documents: {
+            global: false,
+            globalFolderPaths: ["public"],
+            privateSpecialistIds: [],
+          },
+        }),
+      ).not.toThrow();
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("requires document access for a create-only token", async () => {
+    const testDb = await createTestDatabase();
+    const service = createApiTokenService({ db: testDb.client.db });
+
+    try {
+      expect(() =>
+        service.createToken("Create docs", {
+          capabilities: ["create_document"],
+          templates: [],
+          documents: { global: false, globalFolderPaths: [], privateSpecialistIds: [] },
+        }),
+      ).toThrow(/document root/i);
     } finally {
       await testDb.cleanup();
     }
@@ -259,7 +320,7 @@ describe("createApiTokenService", () => {
         service.createToken("Docs", {
           capabilities: ["read_document"],
           templates: [],
-          documents: { global: false, privateSpecialistIds: [] },
+          documents: { global: false, globalFolderPaths: [], privateSpecialistIds: [] },
         }),
       ).toThrow(/document root/i);
     } finally {
@@ -276,7 +337,11 @@ describe("createApiTokenService", () => {
         service.createToken("Docs", {
           capabilities: ["list_documents"],
           templates: [],
-          documents: { global: false, privateSpecialistIds: ["missing"] },
+          documents: {
+            global: false,
+            globalFolderPaths: [],
+            privateSpecialistIds: ["missing"],
+          },
         }),
       ).toThrow(/unknown or inactive specialist/i);
     } finally {
@@ -292,18 +357,19 @@ describe("createApiTokenService", () => {
       const created = service.createToken("Docs", {
         capabilities: ["read_document"],
         templates: [],
-        documents: { global: true, privateSpecialistIds: [] },
+        documents: { global: true, globalFolderPaths: [], privateSpecialistIds: [] },
       });
       const updated = service.updateToken(created.record.id, {
         permissions: {
           capabilities: ["list_tasks"],
           templates: [],
-          documents: { global: true, privateSpecialistIds: [] },
+          documents: { global: true, globalFolderPaths: [], privateSpecialistIds: [] },
         },
       });
 
       expect(updated?.permissions.documents).toEqual({
         global: false,
+        globalFolderPaths: [],
         privateSpecialistIds: [],
       });
     } finally {

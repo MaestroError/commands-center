@@ -16,12 +16,18 @@ import type { AppDb } from "../db/client.js";
 import { createId, now } from "../db/ids.js";
 import { agents, api_tokens } from "../db/schema/index.js";
 import { BadRequestError } from "../lib/api-error.js";
+import { normalizeGlobalDocumentFolderPaths } from "./document-access-policy.js";
 
 const TOKEN_PREFIX = "cc_";
 const TOKEN_RANDOM_BYTES = 32;
 const TOKEN_DISPLAY_PREFIX_LENGTH = 12;
 const ORDERED_SCOPES = ["templates", "tasks"] as const;
-const DOCUMENT_CAPABILITIES = new Set(["list_documents", "search_documents", "read_document"]);
+const DOCUMENT_CAPABILITIES = new Set([
+  "list_documents",
+  "search_documents",
+  "read_document",
+  "create_document",
+]);
 
 export type ApiTokenService = ReturnType<typeof createApiTokenService>;
 
@@ -180,16 +186,26 @@ function validateInputPermissions(
   const capabilities = orderApiTokenCapabilityIds(parsed.capabilities);
   const templates = [...new Set(parsed.templates)];
   const hasDocumentCapability = capabilities.some((id) => DOCUMENT_CAPABILITIES.has(id));
+  const globalFolderPaths = normalizeGlobalDocumentFolderPaths(parsed.documents.globalFolderPaths);
   const privateSpecialistIds = [...new Set(parsed.documents.privateSpecialistIds)].sort();
   const documents = hasDocumentCapability
-    ? { global: parsed.documents.global, privateSpecialistIds }
-    : { global: false, privateSpecialistIds: [] };
+    ? {
+        global: parsed.documents.global,
+        globalFolderPaths: parsed.documents.global ? [] : globalFolderPaths,
+        privateSpecialistIds,
+      }
+    : { global: false, globalFolderPaths: [], privateSpecialistIds: [] };
 
   if (capabilities.length === 0 && templates.length === 0) {
     throw new BadRequestError("At least one token permission is required.");
   }
 
-  if (hasDocumentCapability && !documents.global && documents.privateSpecialistIds.length === 0) {
+  if (
+    hasDocumentCapability &&
+    !documents.global &&
+    documents.globalFolderPaths.length === 0 &&
+    documents.privateSpecialistIds.length === 0
+  ) {
     throw new BadRequestError("Select at least one document root.");
   }
 
@@ -233,6 +249,9 @@ function resolvePermissions(row: typeof api_tokens.$inferSelect): ApiTokenPermis
       templates: [...new Set(parsed.templates)],
       documents: {
         global: parsed.documents.global,
+        globalFolderPaths: parsed.documents.global
+          ? []
+          : normalizeGlobalDocumentFolderPaths(parsed.documents.globalFolderPaths),
         privateSpecialistIds: [...new Set(parsed.documents.privateSpecialistIds)].sort(),
       },
     };
@@ -244,7 +263,7 @@ function resolvePermissions(row: typeof api_tokens.$inferSelect): ApiTokenPermis
   return {
     capabilities: orderApiTokenCapabilityIds(capabilityIds),
     templates: [],
-    documents: { global: false, privateSpecialistIds: [] },
+    documents: { global: false, globalFolderPaths: [], privateSpecialistIds: [] },
   };
 }
 

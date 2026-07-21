@@ -24,6 +24,7 @@ import {
 import type { AppDb } from "../db/client.js";
 import { agents } from "../db/schema/index.js";
 import { ApiError, NotFoundError } from "../lib/api-error.js";
+import { isGlobalDocumentPathAuthorized } from "./document-access-policy.js";
 import type { DocumentService } from "./document-service.js";
 
 const MAX_SEARCH_ROOTS = 50;
@@ -39,6 +40,7 @@ type AuthorizedRoot = {
   scope: DocumentScope;
   ownerSlug: string | null;
   ownerSpecialistId: string | null;
+  folderPaths?: string[];
 };
 
 export type PublicDocumentApiService = ReturnType<typeof createPublicDocumentApiService>;
@@ -53,8 +55,18 @@ export function createPublicDocumentApiService(deps: {
   ): AuthorizedRoot[] {
     const roots: AuthorizedRoot[] = [];
 
-    if (token.permissions.documents.global && filters?.scope !== "private" && !filters?.ownerSlug) {
-      roots.push({ scope: "global", ownerSlug: null, ownerSpecialistId: null });
+    const documentAccess = token.permissions.documents;
+    if (
+      (documentAccess.global || documentAccess.globalFolderPaths.length > 0) &&
+      filters?.scope !== "private" &&
+      !filters?.ownerSlug
+    ) {
+      roots.push({
+        scope: "global",
+        ownerSlug: null,
+        ownerSpecialistId: null,
+        folderPaths: documentAccess.global ? undefined : documentAccess.globalFolderPaths,
+      });
     }
 
     const privateIds = token.permissions.documents.privateSpecialistIds;
@@ -83,6 +95,7 @@ export function createPublicDocumentApiService(deps: {
     return deps.documentService.listAllDocuments({
       scope: root.scope,
       ownerSpecialistId: root.ownerSpecialistId,
+      folderPaths: root.folderPaths,
     });
   }
 
@@ -106,6 +119,7 @@ export function createPublicDocumentApiService(deps: {
           deps.documentService.listSearchCandidates({
             scope: root.scope,
             ownerSpecialistId: root.ownerSpecialistId,
+            folderPaths: root.folderPaths,
             maxCandidates: MAX_SEARCH_CANDIDATES_PER_ROOT,
           }),
         ),
@@ -143,6 +157,12 @@ export function createPublicDocumentApiService(deps: {
       if (!root) {
         throw new NotFoundError("Document not found.");
       }
+      if (
+        root.scope === "global" &&
+        !isGlobalDocumentPathAuthorized(token.permissions.documents, parsed.path)
+      ) {
+        throw new NotFoundError("Document not found.");
+      }
 
       try {
         const document = await deps.documentService.read({
@@ -174,6 +194,12 @@ export function createPublicDocumentApiService(deps: {
         (candidate) => candidate.scope === parsed.scope,
       );
       if (!root) {
+        throw new NotFoundError("Document root not found.");
+      }
+      if (
+        root.scope === "global" &&
+        !isGlobalDocumentPathAuthorized(token.permissions.documents, parsed.path)
+      ) {
         throw new NotFoundError("Document root not found.");
       }
 

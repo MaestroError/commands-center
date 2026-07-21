@@ -15,6 +15,7 @@ import {
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
 import { PageHeader } from "@/components/common/PageHeader";
 import { TabBar } from "@/components/common/TabBar";
+import { GlobalDocumentAccessTree } from "@/components/api/GlobalDocumentAccessTree";
 import { Checkbox } from "@/components/ui/checkbox";
 import { EndpointsTab } from "@/components/api/EndpointsTab";
 import { getTokenActivity, getTokenAuditSettings, updateTokenAuditSettings } from "@/lib/api";
@@ -33,6 +34,12 @@ const GROUP_LABELS: Record<ApiTokenCapabilityGroup, string> = {
   tasks: "Tasks",
   documents: "Documents",
 };
+
+function hasDocumentCapability(capabilities: Set<string>): boolean {
+  return API_TOKEN_CAPABILITIES.some(
+    (capability) => capability.group === "documents" && capabilities.has(capability.id),
+  );
+}
 
 export function ApiPage() {
   const [activeTabId, setActiveTabId] = useState("tokens");
@@ -235,15 +242,17 @@ function TokenForm(props: {
   const [globalDocuments, setGlobalDocuments] = useState(
     props.initialPermissions?.documents.global ?? false,
   );
+  const [globalDocumentFolderPaths, setGlobalDocumentFolderPaths] = useState<Set<string>>(
+    () => new Set(props.initialPermissions?.documents.globalFolderPaths ?? []),
+  );
   const [privateSpecialistIds, setPrivateSpecialistIds] = useState<Set<string>>(
     () => new Set(props.initialPermissions?.documents.privateSpecialistIds ?? []),
   );
   const [error, setError] = useState<string>();
   const trimmedName = name.trim();
-  const documentCapabilitySelected = API_TOKEN_CAPABILITIES.some(
-    (capability) => capability.group === "documents" && capabilities.has(capability.id),
-  );
-  const documentRootSelected = globalDocuments || privateSpecialistIds.size > 0;
+  const documentCapabilitySelected = hasDocumentCapability(capabilities);
+  const documentRootSelected =
+    globalDocuments || globalDocumentFolderPaths.size > 0 || privateSpecialistIds.size > 0;
   const canSubmit =
     trimmedName.length > 0 &&
     capabilities.size + templates.size > 0 &&
@@ -266,8 +275,12 @@ function TokenForm(props: {
           capabilities: [...capabilities],
           templates: [...templates],
           documents: documentCapabilitySelected
-            ? { global: globalDocuments, privateSpecialistIds: [...privateSpecialistIds] }
-            : { global: false, privateSpecialistIds: [] },
+            ? {
+                global: globalDocuments,
+                globalFolderPaths: globalDocuments ? [] : [...globalDocumentFolderPaths].sort(),
+                privateSpecialistIds: [...privateSpecialistIds],
+              }
+            : { global: false, globalFolderPaths: [], privateSpecialistIds: [] },
         },
       });
     } catch (nextError) {
@@ -305,7 +318,17 @@ function TokenForm(props: {
             value={name}
           />
         </label>
-        <PermissionSelector value={capabilities} onChange={setCapabilities} />
+        <PermissionSelector
+          value={capabilities}
+          onChange={(next) => {
+            setCapabilities(next);
+            if (!hasDocumentCapability(next)) {
+              setGlobalDocuments(false);
+              setGlobalDocumentFolderPaths(new Set());
+              setPrivateSpecialistIds(new Set());
+            }
+          }}
+        />
       </div>
 
       {documentCapabilitySelected ? (
@@ -315,17 +338,18 @@ function TokenForm(props: {
         >
           <legend className="px-1 font-medium text-text-primary">Document access</legend>
           <p className="text-xs text-text-secondary">
-            Choose which document roots the selected document permissions may read.
+            Select document roots or global folders this token may access. Folder access includes
+            all documents and subfolders; unselected folders are hidden.
           </p>
-          <label className="flex cursor-pointer items-center gap-3 text-text-primary">
-            <input
-              checked={globalDocuments}
-              data-testid="token-documents-global"
-              onChange={(event) => setGlobalDocuments(event.target.checked)}
-              type="checkbox"
-            />
-            Global Documents
-          </label>
+          <GlobalDocumentAccessTree
+            fullAccess={globalDocuments}
+            selectedFolderPaths={globalDocumentFolderPaths}
+            onFullAccessChange={(next) => {
+              setGlobalDocuments(next);
+              if (next) setGlobalDocumentFolderPaths(new Set());
+            }}
+            onSelectedFolderPathsChange={setGlobalDocumentFolderPaths}
+          />
           {props.specialistOptions.length > 0 ? (
             <div className="grid gap-2 border-t border-border pt-2">
               <span className="text-xs font-medium uppercase tracking-[0.15em] text-text-muted">
@@ -735,6 +759,11 @@ function summarizePermissions(permissions: ApiTokenPermissions): string[] {
       : [];
   const documentBadges = [
     ...(permissions.documents.global ? ["Global documents"] : []),
+    ...(permissions.documents.globalFolderPaths.length > 0
+      ? [
+          `${permissions.documents.globalFolderPaths.length} global document ${permissions.documents.globalFolderPaths.length === 1 ? "folder" : "folders"}`,
+        ]
+      : []),
     ...(permissions.documents.privateSpecialistIds.length > 0
       ? [
           `${permissions.documents.privateSpecialistIds.length} private document ${permissions.documents.privateSpecialistIds.length === 1 ? "root" : "roots"}`,

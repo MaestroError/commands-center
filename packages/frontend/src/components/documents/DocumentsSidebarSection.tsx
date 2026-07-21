@@ -3,7 +3,11 @@ import { useQuery } from "@tanstack/react-query";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { BookOpenText, ChevronRight, FilePlus, Folder, FolderPlus, Search } from "lucide-react";
 
-import type { DocumentScope, DocumentTreeNode } from "@cc/shared/schemas";
+import {
+  MAX_DOCUMENT_FOLDER_DEPTH,
+  type DocumentScope,
+  type DocumentTreeNode,
+} from "@cc/shared/schemas";
 
 import { isRouteActive } from "@/app/routes";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
@@ -17,8 +21,6 @@ import { Button } from "@/components/ui/button";
 import { SearchableSelect } from "@/components/common/SearchableSelect";
 
 const DOCUMENTS_PATH = "/documents";
-/** Folders may nest up to this depth. Folders at the max depth can only hold documents. */
-export const MAX_FOLDER_DEPTH = 5;
 const DEFAULT_PRIVATE_DOCUMENT_FOLDER = "notes";
 
 type DocumentTarget = {
@@ -413,7 +415,7 @@ function DocumentSidebarNode(props: DocumentSidebarNodeProps) {
   }, [node.type, props.selectedTarget, target]);
 
   if (node.type === "directory") {
-    const canAddFolder = depth < MAX_FOLDER_DEPTH;
+    const canAddFolder = depth < MAX_DOCUMENT_FOLDER_DEPTH;
     const isSelectedFolder =
       props.selectedFolderTarget !== null &&
       targetKey(props.selectedFolderTarget) === targetKey(target);

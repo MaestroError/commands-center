@@ -14,7 +14,7 @@ export function permissionsForPresets(...groups: ApiTokenCapabilityGroup[]): Api
   return {
     capabilities: orderApiTokenCapabilityIds(groups.flatMap((group) => API_TOKEN_PRESETS[group])),
     templates: [],
-    documents: { global: false, privateSpecialistIds: [] },
+    documents: { global: false, globalFolderPaths: [], privateSpecialistIds: [] },
   };
 }
 
@@ -23,6 +23,6 @@ export function permissionsForCapabilities(...capabilities: string[]): ApiTokenP
   return {
     capabilities: orderApiTokenCapabilityIds(capabilities),
     templates: [],
-    documents: { global: false, privateSpecialistIds: [] },
+    documents: { global: false, globalFolderPaths: [], privateSpecialistIds: [] },
   };
 }

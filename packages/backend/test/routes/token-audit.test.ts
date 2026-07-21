@@ -123,7 +123,7 @@ describe("per-token execution audit", () => {
       });
       const token = apiTokenService.createToken("Documents", {
         ...permissionsForPresets("documents"),
-        documents: { global: true, privateSpecialistIds: [] },
+        documents: { global: true, globalFolderPaths: [], privateSpecialistIds: [] },
       });
 
       const response = await server.inject({

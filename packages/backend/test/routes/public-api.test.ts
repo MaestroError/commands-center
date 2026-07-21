@@ -498,7 +498,7 @@ describe("public task API", () => {
       const token = apiTokenService.createToken("Documents", {
         capabilities: ["list_documents", "search_documents", "read_document"],
         templates: [],
-        documents: { global: true, privateSpecialistIds: [agent.id] },
+        documents: { global: true, globalFolderPaths: [], privateSpecialistIds: [agent.id] },
       }).token;
       const auth = { authorization: `Bearer ${token}` };
 
@@ -535,7 +535,7 @@ describe("public task API", () => {
       const globalOnly = apiTokenService.createToken("Global only", {
         capabilities: ["read_document"],
         templates: [],
-        documents: { global: true, privateSpecialistIds: [] },
+        documents: { global: true, globalFolderPaths: [], privateSpecialistIds: [] },
       }).token;
       const hidden = await server.inject({
         method: "GET",
@@ -561,6 +561,35 @@ describe("public task API", () => {
     }
   });
 
+  it("lists only documents inside token-authorized global folders", async () => {
+    const { testDb, server, apiTokenService, taskSchedulerService } = await setup();
+
+    try {
+      const documents = createDocumentService({ db: testDb.client.db, config: testDb.config });
+      await documents.create({ path: "public/brief.md", content: "Public" });
+      await documents.create({ path: "private/secret.md", content: "Private" });
+      const token = apiTokenService.createToken("Public folder", {
+        capabilities: ["list_documents"],
+        templates: [],
+        documents: { global: false, globalFolderPaths: ["public"], privateSpecialistIds: [] },
+      }).token;
+
+      const response = await server.inject({
+        method: "GET",
+        url: "/api/public/v1/documents",
+        headers: { authorization: `Bearer ${token}` },
+      });
+
+      expect(response.json<{ documents: Array<{ relativePath: string }> }>().documents).toEqual([
+        expect.objectContaining({ relativePath: "public/brief.md" }),
+      ]);
+    } finally {
+      taskSchedulerService.stop();
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
   it("creates a document in an authorized root and gates it on the capability", async () => {
     const { testDb, server, apiTokenService, taskSchedulerService } = await setup();
 
@@ -568,7 +597,7 @@ describe("public task API", () => {
       const token = apiTokenService.createToken("Documents", {
         capabilities: ["create_document", "read_document"],
         templates: [],
-        documents: { global: true, privateSpecialistIds: [] },
+        documents: { global: true, globalFolderPaths: [], privateSpecialistIds: [] },
       }).token;
       const auth = { authorization: `Bearer ${token}` };
 
@@ -604,7 +633,7 @@ describe("public task API", () => {
       const readerOnly = apiTokenService.createToken("Reader only", {
         capabilities: ["read_document"],
         templates: [],
-        documents: { global: true, privateSpecialistIds: [] },
+        documents: { global: true, globalFolderPaths: [], privateSpecialistIds: [] },
       }).token;
       const forbidden = await server.inject({
         method: "POST",

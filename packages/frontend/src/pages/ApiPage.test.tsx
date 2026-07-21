@@ -9,6 +9,7 @@ import {
   API_TOKEN_PRESETS,
   type ApiTokenPermissions,
   type ApiTokenRecord,
+  type DocumentTreeResponse,
   type Specialist,
   type TaskTemplate,
 } from "@cc/shared/schemas";
@@ -16,6 +17,7 @@ import {
 import { ApiPage } from "./ApiPage";
 import {
   createApiToken,
+  getDocumentTree,
   getTokenActivity,
   getTokenAuditSettings,
   listApiTokens,
@@ -33,6 +35,7 @@ vi.mock("@/lib/api", async () => {
     listTaskTemplates: vi.fn(),
     listSpecialists: vi.fn(),
     createApiToken: vi.fn(),
+    getDocumentTree: vi.fn(),
     updateApiToken: vi.fn(),
     revokeApiToken: vi.fn(),
     getTokenActivity: vi.fn(),
@@ -104,7 +107,7 @@ function permsFor(...groups: Array<"templates" | "tasks" | "documents">): ApiTok
   return {
     capabilities: ALL_CAPABILITY_IDS.filter((id) => capabilities.includes(id)),
     templates: [],
-    documents: { global: false, privateSpecialistIds: [] },
+    documents: { global: false, globalFolderPaths: [], privateSpecialistIds: [] },
   };
 }
 
@@ -118,6 +121,35 @@ function makeToken(overrides: Partial<ApiTokenRecord> = {}): ApiTokenRecord {
     lastUsedAt: null,
     revokedAt: null,
     ...overrides,
+  };
+}
+
+function globalTree(): DocumentTreeResponse {
+  return {
+    tree: [
+      {
+        scope: "global",
+        ownerSlug: null,
+        ownerSpecialistId: null,
+        name: "clients",
+        relativePath: "clients",
+        type: "directory",
+        title: null,
+        children: [
+          {
+            scope: "global",
+            ownerSlug: null,
+            ownerSpecialistId: null,
+            name: "acme",
+            relativePath: "clients/acme",
+            type: "directory",
+            title: null,
+            children: [],
+          },
+        ],
+      },
+    ],
+    privateTrees: [],
   };
 }
 
@@ -141,6 +173,8 @@ beforeEach(() => {
   vi.mocked(getTokenAuditSettings).mockResolvedValue({ retentionWeeks: 4 });
   vi.mocked(getTokenActivity).mockReset();
   vi.mocked(getTokenActivity).mockResolvedValue({ entries: [], nextCursor: null });
+  vi.mocked(getDocumentTree).mockReset();
+  vi.mocked(getDocumentTree).mockResolvedValue({ tree: [], privateTrees: [] });
   vi.mocked(createApiToken).mockReset();
   vi.mocked(updateApiToken).mockReset();
   vi.mocked(revokeApiToken).mockReset();
@@ -262,7 +296,7 @@ describe("ApiPage", () => {
         permissions: {
           capabilities: [],
           templates: ["tmpl-1"],
-          documents: { global: false, privateSpecialistIds: [] },
+          documents: { global: false, globalFolderPaths: [], privateSpecialistIds: [] },
         },
       }),
     });
@@ -335,6 +369,7 @@ describe("ApiPage", () => {
 
   it("selects global and private document roots", async () => {
     vi.mocked(listApiTokens).mockResolvedValue({ tokens: [] });
+    vi.mocked(getDocumentTree).mockResolvedValue(globalTree());
     vi.mocked(listSpecialists).mockResolvedValue([
       {
         id: "specialist-1",
@@ -364,7 +399,11 @@ describe("ApiPage", () => {
         permissions: {
           capabilities: ["read_document"],
           templates: [],
-          documents: { global: true, privateSpecialistIds: ["specialist-1"] },
+          documents: {
+            global: true,
+            globalFolderPaths: [],
+            privateSpecialistIds: ["specialist-1"],
+          },
         },
       }),
     });
@@ -376,6 +415,7 @@ describe("ApiPage", () => {
       target: { value: "Docs" },
     });
     fireEvent.click(screen.getByTestId("permission-read_document"));
+    fireEvent.click(await screen.findByTestId("token-documents-folder-clients"));
     fireEvent.click(screen.getByTestId("token-documents-global"));
     fireEvent.click(screen.getByTestId("token-documents-specialist-specialist-1"));
     fireEvent.click(screen.getByTestId("token-submit"));
@@ -386,7 +426,125 @@ describe("ApiPage", () => {
           permissions: expect.objectContaining({
             documents: {
               global: true,
+              globalFolderPaths: [],
               privateSpecialistIds: ["specialist-1"],
+            },
+          }),
+        }),
+      ),
+    );
+  });
+
+  it("loads the global folder tree only while document permissions are configured", async () => {
+    vi.mocked(listApiTokens).mockResolvedValue({ tokens: [] });
+    renderPage();
+
+    await screen.findByText("No API tokens yet");
+    fireEvent.click(screen.getByRole("button", { name: "Create token" }));
+    expect(getDocumentTree).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId("permission-read_document"));
+
+    await waitFor(() => expect(getDocumentTree).toHaveBeenCalledTimes(1));
+  });
+
+  it("submits a selected global document folder", async () => {
+    vi.mocked(listApiTokens).mockResolvedValue({ tokens: [] });
+    vi.mocked(getDocumentTree).mockResolvedValue(globalTree());
+    vi.mocked(createApiToken).mockResolvedValue({
+      token: "cc_docs",
+      record: makeToken(),
+    });
+    renderPage();
+
+    await screen.findByText("No API tokens yet");
+    fireEvent.click(screen.getByRole("button", { name: "Create token" }));
+    fireEvent.change(screen.getByPlaceholderText("Release automation"), {
+      target: { value: "Client docs" },
+    });
+    fireEvent.click(screen.getByTestId("permission-read_document"));
+    fireEvent.click(await screen.findByTestId("token-documents-folder-clients"));
+    fireEvent.click(screen.getByTestId("token-submit"));
+
+    await waitFor(() =>
+      expect(createApiToken).toHaveBeenCalledWith(
+        expect.objectContaining({
+          permissions: expect.objectContaining({
+            documents: {
+              global: false,
+              globalFolderPaths: ["clients"],
+              privateSpecialistIds: [],
+            },
+          }),
+        }),
+      ),
+    );
+  });
+
+  it("hydrates selected global document folders while editing", async () => {
+    vi.mocked(getDocumentTree).mockResolvedValue(globalTree());
+    vi.mocked(listApiTokens).mockResolvedValue({
+      tokens: [
+        makeToken({
+          name: "Scoped docs",
+          permissions: {
+            capabilities: ["read_document"],
+            templates: [],
+            documents: {
+              global: false,
+              globalFolderPaths: ["clients/acme"],
+              privateSpecialistIds: [],
+            },
+          },
+        }),
+      ],
+    });
+    renderPage();
+
+    await screen.findByText("Scoped docs");
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+
+    expect(await screen.findByTestId("token-documents-folder-clients/acme")).toHaveAttribute(
+      "data-state",
+      "checked",
+    );
+  });
+
+  it("clears document roots when the last document capability is removed", async () => {
+    vi.mocked(getDocumentTree).mockResolvedValue(globalTree());
+    vi.mocked(listApiTokens).mockResolvedValue({
+      tokens: [
+        makeToken({
+          name: "Mixed token",
+          permissions: {
+            capabilities: ["list_tasks", "read_document"],
+            templates: [],
+            documents: {
+              global: false,
+              globalFolderPaths: ["clients"],
+              privateSpecialistIds: [],
+            },
+          },
+        }),
+      ],
+    });
+    vi.mocked(updateApiToken).mockResolvedValue(makeToken());
+    renderPage();
+
+    await screen.findByText("Mixed token");
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    fireEvent.click(screen.getByTestId("permission-read_document"));
+    fireEvent.click(screen.getByTestId("token-submit"));
+
+    await waitFor(() =>
+      expect(updateApiToken).toHaveBeenCalledWith(
+        "tok-1",
+        expect.objectContaining({
+          permissions: expect.objectContaining({
+            documents: {
+              global: false,
+              globalFolderPaths: [],
+              privateSpecialistIds: [],
             },
           }),
         }),

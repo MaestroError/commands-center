@@ -13,8 +13,60 @@ describe("api token permission inputs", () => {
     expect(apiTokenPermissionsSchema.parse({})).toEqual({
       capabilities: [],
       templates: [],
-      documents: { global: false, privateSpecialistIds: [] },
+      documents: { global: false, globalFolderPaths: [], privateSpecialistIds: [] },
     });
+  });
+
+  it("defaults missing global folder paths", () => {
+    expect(
+      apiTokenPermissionsSchema.parse({
+        documents: { global: false, privateSpecialistIds: [] },
+      }).documents.globalFolderPaths,
+    ).toEqual([]);
+  });
+
+  it("accepts global folder grants up to five levels deep", () => {
+    expect(
+      apiTokenPermissionsSchema.parse({
+        documents: {
+          global: false,
+          globalFolderPaths: ["one/two/three/four/five"],
+          privateSpecialistIds: [],
+        },
+      }).documents.globalFolderPaths,
+    ).toEqual(["one/two/three/four/five"]);
+  });
+
+  it("rejects global folder grants deeper than five levels", () => {
+    expect(
+      apiTokenPermissionsSchema.safeParse({
+        documents: {
+          global: false,
+          globalFolderPaths: ["one/two/three/four/five/six"],
+          privateSpecialistIds: [],
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it.each([
+    "/absolute",
+    "C:/absolute",
+    "folder\\child",
+    "folder/../child",
+    "folder/.hidden",
+    "folder//child",
+    "folder/",
+  ])("rejects invalid global folder grant path %s", (path) => {
+    expect(
+      apiTokenPermissionsSchema.safeParse({
+        documents: {
+          global: false,
+          globalFolderPaths: [path],
+          privateSpecialistIds: [],
+        },
+      }).success,
+    ).toBe(false);
   });
 
   it("createApiTokenInputSchema requires at least one capability or template", () => {

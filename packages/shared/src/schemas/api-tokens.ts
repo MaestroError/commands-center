@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { documentFolderGrantPathSchema } from "./documents.js";
+
 // Legacy scope enum. Retained ONLY to parse pre-capability tokens' persisted
 // `scopes_json` at read time (see api-token-service `mapApiToken`). New tokens
 // store `permissions_json` instead; the record below no longer exposes scopes.
@@ -7,6 +9,7 @@ export const apiTokenScopeSchema = z.enum(["templates", "tasks"]);
 
 export const apiTokenDocumentAccessSchema = z.object({
   global: z.boolean().default(false),
+  globalFolderPaths: z.array(documentFolderGrantPathSchema).default([]),
   privateSpecialistIds: z.array(z.string().min(1)).default([]),
 });
 
@@ -18,6 +21,7 @@ export const apiTokenPermissionsSchema = z.object({
   templates: z.array(z.string().min(1)).default([]),
   documents: apiTokenDocumentAccessSchema.default({
     global: false,
+    globalFolderPaths: [],
     privateSpecialistIds: [],
   }),
 });

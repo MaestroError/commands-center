@@ -211,7 +211,7 @@ describe("public MCP route", () => {
       const token = apiTokenService.createToken("Documents", {
         capabilities: ["list_documents", "search_documents", "read_document"],
         templates: [],
-        documents: { global: true, privateSpecialistIds: [] },
+        documents: { global: true, globalFolderPaths: [], privateSpecialistIds: [] },
       }).token;
 
       const tools = (await callMcp(server, token, "tools/list", {}, 1)).body;
@@ -276,6 +276,42 @@ describe("public MCP route", () => {
     }
   });
 
+  it("returns an MCP tool error for documents outside granted global folders", async () => {
+    const testDb = await createTestDatabase();
+    const apiTokenService = createApiTokenService({ db: testDb.client.db });
+    const server = await buildServer(testDb, apiTokenService);
+
+    try {
+      const documents = createDocumentService({ db: testDb.client.db, config: testDb.config });
+      await documents.create({ path: "private/secret.md", content: "Secret" });
+      const token = apiTokenService.createToken("Public folder", {
+        capabilities: ["read_document"],
+        templates: [],
+        documents: { global: false, globalFolderPaths: ["public"], privateSpecialistIds: [] },
+      }).token;
+
+      const response = parseSseJson(
+        (
+          await callMcp(
+            server,
+            token,
+            "tools/call",
+            {
+              name: "read_document",
+              arguments: { scope: "global", path: "private/secret.md" },
+            },
+            1,
+          )
+        ).body,
+      ) as { result?: { isError?: boolean } };
+
+      expect(response.result?.isError).toBe(true);
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
   it("allows document tools through an explicitly scoped MCP URL token", async () => {
     const testDb = await createTestDatabase();
     const apiTokenService = createApiTokenService({ db: testDb.client.db });
@@ -291,7 +327,7 @@ describe("public MCP route", () => {
       const token = apiTokenService.createToken("Documents", {
         capabilities: ["read_document"],
         templates: [],
-        documents: { global: true, privateSpecialistIds: [] },
+        documents: { global: true, globalFolderPaths: [], privateSpecialistIds: [] },
       }).token;
 
       const read = parseSseJson(

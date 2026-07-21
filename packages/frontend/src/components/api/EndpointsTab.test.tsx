@@ -44,6 +44,15 @@ describe("EndpointsTab", () => {
     expect(screen.getByText(/MCP tool: search_documents/)).toBeInTheDocument();
     expect(screen.getByText(/MCP tool: read_document/)).toBeInTheDocument();
     expect(screen.getByText(/MCP tool: create_document/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/global-folder grant includes that folder and every descendant/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Hidden documents are excluded from totals and pagination/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/returns the same not-found response as a missing document/),
+    ).toBeInTheDocument();
     const readResponse = screen.getByText(/"revision":/);
     expect(readResponse).toHaveTextContent('"createdAt":');
     expect(readResponse).toHaveTextContent('"updatedAt":');

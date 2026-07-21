@@ -72,7 +72,7 @@ describe("public document API service", () => {
       });
 
       const result = await service.listDocuments(
-        token({ global: true, privateSpecialistIds: ["writer-id"] }),
+        token({ global: true, globalFolderPaths: [], privateSpecialistIds: ["writer-id"] }),
         {},
       );
 
@@ -84,6 +84,33 @@ describe("public document API service", () => {
       expect(result.documents[0]).not.toHaveProperty("ownerSpecialistId");
       expect(listAllDocuments).toHaveBeenCalledTimes(2);
       expect(list).not.toHaveBeenCalled();
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("lists only documents inside granted global folders", async () => {
+    const testDb = await createTestDatabase();
+    const documents = createDocumentService({ db: testDb.client.db, config: testDb.config });
+    const service = createPublicDocumentApiService({
+      db: testDb.client.db,
+      documentService: documents,
+    });
+
+    try {
+      await documents.create({ path: "public/brief.md", content: "Public" });
+      await documents.create({ path: "public/nested/plan.md", content: "Nested" });
+      await documents.create({ path: "private/secret.md", content: "Secret" });
+
+      const result = await service.listDocuments(
+        token({ global: false, globalFolderPaths: ["public"], privateSpecialistIds: [] }),
+        {},
+      );
+
+      expect(result.documents.map((document) => document.relativePath)).toEqual([
+        "public/brief.md",
+        "public/nested/plan.md",
+      ]);
     } finally {
       await testDb.cleanup();
     }
@@ -107,7 +134,7 @@ describe("public document API service", () => {
       });
 
       const result = await service.searchDocuments(
-        token({ global: true, privateSpecialistIds: [] }),
+        token({ global: true, globalFolderPaths: [], privateSpecialistIds: [] }),
         { query: "deployment" },
       );
 
@@ -118,6 +145,135 @@ describe("public document API service", () => {
         lineNumber: 2,
         excerpt: "Deployment is Friday",
       });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("searches content only inside granted global folders", async () => {
+    const testDb = await createTestDatabase();
+    const documents = createDocumentService({ db: testDb.client.db, config: testDb.config });
+    const service = createPublicDocumentApiService({
+      db: testDb.client.db,
+      documentService: documents,
+    });
+
+    try {
+      await documents.create({ path: "public/brief.md", content: "ordinary" });
+      await documents.create({ path: "private/secret.md", content: "classified needle" });
+
+      const result = await service.searchDocuments(
+        token({ global: false, globalFolderPaths: ["public"], privateSpecialistIds: [] }),
+        { query: "needle" },
+      );
+
+      expect(result.documents).toEqual([]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("reads documents inside a granted global folder", async () => {
+    const testDb = await createTestDatabase();
+    const documents = createDocumentService({ db: testDb.client.db, config: testDb.config });
+    const service = createPublicDocumentApiService({
+      db: testDb.client.db,
+      documentService: documents,
+    });
+
+    try {
+      await documents.create({ path: "public/nested/brief.md", content: "Allowed" });
+
+      const result = await service.readDocument(
+        token({ global: false, globalFolderPaths: ["public"], privateSpecialistIds: [] }),
+        { scope: "global", path: "public/nested/brief.md" },
+      );
+
+      expect(result.content).toBe("Allowed");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("returns not found for global reads outside granted folders", async () => {
+    const testDb = await createTestDatabase();
+    const documents = createDocumentService({ db: testDb.client.db, config: testDb.config });
+    const service = createPublicDocumentApiService({
+      db: testDb.client.db,
+      documentService: documents,
+    });
+
+    try {
+      await documents.create({ path: "private/secret.md", content: "Secret" });
+
+      await expect(
+        service.readDocument(
+          token({ global: false, globalFolderPaths: ["public"], privateSpecialistIds: [] }),
+          { scope: "global", path: "private/secret.md" },
+        ),
+      ).rejects.toMatchObject({ statusCode: 404 });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("does not grant similarly prefixed global folders", async () => {
+    const testDb = await createTestDatabase();
+    const documents = createDocumentService({ db: testDb.client.db, config: testDb.config });
+    const service = createPublicDocumentApiService({
+      db: testDb.client.db,
+      documentService: documents,
+    });
+
+    try {
+      await documents.create({ path: "sales-private/secret.md", content: "Secret" });
+
+      await expect(
+        service.readDocument(
+          token({ global: false, globalFolderPaths: ["sales"], privateSpecialistIds: [] }),
+          { scope: "global", path: "sales-private/secret.md" },
+        ),
+      ).rejects.toMatchObject({ statusCode: 404 });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("creates documents inside a granted global folder", async () => {
+    const testDb = await createTestDatabase();
+    const documents = createDocumentService({ db: testDb.client.db, config: testDb.config });
+    const service = createPublicDocumentApiService({
+      db: testDb.client.db,
+      documentService: documents,
+    });
+
+    try {
+      const result = await service.createDocument(
+        token({ global: false, globalFolderPaths: ["public"], privateSpecialistIds: [] }),
+        { scope: "global", path: "public/nested/created.md", content: "Created" },
+      );
+
+      expect(result.relativePath).toBe("public/nested/created.md");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("returns not found for create destinations outside granted global folders", async () => {
+    const testDb = await createTestDatabase();
+    const documents = createDocumentService({ db: testDb.client.db, config: testDb.config });
+    const service = createPublicDocumentApiService({
+      db: testDb.client.db,
+      documentService: documents,
+    });
+
+    try {
+      await expect(
+        service.createDocument(
+          token({ global: false, globalFolderPaths: ["public"], privateSpecialistIds: [] }),
+          { scope: "global", path: "private/created.md", content: "Denied" },
+        ),
+      ).rejects.toMatchObject({ statusCode: 404 });
     } finally {
       await testDb.cleanup();
     }
@@ -141,11 +297,14 @@ describe("public document API service", () => {
       });
 
       await expect(
-        service.readDocument(token({ global: false, privateSpecialistIds: [] }), {
-          scope: "private",
-          ownerSlug: "writer",
-          path: "notes/draft.md",
-        }),
+        service.readDocument(
+          token({ global: false, globalFolderPaths: [], privateSpecialistIds: [] }),
+          {
+            scope: "private",
+            ownerSlug: "writer",
+            path: "notes/draft.md",
+          },
+        ),
       ).rejects.toMatchObject({ statusCode: 404 });
     } finally {
       await testDb.cleanup();
@@ -174,7 +333,7 @@ describe("public document API service", () => {
         .where(eq(agents.id, "writer-id"));
 
       const result = await service.listDocuments(
-        token({ global: false, privateSpecialistIds: ["writer-id"] }),
+        token({ global: false, globalFolderPaths: [], privateSpecialistIds: ["writer-id"] }),
         {},
       );
       expect(result.documents).toEqual([]);
@@ -196,10 +355,13 @@ describe("public document API service", () => {
       await documents.create({ scope: "global", path: "briefs/b.md", content: "B" });
       await documents.create({ scope: "global", path: "briefs/c.md", content: "C" });
 
-      const page = await service.listDocuments(token({ global: true, privateSpecialistIds: [] }), {
-        limit: 1,
-        offset: 1,
-      });
+      const page = await service.listDocuments(
+        token({ global: true, globalFolderPaths: [], privateSpecialistIds: [] }),
+        {
+          limit: 1,
+          offset: 1,
+        },
+      );
 
       expect(page).toMatchObject({ totalMatches: 3, nextOffset: 2 });
       expect(page.documents).toEqual([expect.objectContaining({ relativePath: "briefs/b.md" })]);
@@ -227,7 +389,7 @@ describe("public document API service", () => {
       });
 
       const result = await service.listDocuments(
-        token({ global: false, privateSpecialistIds: ["writer-id"] }),
+        token({ global: false, globalFolderPaths: [], privateSpecialistIds: ["writer-id"] }),
         { scope: "private", ownerSlug: "planner" },
       );
 
@@ -254,7 +416,7 @@ describe("public document API service", () => {
       );
 
       const result = await service.searchDocuments(
-        token({ global: true, privateSpecialistIds: [] }),
+        token({ global: true, globalFolderPaths: [], privateSpecialistIds: [] }),
         {
           query: "needle",
         },
@@ -295,7 +457,7 @@ describe("public document API service", () => {
 
     try {
       const result = await service.searchDocuments(
-        token({ global: true, privateSpecialistIds: [] }),
+        token({ global: true, globalFolderPaths: [], privateSpecialistIds: [] }),
         {
           query: "needle",
         },
