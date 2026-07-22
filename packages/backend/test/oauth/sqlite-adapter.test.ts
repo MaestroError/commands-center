@@ -98,7 +98,22 @@ describe("OAuth SQLite adapter", () => {
     }
   });
 
-  it("revokes every provider artifact in a grant family", async () => {
+  it("revokes grant records in the current adapter model", async () => {
+    const testDb = await createTestDatabase();
+    const store = createOAuthRecordStore({ db: testDb.client.db });
+    const accessAdapter = store.adapterFactory("AccessToken");
+
+    try {
+      await accessAdapter.upsert("access-1", { grantId: "grant-1" }, 60);
+      await accessAdapter.revokeByGrantId("grant-1");
+
+      await expect(accessAdapter.find("access-1")).resolves.toBeUndefined();
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("leaves grant records in other adapter models for their adapters to revoke", async () => {
     const testDb = await createTestDatabase();
     const store = createOAuthRecordStore({ db: testDb.client.db });
     const accessAdapter = store.adapterFactory("AccessToken");
@@ -109,8 +124,9 @@ describe("OAuth SQLite adapter", () => {
       await refreshAdapter.upsert("refresh-1", { grantId: "grant-1" }, 60);
       await accessAdapter.revokeByGrantId("grant-1");
 
-      await expect(accessAdapter.find("access-1")).resolves.toBeUndefined();
-      await expect(refreshAdapter.find("refresh-1")).resolves.toBeUndefined();
+      await expect(refreshAdapter.find("refresh-1")).resolves.toMatchObject({
+        grantId: "grant-1",
+      });
     } finally {
       await testDb.cleanup();
     }

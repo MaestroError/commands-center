@@ -127,7 +127,10 @@ export function createOAuthRecordStore(options: {
 
       revokeByGrantId(grantId: string): Promise<void> {
         return runSynchronously(() => {
-          options.db.delete(oauth_records).where(eq(oauth_records.grant_id, grantId)).run();
+          options.db
+            .delete(oauth_records)
+            .where(and(eq(oauth_records.model, model), eq(oauth_records.grant_id, grantId)))
+            .run();
         });
       },
     };

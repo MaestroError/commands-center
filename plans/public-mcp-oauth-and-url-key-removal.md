@@ -21,9 +21,9 @@ web and Claude Code release smoke tests remain environment-dependent. Authored
       validation to MCP OAuth resolution.
 - [x] Add non-cacheable, non-frameable response headers to the rendered OAuth
       authorization page.
-- [ ] Scope provider grant revocation to the current adapter model.
-- [ ] Run lint and tests, push each fix as a separate commit, and resolve the
-      corresponding review threads.
+- [x] Scope provider grant revocation to the current adapter model.
+- [x] Run lint and tests.
+- [ ] Push each fix and resolve the corresponding review threads.
 
 ## Goal
 
