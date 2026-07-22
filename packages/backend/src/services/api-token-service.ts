@@ -151,6 +151,17 @@ export function createApiTokenService(options: { db: AppDb }) {
 
       return mapApiToken(updated);
     },
+
+    resolveActiveTokenById(id: string): ApiTokenRecord | null {
+      const updated = options.db
+        .update(api_tokens)
+        .set({ last_used_at: now() })
+        .where(and(eq(api_tokens.id, id), isNull(api_tokens.revoked_at)))
+        .returning()
+        .get();
+
+      return updated ? mapApiToken(updated) : null;
+    },
   };
 }
 

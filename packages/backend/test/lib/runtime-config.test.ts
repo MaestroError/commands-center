@@ -268,6 +268,60 @@ describe("loadRuntimeConfig", () => {
     expect(config.security.publicOrigin).toBe("https://commands.example.com");
   });
 
+  it("normalizes a trailing slash from CC_PUBLIC_ORIGIN", () => {
+    const config = loadRuntimeConfig({
+      cwd: "/tmp/project",
+      env: { NODE_ENV: "test", CC_PUBLIC_ORIGIN: "https://commands.example.com/" },
+    });
+
+    expect(config.security.publicOrigin).toBe("https://commands.example.com");
+  });
+
+  it("allows HTTP for a loopback CC_PUBLIC_ORIGIN", () => {
+    const config = loadRuntimeConfig({
+      cwd: "/tmp/project",
+      env: { NODE_ENV: "test", CC_PUBLIC_ORIGIN: "http://127.0.0.1:4000" },
+    });
+
+    expect(config.security.publicOrigin).toBe("http://127.0.0.1:4000");
+  });
+
+  it("rejects HTTP for an externally addressed CC_PUBLIC_ORIGIN", () => {
+    expect(() =>
+      loadRuntimeConfig({
+        cwd: "/tmp/project",
+        env: { NODE_ENV: "test", CC_PUBLIC_ORIGIN: "http://commands.example.com" },
+      }),
+    ).toThrow("CC_PUBLIC_ORIGIN must use HTTPS unless it points to a loopback host");
+  });
+
+  it("rejects paths in CC_PUBLIC_ORIGIN", () => {
+    expect(() =>
+      loadRuntimeConfig({
+        cwd: "/tmp/project",
+        env: { NODE_ENV: "test", CC_PUBLIC_ORIGIN: "https://commands.example.com/cc" },
+      }),
+    ).toThrow("CC_PUBLIC_ORIGIN must contain only a scheme, host, and optional port");
+  });
+
+  it("does not trust proxy headers by default", () => {
+    const config = loadRuntimeConfig({
+      cwd: "/tmp/project",
+      env: { NODE_ENV: "test" },
+    });
+
+    expect(config.security.trustProxy).toBe(false);
+  });
+
+  it("enables trusted proxy handling explicitly", () => {
+    const config = loadRuntimeConfig({
+      cwd: "/tmp/project",
+      env: { NODE_ENV: "test", CC_TRUST_PROXY: "true" },
+    });
+
+    expect(config.security.trustProxy).toBe(true);
+  });
+
   it("leaves opencode.stateDir undefined when CC_OPENCODE_STATE_DIR is unset", () => {
     const config = loadRuntimeConfig({
       cwd: "/tmp/project",

@@ -30,6 +30,20 @@ describe("owner auth guard", () => {
       { method: "POST", path: "/api/auth/login" },
       { method: "POST", path: "/api/auth/logout" },
       { method: "POST", path: "/api/auth/reclaim" },
+      { method: "GET", path: "/.well-known/oauth-protected-resource/api/public/mcp" },
+      { method: "GET", path: "/.well-known/oauth-authorization-server/oauth" },
+      { method: "GET", path: "/oauth/.well-known/openid-configuration" },
+      { method: "GET", path: "/oauth/authorize" },
+      { method: "GET", path: /^\/oauth\/authorize\/[^/]+$/ },
+      { method: "POST", path: "/oauth/token" },
+      { method: "OPTIONS", path: "/oauth/token" },
+      { method: "POST", path: "/oauth/register" },
+      { method: "POST", path: "/oauth/revoke" },
+      { method: "OPTIONS", path: "/oauth/revoke" },
+      { method: "GET", path: "/oauth/jwks" },
+      { method: "OPTIONS", path: "/oauth/jwks" },
+      { method: "GET", path: /^\/api\/oauth\/interactions\/[^/]+$/ },
+      { method: "POST", path: /^\/api\/oauth\/interactions\/[^/]+$/ },
       { method: "GET", path: /^\/api\/mcp\/cc\/[^/]+\/specialists\/[^/]+$/ },
       { method: "POST", path: /^\/api\/mcp\/cc\/[^/]+\/specialists\/[^/]+$/ },
       { method: "DELETE", path: /^\/api\/mcp\/cc\/[^/]+\/specialists\/[^/]+$/ },
@@ -362,6 +376,26 @@ describe("owner auth guard", () => {
       expect(unclaimed.headers.location).toBe("/claim");
       expect(unauthenticated.statusCode).toBe(302);
       expect(unauthenticated.headers.location).toBe("/login");
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("does not redirect the OAuth interaction page to owner access", async () => {
+    const testDb = await createTestDatabase();
+    const ownerAccessService = createOwnerAccessService({ config: testDb.config });
+    const server = await createAuthServer(testDb, ownerAccessService);
+
+    try {
+      const response = await server.inject({
+        method: "GET",
+        url: "/oauth-interaction/interaction_123",
+        headers: { accept: "text/html" },
+      });
+
+      expect(response.statusCode).not.toBe(302);
+      expect(response.headers.location).toBeUndefined();
     } finally {
       await server.close();
       await testDb.cleanup();

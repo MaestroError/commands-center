@@ -139,6 +139,7 @@ const envSchema = z.object({
     z.string().url().optional(),
   ),
   CC_ALLOWED_ORIGINS: z.string().trim().optional(),
+  CC_TRUST_PROXY: booleanString(false),
   CC_OPENCODE_PATH: z.string().trim().optional(),
   CC_OPENCODE_STATE_DIR: z.string().trim().optional(),
   CC_SECRET_KEY: z.string().trim().optional().default(DEFAULT_SECRET_KEY),
@@ -207,6 +208,7 @@ export type RuntimeConfig = {
   security: {
     publicOrigin: string;
     allowedOrigins: string[];
+    trustProxy: boolean;
   };
   opencodePath?: string;
   secretKey: string;
@@ -260,8 +262,12 @@ export function loadRuntimeConfig(options?: {
 
   const resolvedHost = options?.overrides?.host ?? parsedEnv.data.CC_HOST;
   const resolvedPort = options?.overrides?.port ?? parsedEnv.data.CC_PORT;
-  const originHost = ["0.0.0.0", "::"].includes(resolvedHost) ? "localhost" : resolvedHost;
+  const originHostname = ["0.0.0.0", "::"].includes(resolvedHost) ? "localhost" : resolvedHost;
+  const originHost = originHostname.includes(":") ? `[${originHostname}]` : originHostname;
   const derivedPublicOrigin = `http://${originHost}:${resolvedPort}`;
+  const publicOrigin = normalizePublicOrigin(
+    parsedEnv.data.CC_PUBLIC_ORIGIN ?? derivedPublicOrigin,
+  );
 
   return {
     nodeEnv: parsedEnv.data.NODE_ENV,
@@ -315,8 +321,9 @@ export function loadRuntimeConfig(options?: {
     },
     logLevel: parsedEnv.data.CC_LOG_LEVEL,
     security: {
-      publicOrigin: parsedEnv.data.CC_PUBLIC_ORIGIN ?? derivedPublicOrigin,
+      publicOrigin,
       allowedOrigins: parseAllowedOrigins(parsedEnv.data.CC_ALLOWED_ORIGINS),
+      trustProxy: parsedEnv.data.CC_TRUST_PROXY,
     },
     opencodePath: parsedEnv.data.CC_OPENCODE_PATH || undefined,
     secretKey: parsedEnv.data.CC_SECRET_KEY,
@@ -328,6 +335,38 @@ export function loadRuntimeConfig(options?: {
       envFilePath: env["CC_FIRST_RUN_ENV_FILE_PATH"]?.trim() || undefined,
     },
   };
+}
+
+function normalizePublicOrigin(value: string): string {
+  const origin = new URL(value);
+
+  if (
+    origin.username ||
+    origin.password ||
+    origin.pathname !== "/" ||
+    origin.search ||
+    origin.hash
+  ) {
+    throw new Error(
+      "Invalid runtime configuration: CC_PUBLIC_ORIGIN must contain only a scheme, host, and optional port.",
+    );
+  }
+
+  if (origin.protocol === "http:" && isLoopbackHostname(origin.hostname)) {
+    return origin.origin;
+  }
+
+  if (origin.protocol !== "https:") {
+    throw new Error(
+      "Invalid runtime configuration: CC_PUBLIC_ORIGIN must use HTTPS unless it points to a loopback host.",
+    );
+  }
+
+  return origin.origin;
+}
+
+function isLoopbackHostname(hostname: string): boolean {
+  return ["localhost", "127.0.0.1", "[::1]"].includes(hostname.toLowerCase());
 }
 
 function parseAllowedOrigins(value: string | undefined): string[] {

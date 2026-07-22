@@ -8,6 +8,10 @@ import {
   PUBLIC_API_TOKEN_PLACEHOLDER,
 } from "@cc/shared/lib";
 
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { Button } from "@/components/ui/button";
+import { resetOAuthRuntime } from "@/lib/api/oauth";
+
 const TEMPLATE_ID_PLACEHOLDER = "<TEMPLATE_ID>";
 
 function resolveBaseUrl(): string {
@@ -17,7 +21,11 @@ function resolveBaseUrl(): string {
 export function EndpointsTab(props: { onGoToTokens?: () => void }) {
   const baseUrl = resolveBaseUrl();
   const mcpEndpoint = `${baseUrl}/api/public/mcp`;
-  const mcpUrlTokenEndpoint = `${mcpEndpoint}?key=${PUBLIC_API_TOKEN_PLACEHOLDER}`;
+  const mcpAuthorizationHeader = `Authorization: Bearer ${PUBLIC_API_TOKEN_PLACEHOLDER}`;
+  const [confirmingOAuthReset, setConfirmingOAuthReset] = useState(false);
+  const [resettingOAuth, setResettingOAuth] = useState(false);
+  const [oauthResetComplete, setOAuthResetComplete] = useState(false);
+  const [oauthResetError, setOAuthResetError] = useState<string | null>(null);
   const docs = useMemo(
     () =>
       buildTemplateEndpointDocs({
@@ -33,6 +41,24 @@ export function EndpointsTab(props: { onGoToTokens?: () => void }) {
     `curl '${docs.apiBaseUrl}/task-templates' \\`,
     `  -H 'Authorization: Bearer ${PUBLIC_API_TOKEN_PLACEHOLDER}'`,
   ].join("\n");
+
+  async function resetOAuthConnections(): Promise<void> {
+    setConfirmingOAuthReset(false);
+    setResettingOAuth(true);
+    setOAuthResetComplete(false);
+    setOAuthResetError(null);
+
+    try {
+      await resetOAuthRuntime();
+      setOAuthResetComplete(true);
+    } catch (error) {
+      setOAuthResetError(
+        error instanceof Error ? error.message : "OAuth connections could not be reset.",
+      );
+    } finally {
+      setResettingOAuth(false);
+    }
+  }
 
   return (
     <div className="mt-6 grid gap-6">
@@ -70,32 +96,84 @@ export function EndpointsTab(props: { onGoToTokens?: () => void }) {
       />
       <section className="rounded-xl border border-border bg-surface p-5">
         <p className="text-sm leading-6 text-text-secondary">
-          Point your MCP client at{" "}
-          <code className="rounded bg-app-bg px-1 py-0.5 font-mono text-xs">{mcpEndpoint}</code> and
-          send the same{" "}
-          <code className="rounded bg-app-bg px-1 py-0.5 font-mono text-xs">
-            Authorization: Bearer cc_…
-          </code>{" "}
-          header. Each tool is gated by the token&apos;s permissions — a client only sees the tools
-          its token allows. Document tools also enforce the token&apos;s document roots and
-          recursive global-folder grants.
+          Point your MCP client at the endpoint below. Each tool is gated by the API token&apos;s
+          permissions — a client only sees the tools its token allows. Document tools also enforce
+          the token&apos;s document roots and recursive global-folder grants.
         </p>
         <div className="mt-4 grid gap-4">
           <CopyableCode code={mcpEndpoint} label="MCP endpoint" />
-          <div className="rounded-lg border border-warning/30 bg-warning/10 p-3">
-            <p className="text-sm leading-6 text-text-secondary">
-              Temporary fallback for clients that cannot set headers: append the token as{" "}
-              <code className="rounded bg-app-bg px-1 py-0.5 font-mono text-xs">
-                ?key=&lt;YOUR_API_TOKEN&gt;
-              </code>
-              . This is not recommended for production unless the token has explicitly scoped
-              permissions and the smallest necessary document roots, because URLs are easier to leak
-              through logs, history, and shared config.
-            </p>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="rounded-lg border border-border bg-app-bg p-4">
+              <h4 className="font-medium text-text-primary">Automatic OAuth</h4>
+              <p className="mt-2 text-sm leading-6 text-text-secondary">
+                Recommended for interactive MCP clients. Add the endpoint without credentials. The
+                client discovers OAuth, registers automatically, and opens a CommandsCenter page
+                where you approve access by pasting an API token.
+              </p>
+            </div>
+            <div className="rounded-lg border border-border bg-app-bg p-4">
+              <h4 className="font-medium text-text-primary">Bearer header</h4>
+              <p className="mt-2 text-sm leading-6 text-text-secondary">
+                Use this for clients that support a fixed authorization header. The API token is
+                validated on every request, so revocation and permission changes take effect
+                immediately.
+              </p>
+            </div>
           </div>
-          <CopyableCode code={mcpUrlTokenEndpoint} label="MCP endpoint with URL token" />
+          <CopyableCode code={mcpAuthorizationHeader} label="Static authorization header" />
+          <p className="text-sm leading-6 text-text-secondary">
+            Credentials in URL query parameters are rejected. There is no compatibility setting to
+            re-enable them. Rotate any API token that was previously stored in a URL.
+          </p>
+          <div className="border-t border-border pt-4">
+            <h4 className="font-medium text-text-primary">OAuth connection recovery</h4>
+            <p className="mt-2 text-sm leading-6 text-text-secondary">
+              Reset registered OAuth clients, grants, and OAuth access tokens when clients cannot
+              reconnect after an origin or proxy change. Every OAuth MCP client must connect again.
+              CommandsCenter API tokens and their permissions are preserved.
+            </p>
+            <Button
+              className="mt-3"
+              disabled={resettingOAuth}
+              onClick={() => {
+                setOAuthResetComplete(false);
+                setOAuthResetError(null);
+                setConfirmingOAuthReset(true);
+              }}
+              variant="secondary"
+            >
+              {resettingOAuth ? "Resetting…" : "Reset OAuth connections"}
+            </Button>
+            {oauthResetComplete ? (
+              <p
+                className="mt-3 rounded-lg border border-success-border bg-success-surface p-3 text-sm text-success-foreground"
+                role="status"
+              >
+                OAuth connections were reset. Existing OAuth clients must connect again.
+              </p>
+            ) : null}
+            {oauthResetError ? (
+              <p
+                className="mt-3 rounded-lg border border-danger-border bg-danger-surface p-3 text-sm text-danger-foreground"
+                role="alert"
+              >
+                {oauthResetError}
+              </p>
+            ) : null}
+          </div>
         </div>
       </section>
+
+      {confirmingOAuthReset ? (
+        <ConfirmDialog
+          confirmLabel="Reset connections"
+          confirmVariant="danger"
+          description="This clears every registered OAuth client, grant, and OAuth access token. All OAuth MCP clients will lose access and must connect again. CommandsCenter API tokens and their permissions will not be deleted."
+          onCancel={() => setConfirmingOAuthReset(false)}
+          onConfirm={() => void resetOAuthConnections()}
+          title="Reset all OAuth connections?"
+        />
+      ) : null}
 
       <SectionHeading
         title="Templates"

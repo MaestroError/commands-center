@@ -1,10 +1,13 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { createServer as createTcpServer } from "node:net";
 
+import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
-import { agents } from "../../src/db/schema/index.js";
+import { agents, oauth_records } from "../../src/db/schema/index.js";
 import type { AppDb } from "../../src/db/client.js";
 import { createLogger } from "../../src/lib/logger.js";
 import type { OpenCodeOrchestrator } from "../../src/orchestrator/opencode-orchestrator.js";
@@ -18,6 +21,17 @@ import { createTaskService } from "../../src/services/task-service.js";
 import { createTokenAuditService } from "../../src/services/token-audit-service.js";
 import { createMockOpenCodeService } from "../helpers/fake-opencode.js";
 import { createTestDatabase } from "../helpers/db.js";
+import {
+  approveOAuthAuthorization,
+  authorizeOAuthClient,
+  beginOAuthAuthorization,
+  createInteractiveOAuthClient,
+  exchangeOAuthAuthorizationCode,
+  refreshOAuthTokens,
+  registerOAuthClient,
+  requestOAuthToken,
+  revokeOAuthToken,
+} from "../helpers/oauth-e2e.js";
 import { permissionsForPresets } from "../helpers/api-tokens.js";
 
 type TestDb = Awaited<ReturnType<typeof createTestDatabase>>;
@@ -25,6 +39,7 @@ type TestServer = Awaited<ReturnType<typeof createServer>>;
 type ToolResult = Awaited<ReturnType<Client["callTool"]>>;
 
 const disposers: Array<() => void | Promise<void>> = [];
+const OAUTH_ORIGIN = "http://localhost:3000";
 
 afterEach(async () => {
   while (disposers.length > 0) {
@@ -471,6 +486,361 @@ describe("public MCP client e2e", () => {
   });
 });
 
+describe("public MCP OAuth e2e", () => {
+  it("rejects authorization requests without S256 PKCE", async () => {
+    const fixture = await createOAuthE2EFixture();
+    const registration = await registerOAuthClient(fixture.server, OAUTH_ORIGIN);
+    const response = await fixture.server.inject({
+      method: "GET",
+      url: `/oauth/authorize?${new URLSearchParams({
+        client_id: registration.clientId,
+        redirect_uri: registration.redirectUri,
+        resource: `${OAUTH_ORIGIN}/api/public/mcp`,
+        response_type: "code",
+        scope: "mcp",
+        state: "missing-pkce",
+      }).toString()}`,
+      headers: { host: "localhost:3000" },
+    });
+
+    const callback = new URL(String(response.headers.location));
+    expect(response.statusCode).toBe(303);
+    expect(callback.searchParams.get("error")).toBe("invalid_request");
+  });
+
+  it("rejects an authorization redirect URI that was not registered", async () => {
+    const fixture = await createOAuthE2EFixture();
+    const registration = await registerOAuthClient(fixture.server, OAUTH_ORIGIN);
+    const verifier = "invalid-redirect-code-verifier-value-12345678901234567890";
+    const challenge = createHash("sha256").update(verifier).digest("base64url");
+    const response = await fixture.server.inject({
+      method: "GET",
+      url: `/oauth/authorize?${new URLSearchParams({
+        client_id: registration.clientId,
+        code_challenge: challenge,
+        code_challenge_method: "S256",
+        redirect_uri: "http://127.0.0.1/unregistered",
+        resource: `${OAUTH_ORIGIN}/api/public/mcp`,
+        response_type: "code",
+        scope: "mcp",
+      }).toString()}`,
+      headers: { host: "localhost:3000" },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.headers.location).toBeUndefined();
+  });
+
+  it("returns an authorization code only to the exact registered callback", async () => {
+    const fixture = await createOAuthE2EFixture();
+    const apiToken = fixture.apiTokenService.createToken(
+      "OAuth callback",
+      permissionsForPresets("tasks"),
+    );
+    const registration = await registerOAuthClient(fixture.server, OAUTH_ORIGIN);
+    const transaction = await beginOAuthAuthorization(fixture.server, OAUTH_ORIGIN, registration);
+    const authorization = await approveOAuthAuthorization(
+      fixture.server,
+      OAUTH_ORIGIN,
+      transaction,
+      apiToken.token,
+    );
+
+    expect(authorization.callback.origin).toBe("http://127.0.0.1");
+    expect(authorization.callback.pathname).toBe("/callback");
+    expect(authorization.callback.searchParams.get("state")).toBe("oauth-e2e-state");
+    expect(authorization.callback.searchParams.get("code")).toBe(authorization.code);
+  });
+
+  it("issues the configured opaque OAuth token set", async () => {
+    const fixture = await createOAuthE2EFixture();
+    const apiToken = fixture.apiTokenService.createToken(
+      "OAuth exchange",
+      permissionsForPresets("tasks"),
+    );
+    const { tokens } = await authorizeOAuthClient(fixture.server, OAUTH_ORIGIN, apiToken.token);
+
+    expect(tokens.tokenType).toBe("Bearer");
+    expect(tokens.expiresIn).toBe(3_600);
+    expect(tokens.accessToken).not.toContain(".");
+    expect(tokens.refreshToken).not.toBe(tokens.accessToken);
+  });
+
+  it("rejects reuse of an exchanged authorization code", async () => {
+    const fixture = await createOAuthE2EFixture();
+    const apiToken = fixture.apiTokenService.createToken(
+      "OAuth code reuse",
+      permissionsForPresets("tasks"),
+    );
+    const { authorization } = await authorizeOAuthClient(
+      fixture.server,
+      OAUTH_ORIGIN,
+      apiToken.token,
+    );
+    const reused = await requestOAuthToken(fixture.server, OAUTH_ORIGIN, {
+      client_id: authorization.clientId,
+      code: authorization.code,
+      code_verifier: authorization.verifier,
+      grant_type: "authorization_code",
+      redirect_uri: authorization.redirectUri,
+      resource: `${OAUTH_ORIGIN}/api/public/mcp`,
+    });
+
+    expect(reused.statusCode).toBe(400);
+    expect(reused.json()).toMatchObject({ error: "invalid_grant" });
+  });
+
+  it("lists MCP tools through the SDK with an OAuth access token", async () => {
+    const fixture = await createOAuthE2EFixture({ listen: true });
+    const apiToken = fixture.apiTokenService.createToken(
+      "OAuth SDK",
+      permissionsForPresets("tasks"),
+    );
+    const { tokens } = await authorizeOAuthClient(fixture.server, OAUTH_ORIGIN, apiToken.token);
+    const client = await connectMcpClient(fixture.baseUrl, tokens.accessToken);
+    disposers.push(() => client.close());
+
+    const tools = await client.listTools();
+    expect(tools.tools.map((tool) => tool.name)).toContain("list_tasks");
+  });
+
+  it("completes the OAuth cycle through an OAuth-aware MCP SDK client", async () => {
+    const fixture = await createOAuthE2EFixture({ discoverableOrigin: true });
+    const apiToken = fixture.apiTokenService.createToken(
+      "OAuth SDK full cycle",
+      permissionsForPresets("tasks"),
+    );
+    const oauthClient = createInteractiveOAuthClient(apiToken.token);
+    const client = new Client({ name: "public-mcp-oauth-e2e", version: "1.0.0" });
+    const authorizationTransport = new StreamableHTTPClientTransport(
+      new URL(`${fixture.baseUrl}/api/public/mcp`),
+      { authProvider: oauthClient.provider },
+    );
+    disposers.push(() => authorizationTransport.close());
+
+    try {
+      await client.connect(authorizationTransport);
+      throw new Error("Expected the unauthenticated MCP connection to require OAuth.");
+    } catch (error) {
+      if (!(error instanceof UnauthorizedError)) {
+        throw error;
+      }
+    }
+
+    const discovery = oauthClient.discoveryState();
+    const registration = oauthClient.clientInformation();
+
+    expect(discovery.resourceMetadata?.resource).toBe(`${fixture.baseUrl}/api/public/mcp`);
+    expect(discovery.authorizationServerMetadata?.issuer).toBe(`${fixture.baseUrl}/oauth`);
+    expect(registration.client_id).toEqual(expect.any(String));
+    expect(registration.client_secret).toBeUndefined();
+    expect(oauthClient.authorizationUrl().searchParams.get("code_challenge_method")).toBe("S256");
+
+    await authorizationTransport.finishAuth(oauthClient.authorizationCode());
+
+    const authenticatedTransport = new StreamableHTTPClientTransport(
+      new URL(`${fixture.baseUrl}/api/public/mcp`),
+      { authProvider: oauthClient.provider },
+    );
+    await client.connect(authenticatedTransport);
+    disposers.push(() => client.close());
+
+    const tools = await client.listTools();
+    const called = await client.callTool({ name: "list_tasks", arguments: {} });
+
+    expect(oauthClient.tokens().access_token).toEqual(expect.any(String));
+    expect(tools.tools.map((tool) => tool.name)).toContain("list_tasks");
+    expect(called.isError).not.toBe(true);
+  });
+
+  it("invalidates the previous refresh token during rotation", async () => {
+    const fixture = await createOAuthE2EFixture();
+    const apiToken = fixture.apiTokenService.createToken(
+      "OAuth refresh rotation",
+      permissionsForPresets("tasks"),
+    );
+    const { registration, tokens } = await authorizeOAuthClient(
+      fixture.server,
+      OAUTH_ORIGIN,
+      apiToken.token,
+    );
+    const rotated = await refreshOAuthTokens(
+      fixture.server,
+      OAUTH_ORIGIN,
+      registration.clientId,
+      tokens.refreshToken,
+    );
+    const reused = await refreshOAuthTokens(
+      fixture.server,
+      OAUTH_ORIGIN,
+      registration.clientId,
+      tokens.refreshToken,
+    );
+
+    expect(rotated.response.statusCode).toBe(200);
+    expect(rotated.tokens?.refreshToken).not.toBe(tokens.refreshToken);
+    expect(reused.response.statusCode).toBe(400);
+    expect(reused.response.json()).toMatchObject({ error: "invalid_grant" });
+  });
+
+  it("revokes the OAuth grant family without deleting the API token", async () => {
+    const fixture = await createOAuthE2EFixture();
+    const apiToken = fixture.apiTokenService.createToken(
+      "OAuth revocation",
+      permissionsForPresets("tasks"),
+    );
+    const { registration, tokens } = await authorizeOAuthClient(
+      fixture.server,
+      OAUTH_ORIGIN,
+      apiToken.token,
+    );
+    const revoked = await revokeOAuthToken(
+      fixture.server,
+      OAUTH_ORIGIN,
+      registration.clientId,
+      tokens.accessToken,
+    );
+    const access = await fixture.server.inject({
+      method: "GET",
+      url: "/api/public/mcp",
+      headers: { authorization: `Bearer ${tokens.accessToken}` },
+    });
+    const refresh = await refreshOAuthTokens(
+      fixture.server,
+      OAUTH_ORIGIN,
+      registration.clientId,
+      tokens.refreshToken,
+    );
+
+    expect(revoked.statusCode).toBe(200);
+    expect(access.statusCode).toBe(401);
+    expect(refresh.response.statusCode).toBe(400);
+    expect(fixture.apiTokenService.resolveActiveTokenById(apiToken.record.id)).not.toBeNull();
+  });
+
+  it("applies backing API-token permission edits to the next OAuth MCP request", async () => {
+    const fixture = await createOAuthE2EFixture({ listen: true });
+    const apiToken = fixture.apiTokenService.createToken(
+      "OAuth permissions",
+      permissionsForPresets("templates"),
+    );
+    const { tokens } = await authorizeOAuthClient(fixture.server, OAUTH_ORIGIN, apiToken.token);
+    const client = await connectMcpClient(fixture.baseUrl, tokens.accessToken);
+    disposers.push(() => client.close());
+
+    const before = await client.listTools();
+    fixture.apiTokenService.updateToken(apiToken.record.id, {
+      permissions: permissionsForPresets("tasks"),
+    });
+    const after = await client.listTools();
+    const called = await client.callTool({ name: "list_tasks", arguments: {} });
+
+    expect(before.tools.map((tool) => tool.name)).not.toContain("list_tasks");
+    expect(after.tools.map((tool) => tool.name)).toContain("list_tasks");
+    expect(called.isError).not.toBe(true);
+  });
+
+  it("refreshes an unexpired OAuth grant after a server restart", async () => {
+    const fixture = await createOAuthE2EFixture();
+    const apiToken = fixture.apiTokenService.createToken(
+      "OAuth restart",
+      permissionsForPresets("tasks"),
+    );
+    const { registration, tokens } = await authorizeOAuthClient(
+      fixture.server,
+      OAUTH_ORIGIN,
+      apiToken.token,
+    );
+    await fixture.restart();
+
+    const refreshed = await refreshOAuthTokens(
+      fixture.server,
+      OAUTH_ORIGIN,
+      registration.clientId,
+      tokens.refreshToken,
+    );
+    expect(refreshed.response.statusCode).toBe(200);
+  });
+
+  it("rejects an expired OAuth interaction", async () => {
+    const fixture = await createOAuthE2EFixture();
+    const registration = await registerOAuthClient(fixture.server, OAUTH_ORIGIN);
+    const transaction = await beginOAuthAuthorization(fixture.server, OAUTH_ORIGIN, registration);
+    expireOAuthRecords(fixture.testDb.client.db, "Interaction");
+
+    const response = await fixture.server.inject({
+      method: "GET",
+      url: `/api/oauth/interactions/${transaction.uid}`,
+      headers: { cookie: transaction.cookie },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({
+      error: { code: "bad_request", message: "OAuth interaction is invalid or expired." },
+    });
+  });
+
+  it("rejects an expired authorization code", async () => {
+    const fixture = await createOAuthE2EFixture();
+    const apiToken = fixture.apiTokenService.createToken(
+      "Expired code",
+      permissionsForPresets("tasks"),
+    );
+    const registration = await registerOAuthClient(fixture.server, OAUTH_ORIGIN);
+    const transaction = await beginOAuthAuthorization(fixture.server, OAUTH_ORIGIN, registration);
+    const authorization = await approveOAuthAuthorization(
+      fixture.server,
+      OAUTH_ORIGIN,
+      transaction,
+      apiToken.token,
+    );
+    expireOAuthRecords(fixture.testDb.client.db, "AuthorizationCode");
+
+    await expect(
+      exchangeOAuthAuthorizationCode(fixture.server, OAUTH_ORIGIN, authorization),
+    ).rejects.toThrow("OAuth code exchange failed");
+  });
+
+  it("rejects an expired OAuth access token", async () => {
+    const fixture = await createOAuthE2EFixture();
+    const apiToken = fixture.apiTokenService.createToken(
+      "Expired access",
+      permissionsForPresets("tasks"),
+    );
+    const { tokens } = await authorizeOAuthClient(fixture.server, OAUTH_ORIGIN, apiToken.token);
+    expireOAuthRecords(fixture.testDb.client.db, "AccessToken");
+
+    const response = await fixture.server.inject({
+      method: "GET",
+      url: "/api/public/mcp",
+      headers: { authorization: `Bearer ${tokens.accessToken}` },
+    });
+    expect(response.statusCode).toBe(401);
+  });
+
+  it("rejects an expired OAuth refresh token", async () => {
+    const fixture = await createOAuthE2EFixture();
+    const apiToken = fixture.apiTokenService.createToken(
+      "Expired refresh",
+      permissionsForPresets("tasks"),
+    );
+    const { registration, tokens } = await authorizeOAuthClient(
+      fixture.server,
+      OAUTH_ORIGIN,
+      apiToken.token,
+    );
+    expireOAuthRecords(fixture.testDb.client.db, "RefreshToken");
+
+    const refreshed = await refreshOAuthTokens(
+      fixture.server,
+      OAUTH_ORIGIN,
+      registration.clientId,
+      tokens.refreshToken,
+    );
+    expect(refreshed.response.statusCode).toBe(400);
+    expect(refreshed.response.json()).toMatchObject({ error: "invalid_grant" });
+  });
+});
+
 async function makeTestDb(disposerStack = disposers): Promise<TestDb> {
   const testDb = await createTestDatabase();
   disposerStack.push(() => testDb.cleanup());
@@ -487,7 +857,28 @@ async function startServer(
   },
   disposerStack = disposers,
 ): Promise<{ server: TestServer; baseUrl: string }> {
-  const server = createServer({
+  const server = buildTestServer(testDb, deps);
+  await server.listen({ host: "127.0.0.1", port: 0 });
+  disposerStack.push(() => server.close());
+
+  const address = server.server.address();
+  if (address === null || typeof address === "string") {
+    throw new Error("Expected Fastify to listen on a TCP address.");
+  }
+
+  return { server, baseUrl: `http://127.0.0.1:${String(address.port)}` };
+}
+
+function buildTestServer(
+  testDb: TestDb,
+  deps: {
+    apiTokenService: ReturnType<typeof createApiTokenService>;
+    tokenAuditService: ReturnType<typeof createTokenAuditService>;
+    taskService: ReturnType<typeof createTaskService>;
+    taskExecutionService: ReturnType<typeof createTaskExecutionService>;
+  },
+): TestServer {
+  return createServer({
     config: testDb.config,
     logger: createLogger(testDb.config),
     database: testDb.client,
@@ -501,15 +892,91 @@ async function startServer(
     taskService: deps.taskService,
     taskExecutionService: deps.taskExecutionService,
   });
-  await server.listen({ host: "127.0.0.1", port: 0 });
-  disposerStack.push(() => server.close());
+}
 
-  const address = server.server.address();
-  if (address === null || typeof address === "string") {
-    throw new Error("Expected Fastify to listen on a TCP address.");
+async function createOAuthE2EFixture(
+  options: { discoverableOrigin?: boolean; listen?: boolean } = {},
+) {
+  const publicPort = options.discoverableOrigin ? await findAvailablePort() : undefined;
+  const testDb = await makeTestDb();
+
+  if (publicPort !== undefined) {
+    testDb.config.security.publicOrigin = `http://127.0.0.1:${String(publicPort)}`;
   }
 
-  return { server, baseUrl: `http://127.0.0.1:${String(address.port)}` };
+  const apiTokenService = createApiTokenService({ db: testDb.client.db });
+  const tokenAuditService = createTokenAuditService({
+    db: testDb.client.db,
+    config: testDb.config,
+  });
+  const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+  const taskExecutionService = createTaskExecutionService({
+    db: testDb.client.db,
+    taskService,
+    defer: { initialDelayMs: 1, maxDelayMs: 1, jitterRatio: 0 },
+  });
+  disposers.push(() => taskExecutionService.dispose());
+  const deps = { apiTokenService, tokenAuditService, taskService, taskExecutionService };
+  let activeServer = buildTestServer(testDb, deps);
+  let baseUrl = OAUTH_ORIGIN;
+
+  if (options.listen || options.discoverableOrigin) {
+    await activeServer.listen({ host: "127.0.0.1", port: publicPort ?? 0 });
+    const address = activeServer.server.address();
+    if (address === null || typeof address === "string") {
+      throw new Error("Expected OAuth E2E server to listen on a TCP address.");
+    }
+    baseUrl = `http://127.0.0.1:${String(address.port)}`;
+  }
+
+  disposers.push(() => activeServer.close());
+
+  return {
+    apiTokenService,
+    get baseUrl() {
+      return baseUrl;
+    },
+    async restart() {
+      await activeServer.close();
+      activeServer = buildTestServer(testDb, deps);
+    },
+    get server() {
+      return activeServer;
+    },
+    testDb,
+  };
+}
+
+async function findAvailablePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = createTcpServer();
+    server.once("error", reject);
+    server.listen({ host: "127.0.0.1", port: 0 }, () => {
+      const address = server.address();
+
+      if (address === null || typeof address === "string") {
+        server.close();
+        reject(new Error("Expected the temporary TCP server to bind to a port."));
+        return;
+      }
+
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        resolve(address.port);
+      });
+    });
+  });
+}
+
+function expireOAuthRecords(db: AppDb, model: string): void {
+  db.update(oauth_records)
+    .set({ expires_at: new Date(0) })
+    .where(eq(oauth_records.model, model))
+    .run();
 }
 
 async function connectMcpClient(baseUrl: string, token: string): Promise<Client> {

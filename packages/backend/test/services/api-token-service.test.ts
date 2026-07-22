@@ -58,6 +58,38 @@ describe("createApiTokenService", () => {
     }
   });
 
+  it("resolves an active token by stable id and updates last used time", async () => {
+    const testDb = await createTestDatabase();
+    const service = createApiTokenService({ db: testDb.client.db });
+
+    try {
+      const created = service.createToken("OAuth principal", permissionsForPresets("tasks"));
+      const resolved = service.resolveActiveTokenById(created.record.id);
+
+      expect(resolved?.id).toBe(created.record.id);
+      expect(resolved?.lastUsedAt).toEqual(expect.any(Number));
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("does not resolve a revoked token by stable id", async () => {
+    const testDb = await createTestDatabase();
+    const service = createApiTokenService({ db: testDb.client.db });
+
+    try {
+      const created = service.createToken(
+        "Revoked OAuth principal",
+        permissionsForPresets("tasks"),
+      );
+      service.revokeToken(created.record.id);
+
+      expect(service.resolveActiveTokenById(created.record.id)).toBeNull();
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("stores capabilities in catalog order regardless of input order", async () => {
     const testDb = await createTestDatabase();
     const service = createApiTokenService({ db: testDb.client.db });

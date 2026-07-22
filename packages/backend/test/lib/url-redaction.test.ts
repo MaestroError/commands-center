@@ -6,7 +6,7 @@ import { loadRuntimeConfig } from "../../src/lib/runtime-config";
 import { redactSensitiveQuery, redactSensitiveUrl } from "../../src/lib/url-redaction";
 
 describe("URL redaction", () => {
-  it("redacts public MCP URL key values", () => {
+  it("redacts legacy public MCP URL key values", () => {
     expect(redactSensitiveUrl("/api/public/mcp?key=cc_secret&foo=bar")).toBe(
       "/api/public/mcp?key=redacted&foo=bar",
     );
@@ -25,7 +25,7 @@ describe("URL redaction", () => {
     });
   });
 
-  it("redacts public MCP URL key values in request logs", () => {
+  it("redacts rejected legacy public MCP URL key values in request logs", () => {
     const lines: string[] = [];
     const logger = createLogger(
       loadRuntimeConfig({

@@ -60,6 +60,9 @@ describe("migrateDatabase", () => {
       expect(indexExists(sqlite, "tasks_default_agent_id_idx")).toBe(true);
       expect(indexExists(sqlite, "task_runs_subtask_id_idx")).toBe(true);
       expect(indexExists(sqlite, "task_run_followups_run_status_idx")).toBe(true);
+      expect(tableExists(sqlite, "oauth_records")).toBe(true);
+      expect(indexExists(sqlite, "oauth_records_model_grant_id_idx")).toBe(true);
+      expect(indexExists(sqlite, "oauth_records_model_expires_at_idx")).toBe(true);
       expect(tableExists(sqlite, "automations")).toBe(false);
       expect(tableExists(sqlite, "automation_runs")).toBe(false);
     } finally {
