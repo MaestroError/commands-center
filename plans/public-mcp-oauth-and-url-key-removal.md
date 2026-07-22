@@ -15,6 +15,16 @@ web and Claude Code release smoke tests remain environment-dependent. Authored
 - [x] Step 7 — End-to-end protocol and client verification
 - [x] Step 7 follow-up — Verify one MCP SDK client drives the complete OAuth cycle
 
+### Review follow-up
+
+- [x] Remove bearer-token prefix classification and fall back from direct API-token
+      validation to MCP OAuth resolution.
+- [ ] Add non-cacheable, non-frameable response headers to the rendered OAuth
+      authorization page.
+- [ ] Scope provider grant revocation to the current adapter model.
+- [ ] Run lint and tests, push each fix as a separate commit, and resolve the
+      corresponding review threads.
+
 ## Goal
 
 Make the public MCP endpoint interoperable with OAuth-capable MCP clients while

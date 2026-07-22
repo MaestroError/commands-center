@@ -101,11 +101,11 @@ async function validatePublicApiBearer(
   pathname: string,
 ): Promise<void> {
   const rawToken = readBearerToken(request.headers.authorization);
-  const tokenRecord = rawToken
-    ? pathname === PUBLIC_MCP_PATH && !rawToken.startsWith("cc_")
-      ? await request.server.mcpOAuthService.resolveAccessToken(rawToken)
-      : context.apiTokenService.validateToken(rawToken)
-    : null;
+  let tokenRecord = rawToken ? context.apiTokenService.validateToken(rawToken) : null;
+
+  if (!tokenRecord && rawToken && pathname === PUBLIC_MCP_PATH) {
+    tokenRecord = await request.server.mcpOAuthService.resolveAccessToken(rawToken);
+  }
 
   if (!tokenRecord) {
     if (pathname === PUBLIC_MCP_PATH) {

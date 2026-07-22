@@ -85,6 +85,51 @@ describe("OAuth routes", () => {
     }
   });
 
+  it("resolves an OAuth access token whose opaque value starts with the API-token prefix", async () => {
+    const fixture = await createOAuthRouteServer();
+    const apiToken = fixture.apiTokenService.createToken(
+      "OAuth prefix collision",
+      permissionsForPresets("tasks"),
+    );
+    vi.spyOn(fixture.server.mcpOAuthService, "resolveAccessToken").mockResolvedValue(
+      apiToken.record,
+    );
+
+    try {
+      const response = await fixture.server.inject({
+        method: "GET",
+        url: "/api/public/mcp",
+        headers: { authorization: "Bearer cc_opaque-oauth-access-token" },
+      });
+
+      expect(response.statusCode).not.toBe(401);
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  it("uses a valid direct API token without OAuth resolution", async () => {
+    const fixture = await createOAuthRouteServer();
+    const apiToken = fixture.apiTokenService.createToken(
+      "Direct MCP token",
+      permissionsForPresets("tasks"),
+    );
+    const resolveAccessToken = vi.spyOn(fixture.server.mcpOAuthService, "resolveAccessToken");
+
+    try {
+      const response = await fixture.server.inject({
+        method: "GET",
+        url: "/api/public/mcp",
+        headers: { authorization: `Bearer ${apiToken.token}` },
+      });
+
+      expect(response.statusCode).not.toBe(401);
+      expect(resolveAccessToken).not.toHaveBeenCalled();
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
   it("exposes safe interaction details for a valid authorization transaction", async () => {
     const fixture = await createOAuthRouteServer();
 
