@@ -23,7 +23,7 @@ web and Claude Code release smoke tests remain environment-dependent. Authored
       authorization page.
 - [x] Scope provider grant revocation to the current adapter model.
 - [x] Run lint and tests.
-- [ ] Push each fix and resolve the corresponding review threads.
+- [x] Push each fix and resolve the corresponding review threads.
 
 ## Goal
 
