@@ -19,7 +19,7 @@ web and Claude Code release smoke tests remain environment-dependent. Authored
 
 - [x] Remove bearer-token prefix classification and fall back from direct API-token
       validation to MCP OAuth resolution.
-- [ ] Add non-cacheable, non-frameable response headers to the rendered OAuth
+- [x] Add non-cacheable, non-frameable response headers to the rendered OAuth
       authorization page.
 - [ ] Scope provider grant revocation to the current adapter model.
 - [ ] Run lint and tests, push each fix as a separate commit, and resolve the

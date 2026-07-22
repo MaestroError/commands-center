@@ -24,6 +24,7 @@ import {
 const DEFAULT_PORT = 3000;
 const DEFAULT_HOST = "0.0.0.0";
 const ENV_FILE_CREATING_COMMANDS = new Set(["start", "serve"]);
+const PUBLIC_OAUTH_INTERACTION_PAGE_PATTERN = /^\/oauth-interaction\/[^/]+$/;
 const ENV_FILE_REQUIRING_COMMANDS = new Set([
   "claim",
   "claim-code",
@@ -195,8 +196,20 @@ export async function runCli(args: string[]): Promise<void> {
             // Apply to every response in both start (SPA + API) and serve (API-only)
             // mode, regardless of whether static assets are present, so non-HTML/API
             // endpoints stay unindexable too.
-            server.addHook("onSend", async (_request, reply, payload) => {
+            server.addHook("onSend", async (request, reply, payload) => {
               reply.header("X-Robots-Tag", "noindex, nofollow");
+
+              if (
+                PUBLIC_OAUTH_INTERACTION_PAGE_PATTERN.test(
+                  new URL(request.url, "http://localhost").pathname,
+                )
+              ) {
+                reply.header("Cache-Control", "no-store");
+                reply.header("Content-Security-Policy", "frame-ancestors 'none'; base-uri 'none'");
+                reply.header("Referrer-Policy", "no-referrer");
+                reply.header("X-Frame-Options", "DENY");
+              }
+
               return payload;
             });
 
