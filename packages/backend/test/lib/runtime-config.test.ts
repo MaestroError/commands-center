@@ -286,6 +286,15 @@ describe("loadRuntimeConfig", () => {
     expect(config.security.publicOrigin).toBe("http://127.0.0.1:4000");
   });
 
+  it("allows HTTP for an IPv6 loopback CC_PUBLIC_ORIGIN", () => {
+    const config = loadRuntimeConfig({
+      cwd: "/tmp/project",
+      env: { NODE_ENV: "test", CC_PUBLIC_ORIGIN: "http://[::1]:4000" },
+    });
+
+    expect(config.security.publicOrigin).toBe("http://[::1]:4000");
+  });
+
   it("rejects HTTP for an externally addressed CC_PUBLIC_ORIGIN", () => {
     expect(() =>
       loadRuntimeConfig({

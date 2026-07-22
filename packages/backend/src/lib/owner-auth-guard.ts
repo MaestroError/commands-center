@@ -16,6 +16,7 @@ const STATIC_ASSET_PATTERN = /\.[a-zA-Z0-9]+$/;
 const CC_MANAGED_MCP_ROUTE_PATTERN = /^\/api\/mcp\/cc\/[^/]+\/specialists\/[^/]+$/;
 const PUBLIC_API_PREFIX = "/api/public/";
 const PUBLIC_MCP_PATH = "/api/public/mcp";
+const OAUTH_PROTOCOL_POST_PATHS = new Set(["/oauth/register", "/oauth/revoke", "/oauth/token"]);
 const PUBLIC_OAUTH_INTERACTION_PAGE_PATTERN = /^\/oauth-interaction\/[^/]+$/;
 const SIGNED_PUBLIC_ARTIFACT_DOWNLOAD_PATTERN =
   /^\/api\/public\/v1\/task-artifacts\/download\/[^/]+$/;
@@ -58,7 +59,10 @@ export function registerOwnerAuthGuard(
     }
 
     if (isPublicRoute(method, pathname)) {
-      if (!CC_MANAGED_MCP_ROUTE_PATTERN.test(pathname)) {
+      if (
+        !CC_MANAGED_MCP_ROUTE_PATTERN.test(pathname) &&
+        !(method === "POST" && OAUTH_PROTOCOL_POST_PATHS.has(pathname))
+      ) {
         validateOriginForMutation(context, request);
       }
       return;

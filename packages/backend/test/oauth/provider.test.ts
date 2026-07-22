@@ -129,6 +129,44 @@ describe("OAuth provider", () => {
     }
   });
 
+  it("keeps forwarded client registration quotas independent when proxy headers are trusted", async () => {
+    const fixture = await createProviderServer(true);
+
+    try {
+      const registerClient = (index: number, sourceIp: string) =>
+        fixture.server.inject({
+          method: "POST",
+          url: "/oauth/register",
+          headers: {
+            host: "localhost:3000",
+            "x-forwarded-for": sourceIp,
+          },
+          payload: {
+            client_name: `MCP proxy client ${index.toString()}`,
+            grant_types: ["authorization_code", "refresh_token"],
+            redirect_uris: [`http://127.0.0.1/callback/proxy/${index.toString()}`],
+            response_types: ["code"],
+            token_endpoint_auth_method: "none",
+          },
+        });
+
+      await Array.from({ length: 10 }, (_, index) => index).reduce(
+        (previous, index) =>
+          previous.then(async () => {
+            await registerClient(index, "198.51.100.10");
+          }),
+        Promise.resolve(),
+      );
+      const exhaustedSource = await registerClient(10, "198.51.100.10");
+      const independentSource = await registerClient(11, "198.51.100.11");
+
+      expect(exhaustedSource.statusCode).toBe(429);
+      expect(independentSource.statusCode, independentSource.body).toBe(201);
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
   it("rejects OAuth requests sent to an unconfigured host", async () => {
     const fixture = await createProviderServer();
 
