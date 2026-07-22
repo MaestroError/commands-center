@@ -51,10 +51,13 @@
   },
   "pnpm": {
     "overrides": {
-      "fast-uri": "3.1.2",
+      "fast-uri": "3.1.4",
       "esbuild": "^0.28.1",
       "vite>esbuild": "^0.25.0",
-      "hono": "^4.12.25"
+      "hono": "^4.12.25",
+      "brace-expansion@1.1.13": "1.1.16",
+      "brace-expansion@5.0.5": "5.0.7",
+      "js-yaml@4.1.1": "4.3.0"
     },
     "onlyBuiltDependencies": [
       "better-sqlite3",
