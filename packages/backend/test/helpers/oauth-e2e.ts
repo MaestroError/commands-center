@@ -14,6 +14,12 @@ import type { createServer } from "../../src/server.js";
 
 type OAuthTestServer = Awaited<ReturnType<typeof createServer>>;
 
+type BrowserCookie = {
+  path: string;
+  secure: boolean;
+  value: string;
+};
+
 export type OAuthClientRegistration = {
   clientId: string;
   redirectUri: string;
@@ -309,28 +315,23 @@ async function completeBrowserAuthorization(options: {
     throw new Error(`OAuth browser authorization did not start: ${await authorization.text()}`);
   }
 
-  const cookie = readFetchCookieHeader(authorization);
-  const details = await fetch(
-    new URL(`/api/oauth/interactions/${uid}`, options.authorizationUrl.origin),
-    { headers: { cookie } },
-  );
+  const cookies = readFetchCookies(authorization);
+  const detailsUrl = new URL(`/api/oauth/interactions/${uid}`, options.authorizationUrl.origin);
+  const details = await fetch(detailsUrl, { headers: browserCookieHeaders(cookies, detailsUrl) });
 
   if (!details.ok) {
     throw new Error(`OAuth browser interaction details failed: ${await details.text()}`);
   }
 
-  const approval = await fetch(
-    new URL(`/api/oauth/interactions/${uid}`, options.authorizationUrl.origin),
-    {
-      body: JSON.stringify({ decision: "approve", apiToken: options.apiToken }),
-      headers: {
-        "content-type": "application/json",
-        cookie,
-        origin: options.authorizationUrl.origin,
-      },
-      method: "POST",
+  const approval = await fetch(detailsUrl, {
+    body: JSON.stringify({ decision: "approve", apiToken: options.apiToken }),
+    headers: {
+      "content-type": "application/json",
+      ...browserCookieHeaders(cookies, detailsUrl),
+      origin: options.authorizationUrl.origin,
     },
-  );
+    method: "POST",
+  });
   const approvalBody: unknown = await approval.json();
 
   if (!approval.ok) {
@@ -341,7 +342,10 @@ async function completeBrowserAuthorization(options: {
     readRequiredString(approvalBody, "redirectTo"),
     options.authorizationUrl.origin,
   );
-  const resumed = await fetch(resumeUrl, { headers: { cookie }, redirect: "manual" });
+  const resumed = await fetch(resumeUrl, {
+    headers: browserCookieHeaders(cookies, resumeUrl),
+    redirect: "manual",
+  });
   const callback = new URL(readFetchLocation(resumed), options.redirectUri);
   const expectedCallback = new URL(options.redirectUri);
 
@@ -379,12 +383,44 @@ function readCookieHeader(response: { headers: { [key: string]: unknown } }): st
   return cookies.map((cookie) => cookie.split(";")[0]).join("; ");
 }
 
-function readFetchCookieHeader(response: Response): string {
+function readFetchCookies(response: Response): BrowserCookie[] {
   const headers = response.headers as Headers & { getSetCookie?: () => string[] };
   const values = headers.getSetCookie?.() ?? [
     readRequiredValue(headers.get("set-cookie") ?? undefined, "OAuth interaction cookie"),
   ];
-  return values.map((value) => value.split(";")[0]).join("; ");
+
+  return values.map((value) => {
+    const [cookie, ...attributes] = value.split(";").map((part) => part.trim());
+    const pathAttribute = attributes.find((attribute) =>
+      attribute.toLowerCase().startsWith("path="),
+    );
+
+    return {
+      path: pathAttribute?.slice("path=".length) ?? "/",
+      secure: attributes.some((attribute) => attribute.toLowerCase() === "secure"),
+      value: readRequiredValue(cookie, "OAuth interaction cookie"),
+    };
+  });
+}
+
+function browserCookieHeaders(cookies: BrowserCookie[], requestUrl: URL): Record<string, string> {
+  const values = cookies
+    .filter(
+      (cookie) =>
+        (!cookie.secure || requestUrl.protocol === "https:") &&
+        cookiePathMatches(cookie.path, requestUrl.pathname),
+    )
+    .map((cookie) => cookie.value);
+
+  return values.length > 0 ? { cookie: values.join("; ") } : {};
+}
+
+function cookiePathMatches(cookiePath: string, requestPath: string): boolean {
+  return (
+    requestPath === cookiePath ||
+    (requestPath.startsWith(cookiePath) &&
+      (cookiePath.endsWith("/") || requestPath[cookiePath.length] === "/"))
+  );
 }
 
 function readFetchLocation(response: Response): string {

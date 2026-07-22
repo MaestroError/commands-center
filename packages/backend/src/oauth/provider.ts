@@ -211,7 +211,7 @@ function createOAuthProvider(options: {
     cookies: {
       keys: [options.context.config.secretKey],
       long: { httpOnly: true, sameSite: "lax", secure: secureCookies, signed: true },
-      short: { httpOnly: true, sameSite: "lax", secure: secureCookies, signed: true },
+      short: { httpOnly: true, path: "/", sameSite: "lax", secure: secureCookies, signed: true },
     },
     expiresWithSession: () => false,
     features: {
