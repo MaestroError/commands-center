@@ -91,7 +91,7 @@ export function registerOAuthProvider(server: AppServer, context: RuntimeContext
         }
 
         request.url = stripOAuthIssuerPath(request.url);
-        void providerCallback(request, response);
+        await providerCallback(request, response);
       })().catch(next);
     });
   });

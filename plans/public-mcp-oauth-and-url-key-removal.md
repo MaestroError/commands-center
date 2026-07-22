@@ -25,6 +25,12 @@ web and Claude Code release smoke tests remain environment-dependent. Authored
 - [x] Run lint and tests.
 - [x] Push each fix and resolve the corresponding review threads.
 
+### Async callback review follow-up
+
+- [x] Await the `oidc-provider` callback so escaped asynchronous failures reach
+      the surrounding middleware error handler.
+- [x] Run provider-focused tests, lint, typecheck, and the full test suite.
+
 ## Goal
 
 Make the public MCP endpoint interoperable with OAuth-capable MCP clients while
