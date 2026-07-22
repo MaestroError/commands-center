@@ -4,6 +4,7 @@ import { AppShell } from "@/components/shell/AppShell";
 import { useOwnerAuth } from "@/context/use-owner-auth";
 import { ClaimPage } from "@/pages/ClaimPage";
 import { LoginPage } from "@/pages/LoginPage";
+import { OAuthAuthorizationPage } from "@/pages/OAuthAuthorizationPage";
 
 import { appRouteObjects } from "./routes";
 
@@ -12,6 +13,7 @@ export function AppRouter() {
     <Routes>
       <Route element={<PublicAuthRoute page="claim" />} path="/claim" />
       <Route element={<PublicAuthRoute page="login" />} path="/login" />
+      <Route element={<OAuthAuthorizationPage />} path="/oauth-interaction/:uid" />
       <Route element={<ProtectedAppRoute />}>
         <Route element={<AppShell />}>
           {appRouteObjects.map((route) => (

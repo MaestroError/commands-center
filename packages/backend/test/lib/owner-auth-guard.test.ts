@@ -30,6 +30,20 @@ describe("owner auth guard", () => {
       { method: "POST", path: "/api/auth/login" },
       { method: "POST", path: "/api/auth/logout" },
       { method: "POST", path: "/api/auth/reclaim" },
+      { method: "GET", path: "/.well-known/oauth-protected-resource/api/public/mcp" },
+      { method: "GET", path: "/.well-known/oauth-authorization-server/oauth" },
+      { method: "GET", path: "/oauth/.well-known/openid-configuration" },
+      { method: "GET", path: "/oauth/authorize" },
+      { method: "GET", path: /^\/oauth\/authorize\/[^/]+$/ },
+      { method: "POST", path: "/oauth/token" },
+      { method: "OPTIONS", path: "/oauth/token" },
+      { method: "POST", path: "/oauth/register" },
+      { method: "POST", path: "/oauth/revoke" },
+      { method: "OPTIONS", path: "/oauth/revoke" },
+      { method: "GET", path: "/oauth/jwks" },
+      { method: "OPTIONS", path: "/oauth/jwks" },
+      { method: "GET", path: /^\/api\/oauth\/interactions\/[^/]+$/ },
+      { method: "POST", path: /^\/api\/oauth\/interactions\/[^/]+$/ },
       { method: "GET", path: /^\/api\/mcp\/cc\/[^/]+\/specialists\/[^/]+$/ },
       { method: "POST", path: /^\/api\/mcp\/cc\/[^/]+\/specialists\/[^/]+$/ },
       { method: "DELETE", path: /^\/api\/mcp\/cc\/[^/]+\/specialists\/[^/]+$/ },
@@ -195,6 +209,64 @@ describe("owner auth guard", () => {
       await testDb.cleanup();
     }
   });
+
+  it.each([
+    {
+      name: "registration",
+      url: "/oauth/register",
+      contentType: "application/json",
+      payload: {
+        grant_types: ["authorization_code", "refresh_token"],
+        redirect_uris: ["http://127.0.0.1/callback"],
+        response_types: ["code"],
+        token_endpoint_auth_method: "none",
+      },
+      expectedStatus: 201,
+    },
+    {
+      name: "token",
+      url: "/oauth/token",
+      contentType: "application/x-www-form-urlencoded",
+      payload: new URLSearchParams({ grant_type: "authorization_code" }).toString(),
+      expectedStatus: 400,
+    },
+    {
+      name: "revocation",
+      url: "/oauth/revoke",
+      contentType: "application/x-www-form-urlencoded",
+      payload: new URLSearchParams({ token: "missing" }).toString(),
+      expectedStatus: 400,
+    },
+  ])(
+    "allows production OAuth $name requests without browser origin headers",
+    async ({ contentType, expectedStatus, payload, url }) => {
+      const testDb = await createTestDatabase();
+      const productionConfig = loadRuntimeConfig({
+        cwd: testDb.cwd,
+        env: { NODE_ENV: "production", CC_PUBLIC_ORIGIN: "https://commands.example.com" },
+      });
+      const ownerAccessService = createOwnerAccessService({ config: productionConfig });
+      const server = await createAuthServer(testDb, ownerAccessService, productionConfig);
+
+      try {
+        await claimWorkspace(ownerAccessService);
+        const response = await server.inject({
+          method: "POST",
+          url,
+          headers: {
+            "content-type": contentType,
+            host: "commands.example.com",
+          },
+          payload,
+        });
+
+        expect(response.statusCode, response.body).toBe(expectedStatus);
+      } finally {
+        await server.close();
+        await testDb.cleanup();
+      }
+    },
+  );
 
   it("allows authenticated mutating API requests with a valid CSRF token", async () => {
     const testDb = await createTestDatabase();
@@ -362,6 +434,26 @@ describe("owner auth guard", () => {
       expect(unclaimed.headers.location).toBe("/claim");
       expect(unauthenticated.statusCode).toBe(302);
       expect(unauthenticated.headers.location).toBe("/login");
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("does not redirect the OAuth interaction page to owner access", async () => {
+    const testDb = await createTestDatabase();
+    const ownerAccessService = createOwnerAccessService({ config: testDb.config });
+    const server = await createAuthServer(testDb, ownerAccessService);
+
+    try {
+      const response = await server.inject({
+        method: "GET",
+        url: "/oauth-interaction/interaction_123",
+        headers: { accept: "text/html" },
+      });
+
+      expect(response.statusCode).not.toBe(302);
+      expect(response.headers.location).toBeUndefined();
     } finally {
       await server.close();
       await testDb.cleanup();

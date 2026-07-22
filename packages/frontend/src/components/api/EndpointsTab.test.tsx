@@ -1,9 +1,16 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { resetOAuthRuntime } from "@/lib/api/oauth";
+
 import { CopyableCode, EndpointsTab } from "./EndpointsTab";
 
+vi.mock("@/lib/api/oauth", () => ({
+  resetOAuthRuntime: vi.fn(),
+}));
+
 beforeEach(() => {
+  vi.clearAllMocks();
   Object.defineProperty(navigator, "clipboard", {
     value: { writeText: vi.fn().mockResolvedValue(undefined) },
     configurable: true,
@@ -25,15 +32,52 @@ describe("EndpointsTab", () => {
     expect(onGoToTokens).toHaveBeenCalledTimes(1);
   });
 
-  it("renders the URL-token MCP fallback with a placeholder token", () => {
+  it("documents automatic OAuth and static bearer authentication", () => {
     render(<EndpointsTab />);
 
+    expect(screen.getByText("Automatic OAuth")).toBeInTheDocument();
+    expect(screen.getByText("Bearer header")).toBeInTheDocument();
+    expect(screen.getByText("Authorization: Bearer <YOUR_API_TOKEN>")).toBeInTheDocument();
     expect(
-      screen.getByText(/Temporary fallback for clients that cannot set headers/i),
+      screen.getByText(/Credentials in URL query parameters are rejected/i),
     ).toBeInTheDocument();
+  });
+
+  it("explains the impact before resetting OAuth connections", () => {
+    render(<EndpointsTab />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Reset OAuth connections" }));
+
     expect(
-      screen.getByText((content) => content.endsWith("/api/public/mcp?key=<YOUR_API_TOKEN>")),
+      screen.getByRole("heading", { name: "Reset all OAuth connections?" }),
     ).toBeInTheDocument();
+    expect(screen.getByText(/All OAuth MCP clients will lose access/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/API tokens and their permissions will not be deleted/i),
+    ).toBeInTheDocument();
+  });
+
+  it("resets OAuth connections after confirmation", async () => {
+    vi.mocked(resetOAuthRuntime).mockResolvedValue({ status: "reset" });
+    render(<EndpointsTab />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Reset OAuth connections" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reset connections" }));
+
+    await waitFor(() => expect(resetOAuthRuntime).toHaveBeenCalledTimes(1));
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Existing OAuth clients must connect again",
+    );
+  });
+
+  it("shows an error when OAuth connections cannot be reset", async () => {
+    vi.mocked(resetOAuthRuntime).mockRejectedValue(new Error("Reset request failed."));
+    render(<EndpointsTab />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Reset OAuth connections" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reset connections" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Reset request failed.");
   });
 
   it("documents controlled REST and MCP document access", () => {

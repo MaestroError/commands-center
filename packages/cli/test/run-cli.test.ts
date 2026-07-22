@@ -392,6 +392,68 @@ describe("runCli", () => {
     expect(sendFile).toHaveBeenCalledWith("index.html");
   });
 
+  it("hardens the OAuth interaction page response", async () => {
+    existsSyncMock.mockImplementation(
+      (path: string) => path === "/home/test/.cc/.env" || path.endsWith("/public"),
+    );
+    await runCli(["start"]);
+    const options = startServerRuntimeMock.mock.calls[0]?.[0] as StartServerRuntimeCall | undefined;
+
+    if (!options?.register) {
+      throw new Error("Expected start command to provide a register callback.");
+    }
+
+    const hooks = new Map<string, (...args: unknown[]) => unknown>();
+    await options.register({
+      register: vi.fn().mockResolvedValue(undefined),
+      addHook: (name: string, handler: (...args: unknown[]) => unknown) => {
+        hooks.set(name, handler);
+      },
+      setNotFoundHandler: vi.fn(),
+    });
+    const header = vi.fn();
+
+    await hooks.get("onSend")?.(
+      { url: "/oauth-interaction/interaction_123?source=oauth" },
+      { header },
+      "<html></html>",
+    );
+
+    expect(header).toHaveBeenCalledWith("Cache-Control", "no-store");
+    expect(header).toHaveBeenCalledWith(
+      "Content-Security-Policy",
+      "frame-ancestors 'none'; base-uri 'none'",
+    );
+    expect(header).toHaveBeenCalledWith("Referrer-Policy", "no-referrer");
+    expect(header).toHaveBeenCalledWith("X-Frame-Options", "DENY");
+  });
+
+  it("does not disable caching for other SPA routes", async () => {
+    existsSyncMock.mockImplementation(
+      (path: string) => path === "/home/test/.cc/.env" || path.endsWith("/public"),
+    );
+    await runCli(["start"]);
+    const options = startServerRuntimeMock.mock.calls[0]?.[0] as StartServerRuntimeCall | undefined;
+
+    if (!options?.register) {
+      throw new Error("Expected start command to provide a register callback.");
+    }
+
+    const hooks = new Map<string, (...args: unknown[]) => unknown>();
+    await options.register({
+      register: vi.fn().mockResolvedValue(undefined),
+      addHook: (name: string, handler: (...args: unknown[]) => unknown) => {
+        hooks.set(name, handler);
+      },
+      setNotFoundHandler: vi.fn(),
+    });
+    const header = vi.fn();
+
+    await hooks.get("onSend")?.({ url: "/workspace" }, { header }, "<html></html>");
+
+    expect(header).not.toHaveBeenCalledWith("Cache-Control", "no-store");
+  });
+
   it("skips static registration when the public directory is absent", async () => {
     existsSyncMock.mockImplementation((path: string) => path === "/home/test/.cc/.env");
 

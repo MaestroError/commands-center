@@ -754,6 +754,18 @@ export {
   type OwnerReclaimResult,
 } from "./owner-auth.js";
 export {
+  oauthInteractionDecisionSchema,
+  oauthInteractionDetailSchema,
+  oauthInteractionParamsSchema,
+  oauthInteractionResultSchema,
+  oauthInteractionUidSchema,
+  oauthRuntimeResetResultSchema,
+  type OAuthInteractionDecision,
+  type OAuthInteractionDetail,
+  type OAuthInteractionResult,
+  type OAuthRuntimeResetResult,
+} from "./oauth-interactions.js";
+export {
   terminalBackendTypeSchema,
   terminalCreateInputSchema,
   terminalCreateResponseSchema,

@@ -1,3 +1,4 @@
+import type { DestinationStream, Logger } from "pino";
 import { describe, expect, it } from "vitest";
 
 import { agents } from "../../src/db/schema/index";
@@ -40,14 +41,33 @@ describe("public MCP route", () => {
     }
   });
 
-  it("accepts a URL key token for MCP requests", async () => {
+  it("rejects a valid API token supplied through the legacy MCP URL", async () => {
     const testDb = await createTestDatabase();
     const apiTokenService = createApiTokenService({ db: testDb.client.db });
     const server = await buildServer(testDb, apiTokenService);
 
     try {
       const token = apiTokenService.createToken("Tasks", permissionsForPresets("tasks")).token;
-      const response = await callMcpWithUrlToken(server, token, "tools/list", {}, 1);
+      const response = await callMcpWithLegacyUrlToken(server, token, "tools/list", {}, 1);
+
+      expect(response.statusCode).toBe(401);
+      expect(response.headers["www-authenticate"]).toContain(
+        "/.well-known/oauth-protected-resource/api/public/mcp",
+      );
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("accepts the same API token type through the Authorization header", async () => {
+    const testDb = await createTestDatabase();
+    const apiTokenService = createApiTokenService({ db: testDb.client.db });
+    const server = await buildServer(testDb, apiTokenService);
+
+    try {
+      const token = apiTokenService.createToken("Tasks", permissionsForPresets("tasks")).token;
+      const response = await callMcp(server, token, "tools/list", {}, 1);
 
       expect(response.statusCode).toBe(200);
       expect(response.body).toContain('"name":"list_tasks"');
@@ -57,89 +77,34 @@ describe("public MCP route", () => {
     }
   });
 
-  it("rejects invalid URL key tokens for MCP requests", async () => {
-    const testDb = await createTestDatabase();
-    const server = await buildServer(testDb);
-
-    try {
-      const response = await callMcpWithUrlToken(server, "cc_invalid", "tools/list", {}, 1);
-
-      expect(response.statusCode).toBe(401);
-    } finally {
-      await server.close();
-      await testDb.cleanup();
-    }
-  });
-
-  it("rejects revoked URL key tokens for MCP requests", async () => {
+  it("redacts a rejected legacy MCP URL from Fastify request logs", async () => {
     const testDb = await createTestDatabase();
     const apiTokenService = createApiTokenService({ db: testDb.client.db });
-    const server = await buildServer(testDb, apiTokenService);
-
-    try {
-      const token = apiTokenService.createToken("Tasks", permissionsForPresets("tasks"));
-      expect(apiTokenService.revokeToken(token.record.id)).toBe(true);
-
-      const response = await callMcpWithUrlToken(server, token.token, "tools/list", {}, 1);
-
-      expect(response.statusCode).toBe(401);
-    } finally {
-      await server.close();
-      await testDb.cleanup();
-    }
-  });
-
-  it("does not let URL key auth bypass an invalid bearer token", async () => {
-    const testDb = await createTestDatabase();
-    const apiTokenService = createApiTokenService({ db: testDb.client.db });
-    const server = await buildServer(testDb, apiTokenService);
+    const lines: string[] = [];
+    const logger = createLogger({ ...testDb.config, nodeEnv: "production" }, {
+      write(chunk: string) {
+        lines.push(chunk);
+        return true;
+      },
+    } satisfies DestinationStream);
+    const server = await buildServer(testDb, apiTokenService, undefined, logger);
 
     try {
       const token = apiTokenService.createToken("Tasks", permissionsForPresets("tasks")).token;
-      const response = await server.inject({
-        method: "POST",
-        url: `/api/public/mcp?key=${encodeURIComponent(token)}`,
-        headers: {
-          Authorization: "Bearer cc_invalid",
-          Accept: "application/json, text/event-stream",
-          "content-type": "application/json",
-        },
-        payload: { jsonrpc: "2.0", id: 1, method: "tools/list", params: {} },
-      });
 
-      expect(response.statusCode).toBe(401);
+      await callMcpWithLegacyUrlToken(server, token, "tools/list", {}, 1);
+      logger.flush();
+
+      const output = lines.join("");
+      expect(output).not.toContain(token);
+      expect(output).toContain("/api/public/mcp?key=redacted");
     } finally {
       await server.close();
       await testDb.cleanup();
     }
   });
 
-  it("does not let URL key auth bypass an empty authorization header", async () => {
-    const testDb = await createTestDatabase();
-    const apiTokenService = createApiTokenService({ db: testDb.client.db });
-    const server = await buildServer(testDb, apiTokenService);
-
-    try {
-      const token = apiTokenService.createToken("Tasks", permissionsForPresets("tasks")).token;
-      const response = await server.inject({
-        method: "POST",
-        url: `/api/public/mcp?key=${encodeURIComponent(token)}`,
-        headers: {
-          Authorization: "",
-          Accept: "application/json, text/event-stream",
-          "content-type": "application/json",
-        },
-        payload: { jsonrpc: "2.0", id: 1, method: "tools/list", params: {} },
-      });
-
-      expect(response.statusCode).toBe(401);
-    } finally {
-      await server.close();
-      await testDb.cleanup();
-    }
-  });
-
-  it("keeps URL key auth scoped away from public REST routes", async () => {
+  it("rejects URL key credentials on public REST routes", async () => {
     const testDb = await createTestDatabase();
     const apiTokenService = createApiTokenService({ db: testDb.client.db });
     const server = await buildServer(testDb, apiTokenService);
@@ -306,49 +271,6 @@ describe("public MCP route", () => {
       ) as { result?: { isError?: boolean } };
 
       expect(response.result?.isError).toBe(true);
-    } finally {
-      await server.close();
-      await testDb.cleanup();
-    }
-  });
-
-  it("allows document tools through an explicitly scoped MCP URL token", async () => {
-    const testDb = await createTestDatabase();
-    const apiTokenService = createApiTokenService({ db: testDb.client.db });
-    const server = await buildServer(testDb, apiTokenService);
-
-    try {
-      const documents = createDocumentService({ db: testDb.client.db, config: testDb.config });
-      await documents.create({
-        scope: "global",
-        path: "shared/brief.md",
-        content: "Deployment brief",
-      });
-      const token = apiTokenService.createToken("Documents", {
-        capabilities: ["read_document"],
-        templates: [],
-        documents: { global: true, globalFolderPaths: [], privateSpecialistIds: [] },
-      }).token;
-
-      const read = parseSseJson(
-        (
-          await callMcpWithUrlToken(
-            server,
-            token,
-            "tools/call",
-            {
-              name: "read_document",
-              arguments: { scope: "global", path: "shared/brief.md" },
-            },
-            1,
-          )
-        ).body,
-      ) as { result?: { structuredContent?: Record<string, unknown> } };
-
-      expect(read.result?.structuredContent).toMatchObject({
-        scope: "global",
-        content: "Deployment brief",
-      });
     } finally {
       await server.close();
       await testDb.cleanup();
@@ -570,12 +492,13 @@ async function buildServer(
     db: testDb.client.db,
   }),
   taskService?: ReturnType<typeof createTaskService>,
+  logger: Logger = createLogger(testDb.config),
 ): Promise<InjectServer> {
   const resolvedTaskService =
     taskService ?? createTaskService({ db: testDb.client.db, config: testDb.config });
   return createServer({
     config: testDb.config,
-    logger: createLogger(testDb.config),
+    logger,
     database: testDb.client,
     apiTokenService,
     orchestrator: createOrchestrator(),
@@ -607,7 +530,7 @@ async function callMcp(
   });
 }
 
-async function callMcpWithUrlToken(
+async function callMcpWithLegacyUrlToken(
   server: InjectServer,
   token: string,
   method: string,

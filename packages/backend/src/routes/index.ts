@@ -13,6 +13,7 @@ import { registerHealthRoutes } from "./health.js";
 import { registerLiveRequestRoutes } from "./live-requests.js";
 import { registerMcpServerRoutes } from "./mcp-servers.js";
 import { registerOwnerAuthRoutes } from "./owner-auth.js";
+import { registerOAuthRoutes } from "./oauth.js";
 import { registerProviderRoutes } from "./providers.js";
 import { registerPublicApiRoutes } from "./public-api.js";
 import { registerPublicArtifactRoutes } from "./public-artifacts.js";
@@ -31,6 +32,7 @@ import { registerWorkspaceSkillRoutes } from "./workspace-skills.js";
 export function registerApiRoutes(server: AppServer, context: RuntimeContext): void {
   registerHealthRoutes(server, context);
   registerOwnerAuthRoutes(server, context);
+  registerOAuthRoutes(server, context);
   registerActivityRoutes(server, context);
   registerApiTokenRoutes(server, context);
   registerCcManagedMcpRoutes(server, context);

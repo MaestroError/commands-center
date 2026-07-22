@@ -63,6 +63,35 @@ afterEach(() => {
 });
 
 describe("App", () => {
+  it("renders OAuth authorization outside owner access and the application shell", async () => {
+    window.history.replaceState({}, "", "/oauth-interaction/interaction_123");
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      if (input === "/api/auth/status") {
+        return Promise.resolve(jsonResponse(200, { status: "unclaimed" }));
+      }
+
+      if (input === "/api/oauth/interactions/interaction_123") {
+        return Promise.resolve(
+          jsonResponse(200, {
+            uid: "interaction_123",
+            client: { id: "client-1", name: "Claude" },
+            redirectUri: "http://127.0.0.1/callback",
+            requestedResource: "http://localhost:3000/api/public/mcp",
+            scopes: ["mcp"],
+          }),
+        );
+      }
+
+      return Promise.reject(new Error(`Unexpected fetch URL: ${describeFetchInput(input)}`));
+    });
+
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: "Connect Claude" })).toBeVisible();
+    expect(screen.queryByTestId("sidebar-navigation")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Claim this workspace" })).not.toBeInTheDocument();
+  });
+
   it("renders the global shell on the dashboard route", async () => {
     render(<App />);
 

@@ -16,6 +16,8 @@ const STATIC_ASSET_PATTERN = /\.[a-zA-Z0-9]+$/;
 const CC_MANAGED_MCP_ROUTE_PATTERN = /^\/api\/mcp\/cc\/[^/]+\/specialists\/[^/]+$/;
 const PUBLIC_API_PREFIX = "/api/public/";
 const PUBLIC_MCP_PATH = "/api/public/mcp";
+const OAUTH_PROTOCOL_POST_PATHS = new Set(["/oauth/register", "/oauth/revoke", "/oauth/token"]);
+const PUBLIC_OAUTH_INTERACTION_PAGE_PATTERN = /^\/oauth-interaction\/[^/]+$/;
 const SIGNED_PUBLIC_ARTIFACT_DOWNLOAD_PATTERN =
   /^\/api\/public\/v1\/task-artifacts\/download\/[^/]+$/;
 // Signed artifact delivery (Phase 6); auth is enforced inside the handler
@@ -48,7 +50,7 @@ export function registerOwnerAuthGuard(
     }
 
     if (pathname.startsWith(PUBLIC_API_PREFIX)) {
-      validatePublicApiBearer(context, request, method, pathname);
+      await validatePublicApiBearer(context, request, reply, method, pathname);
       return;
     }
 
@@ -56,15 +58,18 @@ export function registerOwnerAuthGuard(
       return;
     }
 
-    if (!pathname.startsWith("/api/")) {
-      await handleBrowserNavigation({ context, request, reply, pathname });
+    if (isPublicRoute(method, pathname)) {
+      if (
+        !CC_MANAGED_MCP_ROUTE_PATTERN.test(pathname) &&
+        !(method === "POST" && OAUTH_PROTOCOL_POST_PATHS.has(pathname))
+      ) {
+        validateOriginForMutation(context, request);
+      }
       return;
     }
 
-    if (isPublicRoute(method, pathname)) {
-      if (!CC_MANAGED_MCP_ROUTE_PATTERN.test(pathname)) {
-        validateOriginForMutation(context, request);
-      }
+    if (!pathname.startsWith("/api/")) {
+      await handleBrowserNavigation({ context, request, reply, pathname });
       return;
     }
 
@@ -88,18 +93,30 @@ export function registerOwnerAuthGuard(
   };
 }
 
-function validatePublicApiBearer(
+async function validatePublicApiBearer(
   context: RuntimeContext,
   request: FastifyRequest,
+  reply: FastifyReply,
   method: string,
   pathname: string,
-): void {
-  const rawToken =
-    readBearerToken(request.headers.authorization) ??
-    readPublicMcpUrlToken(request.url, request.headers.authorization, pathname);
-  const tokenRecord = rawToken ? context.apiTokenService.validateToken(rawToken) : null;
+): Promise<void> {
+  const rawToken = readBearerToken(request.headers.authorization);
+  let tokenRecord = rawToken ? context.apiTokenService.validateToken(rawToken) : null;
+
+  if (!tokenRecord && rawToken && pathname === PUBLIC_MCP_PATH) {
+    tokenRecord = await request.server.mcpOAuthService.resolveAccessToken(rawToken);
+  }
 
   if (!tokenRecord) {
+    if (pathname === PUBLIC_MCP_PATH) {
+      reply.header(
+        "www-authenticate",
+        `Bearer resource_metadata="${new URL(
+          "/.well-known/oauth-protected-resource/api/public/mcp",
+          context.config.security.publicOrigin,
+        ).toString()}", scope="mcp"`,
+      );
+    }
     throw new UnauthorizedError("Invalid or revoked API token.");
   }
 
@@ -129,19 +146,6 @@ function readBearerToken(value: string | string[] | undefined): string | undefin
   const match = /^Bearer\s+(.+)$/i.exec(header ?? "");
 
   return match?.[1]?.trim();
-}
-
-function readPublicMcpUrlToken(
-  url: string,
-  authorization: string | string[] | undefined,
-  pathname: string,
-): string | undefined {
-  if (pathname !== PUBLIC_MCP_PATH || readHeaderString(authorization) !== undefined) {
-    return undefined;
-  }
-
-  const value = new URL(url, "http://localhost").searchParams.get("key")?.trim();
-  return value && value.length > 0 ? value : undefined;
 }
 
 export function validateOriginForMutation(context: RuntimeContext, request: FastifyRequest): void {
@@ -175,6 +179,13 @@ async function handleBrowserNavigation(options: {
   reply: FastifyReply;
   pathname: string;
 }): Promise<void> {
+  if (
+    options.request.method === "GET" &&
+    PUBLIC_OAUTH_INTERACTION_PAGE_PATTERN.test(options.pathname)
+  ) {
+    return;
+  }
+
   if (options.request.method !== "GET" || STATIC_ASSET_PATTERN.test(options.pathname)) {
     return;
   }

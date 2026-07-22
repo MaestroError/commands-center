@@ -331,7 +331,7 @@ services:
   commandscenter:
     image: commandscenter:local
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     volumes:
       - ./workspace:/workspace
     environment:
@@ -345,25 +345,64 @@ services:
       CC_PUBLIC_ORIGIN: http://127.0.0.1:3000
       # Optional extra origins that serve the same instance (e.g. the localhost alias).
       CC_ALLOWED_ORIGINS: http://localhost:3000
+      # Direct localhost access does not use a reverse proxy.
+      CC_TRUST_PROXY: "false"
     restart: unless-stopped
 ```
 
 > **Set `CC_PUBLIC_ORIGIN` or claims and other write requests are rejected with `Request origin is not allowed.`** With `NODE_ENV=production` the container does not auto-trust localhost; only the origins listed in `CC_PUBLIC_ORIGIN` plus `CC_ALLOWED_ORIGINS` are accepted. Origins must match exactly — `http://127.0.0.1:3000` and `http://localhost:3000` are distinct, and the scheme (`http` vs `https`) and port matter too. Set `CC_PUBLIC_ORIGIN` to the primary origin you browse from and use the comma-separated `CC_ALLOWED_ORIGINS` for aliases (for example, to accept both `127.0.0.1` and `localhost`, or a reverse-proxy alias). When exposed publicly, set `CC_PUBLIC_ORIGIN` to the exact `https://` origin.
 
+The Compose example above is for direct localhost access. For a public company
+domain behind Caddy, nginx, or another trusted reverse proxy, make these changes:
+
+```yaml
+services:
+  commandscenter:
+    ports:
+      # Keep the container port private to the host's reverse proxy.
+      - "127.0.0.1:3000:3000"
+    environment:
+      CC_PUBLIC_ORIGIN: https://cc.company.com
+      CC_TRUST_PROXY: "true"
+```
+
+For the public-domain setup, both values are required: the origin tells CC which
+URL users open, and proxy trust lets CC recover that HTTPS request and the
+user's address from the trusted proxy. Do not set `true` while publishing
+port 3000 on an untrusted network interface.
+
 Prefer plain Docker without a compose file? The image built above runs the same way with `docker run`:
 
 ```bash
 docker run -d --name commandscenter \
-  -p 3000:3000 \
+  -p 127.0.0.1:3000:3000 \
   -v "$PWD/workspace:/workspace" \
   -e CC_DOCKER=true \
   -e CC_PUBLIC_ORIGIN=http://127.0.0.1:3000 \
   -e CC_ALLOWED_ORIGINS=http://localhost:3000 \
+  -e CC_TRUST_PROXY=false \
   --restart unless-stopped \
   commandscenter:local
 ```
 
-The image already sets `NODE_ENV`, `CC_HOST`, `CC_PORT`, and the workspace/data paths as defaults ([`Dockerfile`](Dockerfile)), so only the volume mount and `CC_PUBLIC_ORIGIN` must be supplied at run time.
+That command is also for direct localhost access. For a public company domain
+behind a reverse proxy, use the private host bind and enable proxy trust:
+
+```bash
+docker run -d --name commandscenter \
+  -p 127.0.0.1:3000:3000 \
+  -v "$PWD/workspace:/workspace" \
+  -e CC_DOCKER=true \
+  -e CC_PUBLIC_ORIGIN=https://cc.company.com \
+  -e CC_TRUST_PROXY=true \
+  --restart unless-stopped \
+  commandscenter:local
+```
+
+The image already sets `NODE_ENV`, `CC_HOST`, `CC_PORT`, and the workspace/data
+paths as defaults ([`Dockerfile`](Dockerfile)). Direct access needs the volume
+mount and `CC_PUBLIC_ORIGIN`; a public-domain reverse-proxy deployment must also
+set `CC_TRUST_PROXY=true`.
 
 On first container start, `ccenter` creates `/workspace/.cc/.env` on the mounted volume and generates `CC_SECRET_KEY` there.
 
@@ -407,7 +446,13 @@ When exposing CommandsCenter publicly, put it behind HTTPS and set the exact pub
 CC_PUBLIC_ORIGIN=https://commands.example.com
 CC_HOST=127.0.0.1
 CC_PORT=3000
+CC_TRUST_PROXY=true
 ```
+
+Keep `CC_PUBLIC_ORIGIN` stable: it is also the OAuth issuer origin for public
+MCP clients. Changing it invalidates existing OAuth client registrations and
+tokens, so reset OAuth connections from the API screen and reconnect every MCP
+client after an origin change.
 
 Recommended setup sequence:
 
@@ -435,6 +480,7 @@ server {
     proxy_pass http://127.0.0.1:3000;
     proxy_http_version 1.1;
     proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $remote_addr;
     proxy_set_header X-Forwarded-Proto $scheme;
     proxy_set_header X-Forwarded-Host $host;
     proxy_set_header Upgrade $http_upgrade;
@@ -444,6 +490,89 @@ server {
 ```
 
 CommandsCenter still enforces owner sessions, CSRF, and origin checks even if the proxy has its own access control. In production, browser cookies are marked `Secure`; serve the public origin over HTTPS. Use `CC_ALLOWED_ORIGINS` only for additional trusted aliases, for example `https://commands-alt.example.com`.
+
+#### What proxy trust changes
+
+Use this rule:
+
+- Keep `CC_TRUST_PROXY=false` when you open CommandsCenter directly using its
+  own host and port, such as `http://127.0.0.1:3000`.
+- Set `CC_TRUST_PROXY=true` for the normal company deployment where MCP users
+  open `https://cc.company.com` and Caddy, nginx, a trusted tunnel, ingress, or
+  load balancer forwards requests to CommandsCenter.
+
+For that company deployment, the request path looks like this:
+
+```text
+MCP user browser -> HTTPS https://cc.company.com -> trusted proxy -> private HTTP -> CommandsCenter
+```
+
+Use `true` because CommandsCenter otherwise sees only the last connection: the
+proxy's IP address and its private HTTP request. With `true`, CommandsCenter can
+use the proxy-provided original values: the user's IP address, the public
+`https` scheme, and `cc.company.com`. OAuth needs the public HTTPS information,
+and OAuth rate limits should distinguish users instead of treating the
+whole company as one proxy client.
+
+It does not matter whether the site is internet-accessible, VPN-only, or
+protected by company SSO. What matters is whether an HTTP reverse proxy sits
+between the browser and CommandsCenter and terminates HTTPS. If it does, use
+`true`. If users connect directly to CommandsCenter, use `false`.
+
+The default is `false` because forwarded headers are just request headers and
+can be faked by a client. They become trustworthy only when a known proxy is
+the sole route to CommandsCenter and overwrites them. Defaulting to `false`
+prevents a directly connected client from choosing its own apparent IP,
+protocol, or hostname.
+
+`CC_TRUST_PROXY` does not enable HTTPS, configure a proxy, or define the public
+URL. `CC_PUBLIC_ORIGIN` remains the source of advertised browser and OAuth URLs.
+
+| Value             | CommandsCenter behavior                                                                                                                           | Use it when                                                                                     |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `false` (default) | Ignores forwarded headers and uses the direct socket, request `Host`, and direct peer IP.                                                         | Users connect directly to CommandsCenter, typically for loopback or private development access. |
+| `true`            | Uses forwarded protocol/host information for proxy-aware request and OAuth handling, and uses the forwarded client address for OAuth rate limits. | A trusted proxy terminates HTTPS and is the only way to reach the CommandsCenter backend.       |
+
+With `true`, the last proxy that connects to CommandsCenter must:
+
+- prevent untrusted networks from reaching the CommandsCenter port directly;
+- preserve the public `Host` header, such as `commands.example.com`;
+- overwrite `X-Forwarded-For`, `X-Forwarded-Proto`, and
+  `X-Forwarded-Host`—never pass through values supplied by the original client;
+- send a forwarded host and protocol that match `CC_PUBLIC_ORIGIN`.
+
+The nginx example above deliberately sets `X-Forwarded-For` to
+`$remote_addr`, replacing any client-supplied chain. If another trusted proxy
+sits in front of nginx, configure nginx to accept that proxy's verified client
+address safely; do not blindly preserve an arbitrary incoming
+`X-Forwarded-For` chain. Boolean proxy trust means CommandsCenter trusts the
+whole forwarded chain it receives—it does not maintain its own proxy-IP
+allow-list.
+
+Changing the value requires a CommandsCenter restart:
+
+- `false` → `true`: CC begins seeing the forwarded public HTTPS scheme, host,
+  and client address. This is normally required for OAuth behind a
+  TLS-terminating proxy and prevents all users from sharing the proxy's rate
+  limit identity.
+- `true` → `false`: CC ignores forwarded headers again. This is correct for
+  direct access, but behind an HTTP reverse proxy CC will see the proxy as the
+  client and the private hop as HTTP, which can break OAuth browser interactions
+  and make rate limits apply to the proxy rather than individual clients.
+
+Changing only `CC_TRUST_PROXY` does not invalidate OAuth registrations or
+tokens. Changing `CC_PUBLIC_ORIGIN` does.
+
+### Public MCP Authentication
+
+Public MCP supports automatic OAuth for interactive clients and a static
+`Authorization: Bearer <API_TOKEN>` header for clients that can configure
+headers. API-token revocation and permission changes apply immediately to both
+methods. Credentials in URL query parameters are rejected, with no compatibility
+flag to restore them. Rotate any API token that was previously stored in a URL.
+
+See [Public MCP Authentication](docs/public-mcp-authentication.md) for client
+setup, OAuth reset recovery, proxy requirements, and token-rotation guidance.
 
 ## Project Structure
 
@@ -461,14 +590,15 @@ cc/
 
 ## Documentation
 
-| File                                                             | Purpose                                        |
-| ---------------------------------------------------------------- | ---------------------------------------------- |
-| [VISION.md](VISION.md)                                           | Product vision, phases, architecture decisions |
-| [AGENTS.md](AGENTS.md)                                           | Coding standards, tech stack, conventions      |
-| [CONTRIBUTING.md](CONTRIBUTING.md)                               | Dev setup, commands, workflow                  |
-| [docs/CLAIM.md](docs/CLAIM.md)                                   | Owner claiming and setup                       |
-| [docs/mcp-configuration-flow.md](docs/mcp-configuration-flow.md) | Per-workspace MCP configuration                |
-| [docs/deploy-coolify.md](docs/deploy-coolify.md)                 | Deploying on Coolify / Docker PaaS             |
+| File                                                                   | Purpose                                        |
+| ---------------------------------------------------------------------- | ---------------------------------------------- |
+| [VISION.md](VISION.md)                                                 | Product vision, phases, architecture decisions |
+| [AGENTS.md](AGENTS.md)                                                 | Coding standards, tech stack, conventions      |
+| [CONTRIBUTING.md](CONTRIBUTING.md)                                     | Dev setup, commands, workflow                  |
+| [docs/CLAIM.md](docs/CLAIM.md)                                         | Owner claiming and setup                       |
+| [docs/mcp-configuration-flow.md](docs/mcp-configuration-flow.md)       | Per-workspace MCP configuration                |
+| [docs/public-mcp-authentication.md](docs/public-mcp-authentication.md) | Public MCP OAuth and Bearer authentication     |
+| [docs/deploy-coolify.md](docs/deploy-coolify.md)                       | Deploying on Coolify / Docker PaaS             |
 
 ## Releases
 

@@ -3,7 +3,8 @@
 This guide covers running CommandsCenter behind [Coolify](https://coolify.io/) on a subdomain
 with automatic HTTPS. The same principles apply to other Docker PaaS platforms (Dokploy,
 Portainer, CapRover): the app is a single container that listens on port `3000`, stores all
-state under a mounted `/workspace` volume, and must be told its public origin.
+state under a mounted `/workspace` volume, and must be told its public origin and that Coolify's
+proxy is trusted.
 
 CommandsCenter does not publish a prebuilt Docker image — the image is built from the
 [`Dockerfile`](../Dockerfile), which installs the published `commandscenter` npm package. So a
@@ -48,18 +49,30 @@ container.
 
 ## 3. Environment variables
 
-| Name               | Value                    | Buildtime | Runtime | Notes                                                   |
-| ------------------ | ------------------------ | --------- | ------- | ------------------------------------------------------- |
-| `CC_PUBLIC_ORIGIN` | `https://cc.example.com` | off       | on      | **Required.** Exact origin, `https`, no trailing slash. |
-| `CC_DOCKER`        | `true`                   | off       | on      | Optional; also auto-detected via `/.dockerenv`.         |
+In the Coolify resource, open **Environment Variables** and add the entries
+below. For each entry, turn **Buildtime** off and **Runtime** on. Save the
+variables, then redeploy the resource so the running container receives them.
+Do not add these as Dockerfile build arguments.
+
+| Name               | Value                    | Buildtime | Runtime | Notes                                                       |
+| ------------------ | ------------------------ | --------- | ------- | ----------------------------------------------------------- |
+| `CC_PUBLIC_ORIGIN` | `https://cc.example.com` | off       | on      | **Required.** Exact origin, `https`, no trailing slash.     |
+| `CC_TRUST_PROXY`   | `true`                   | off       | on      | **Required on Coolify.** Its proxy terminates public HTTPS. |
+| `CC_DOCKER`        | `true`                   | off       | on      | Optional; also auto-detected through the container runtime. |
 
 Values baked into the image already default correctly (`NODE_ENV=production`, `CC_HOST=0.0.0.0`,
-`CC_PORT=3000`, `CC_WORKSPACE_DIR=/workspace/.cc/workspace`), so you only need the above.
+`CC_PORT=3000`, `CC_WORKSPACE_DIR=/workspace/.cc/workspace`). Set the two required values above;
+`CC_DOCKER` is optional.
 
 > **`CC_PUBLIC_ORIGIN` is non-negotiable.** In production mode the app does not auto-trust
 > localhost or arbitrary origins. If it is unset or mismatched, claiming and every write request
 > fail with `Request origin is not allowed.` For multiple origins (e.g. an alias), set the
 > comma-separated `CC_ALLOWED_ORIGINS` in addition.
+
+> **`CC_TRUST_PROXY=true` is required on Coolify.** MCP users connect to Coolify over HTTPS,
+> then Coolify's Traefik/Caddy proxy forwards a private HTTP request to the container. Proxy trust
+> lets CommandsCenter recover the original HTTPS domain and users' addresses. Keep **Port
+> Mappings** empty so users cannot bypass Coolify's trusted proxy and reach port `3000` directly.
 
 ### A note on `CC_SECRET_KEY`
 
@@ -188,6 +201,7 @@ Then redeploy so Coolify rebuilds the image with your tools included.
 | Symptom                                   | Cause                                  | Fix                                                                       |
 | ----------------------------------------- | -------------------------------------- | ------------------------------------------------------------------------- |
 | `Request origin is not allowed.` on claim | `CC_PUBLIC_ORIGIN` unset or mismatched | Set it to the exact `https://` origin you browse from, no trailing slash. |
+| OAuth sees HTTP or clients share limits   | `CC_TRUST_PROXY` is unset or `false`   | Set `CC_TRUST_PROXY=true` and redeploy.                                   |
 | Health "degraded" for ~1 min after boot   | OpenCode engine cold start             | Normal; it becomes healthy within ~90s.                                   |
 | Data lost after redeploy                  | No persistent `/workspace` volume      | Add the Volume Mount in [§4](#4-persistent-storage-required).             |
 | SSL not issued                            | DNS not resolving to the server        | Point the `A` record first, then redeploy.                                |
