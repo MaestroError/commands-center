@@ -1,6 +1,6 @@
 # CI Audit Fix And Reviewer Comment Triage
 
-**Status:** Reviewer follow-up in progress. Authored 2026-07-22.
+**Status:** Complete. Authored and verified 2026-07-22.
 
 ## Goal
 
@@ -21,7 +21,7 @@ reviewer comments without changing reviewer-requested code before approval.
 - [x] Add regression tests for production OAuth clients without `Origin`,
       proxy-aware rate-limit identities, and IPv6 loopback origins.
 - [x] Format, lint, and test the reviewer follow-up.
-- [ ] Reply to every unresolved review thread and resolve only those fully
+- [x] Reply to every unresolved review thread and resolve only those fully
       addressed by code or verified behavior.
 
 ## Acceptance Criteria
