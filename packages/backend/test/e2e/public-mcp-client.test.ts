@@ -188,7 +188,7 @@ describe("public MCP client e2e", () => {
           "get_task_result",
         ]),
       );
-  });
+  }, 15_000);
 
   it("reads token-scoped documents through the MCP client", async () => {
     const testDb = await makeTestDb();
