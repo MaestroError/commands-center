@@ -14,7 +14,7 @@ import {
   Wrench,
 } from "lucide-react";
 
-import type { RouteObject } from "react-router-dom";
+import type { RouteObject } from "react-router";
 
 import { DashboardPage } from "@/pages/DashboardPage";
 import { DocumentsPage } from "@/pages/DocumentsPage";

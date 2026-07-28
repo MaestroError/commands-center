@@ -21,7 +21,7 @@ import type {
 import { ArrowLeft, FilePlus, FolderPlus, Pencil, Shield, Trash2, Upload } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useDropzone } from "react-dropzone";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router";
 import {
   CreateEntryDialog,
   DeleteEntryDialog,

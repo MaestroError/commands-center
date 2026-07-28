@@ -12,7 +12,7 @@ const addConversationArtifactMock = vi.fn();
 
 let mockParams: { agentId?: string; conversationId?: string } = {};
 
-vi.mock("react-router-dom", () => ({
+vi.mock("react-router", () => ({
   useParams: () => mockParams,
   useNavigate: () => navigateMock,
 }));

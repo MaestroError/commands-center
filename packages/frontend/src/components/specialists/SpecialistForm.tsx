@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 
 import { Switch } from "@/components/common/Switch";
 import { SpecialistAvatarPicker } from "@/components/specialists/SpecialistAvatarPicker";

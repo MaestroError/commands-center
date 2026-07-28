@@ -1,4 +1,4 @@
-import { Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
+import { Navigate, Outlet, Route, Routes, useLocation } from "react-router";
 
 import { AppShell } from "@/components/shell/AppShell";
 import { useOwnerAuth } from "@/context/use-owner-auth";

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Bell } from "lucide-react";
-import { NavLink } from "react-router-dom";
+import { NavLink } from "react-router";
 
 import { useActivitiesQuery, useArchiveActivityMutation } from "@/hooks/use-activities-query";
 

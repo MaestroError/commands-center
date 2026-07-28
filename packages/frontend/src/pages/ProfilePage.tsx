@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router";
 
 import { PasswordInput } from "@/components/common/PasswordInput";
 import { PageHeader } from "@/components/common/PageHeader";

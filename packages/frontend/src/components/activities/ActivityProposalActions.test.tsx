@@ -1,5 +1,5 @@
-import type * as ReactRouterDom from "react-router-dom";
-import { MemoryRouter } from "react-router-dom";
+import type * as ReactRouter from "react-router";
+import { MemoryRouter } from "react-router";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -29,8 +29,8 @@ vi.mock("@/hooks/use-specialists-query", () => ({
   }),
 }));
 
-vi.mock("react-router-dom", async (importOriginal) => {
-  const actual = await importOriginal<typeof ReactRouterDom>();
+vi.mock("react-router", async (importOriginal) => {
+  const actual = await importOriginal<typeof ReactRouter>();
   return { ...actual, useNavigate: () => navigateSpy };
 });
 

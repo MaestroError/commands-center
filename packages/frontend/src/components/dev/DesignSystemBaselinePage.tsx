@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { AlertTriangle, CheckCircle2, CircleHelp, Files, Plus, Search } from "lucide-react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router";
 
 import { Markdown } from "@/components/chat/Markdown";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";

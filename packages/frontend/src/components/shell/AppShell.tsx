@@ -9,7 +9,7 @@ import {
   Search,
   UserRound,
 } from "lucide-react";
-import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { NavLink, Outlet, useLocation } from "react-router";
 
 import { ActivityBell } from "@/components/activities/ActivityBell";
 import { DocumentsSidebarSection } from "@/components/documents/DocumentsSidebarSection";

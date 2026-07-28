@@ -17,7 +17,7 @@ import {
 import type { Specialist, Task, TaskRun, TaskSubtask } from "@cc/shared/schemas";
 import { Check, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router";
 import {
   aggregateRunArtifacts,
   buildTaskContextAttachmentHref,

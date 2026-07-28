@@ -16,7 +16,7 @@ import {
 } from "@cc/shared/schemas";
 import { Plus, X } from "lucide-react";
 import { useMemo, useState } from "react";
-import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { useTaskComposerSkills } from "./task-helpers";
 import {
   type FormState,

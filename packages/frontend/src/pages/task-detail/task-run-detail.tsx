@@ -17,7 +17,7 @@ import type {
   TaskSubtask,
 } from "@cc/shared/schemas";
 import { Fragment, type ReactNode, useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router";
 import {
   formatRunDuration,
   formatRunTarget,
