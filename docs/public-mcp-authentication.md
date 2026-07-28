@@ -54,9 +54,9 @@ remain API-token Bearer only.
 The API screen includes **Reset OAuth connections** for recovery after an origin
 or proxy change, or when stale registrations prevent clients from reconnecting.
 After confirmation, it clears registered OAuth clients, grants, access tokens,
-refresh tokens, and pending interactions. It preserves every CommandsCenter API
-token and its permissions. All OAuth MCP clients must connect and authorize
-again.
+refresh tokens, pending interactions, and the dynamic-client-registration retry
+limit. It preserves every CommandsCenter API token and its permissions. All
+OAuth MCP clients must connect and authorize again.
 
 ## Public Origin And Reverse Proxies
 

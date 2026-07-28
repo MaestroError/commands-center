@@ -20,6 +20,7 @@ const REFRESH_TOKEN_TTL_SECONDS = 14 * 24 * 60 * 60;
 const CLEANUP_INTERVAL_MS = 60 * 60 * 1_000;
 const OAUTH_SIGNING_KEY = createSigningKey();
 const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1_000;
+const REGISTRATION_RATE_LIMIT = 10;
 
 type OAuthLimitCheck = (request: FastifyRequest) => Promise<boolean>;
 
@@ -32,10 +33,14 @@ export function registerOAuthProvider(server: AppServer, context: RuntimeContext
   server.decorate("oauthRecordStore", recordStore);
   server.decorate("mcpOAuthService", service);
   let interactionLimitCheck: OAuthLimitCheck = () => Promise.resolve(true);
+  let registrationLimitCheck: OAuthLimitCheck = () => Promise.resolve(true);
   server.decorate("enforceOAuthInteractionRateLimit", async (request: FastifyRequest) => {
     if (!(await interactionLimitCheck(request))) {
       throw new RateLimitedError("Too many OAuth interaction attempts.");
     }
+  });
+  server.decorate("resetOAuthRegistrationRateLimit", () => {
+    registrationLimitCheck = createLimitCheck(server, REGISTRATION_RATE_LIMIT);
   });
   server.register(rateLimit, { global: false });
   server.register(middie);
@@ -45,7 +50,7 @@ export function registerOAuthProvider(server: AppServer, context: RuntimeContext
     }
 
     const authorizationLimitCheck = createLimitCheck(server, 60);
-    const registrationLimitCheck = createLimitCheck(server, 10);
+    registrationLimitCheck = createLimitCheck(server, REGISTRATION_RATE_LIMIT);
     const revocationLimitCheck = createLimitCheck(server, 60);
     const tokenLimitCheck = createLimitCheck(server, 120);
     interactionLimitCheck = createLimitCheck(server, 30);

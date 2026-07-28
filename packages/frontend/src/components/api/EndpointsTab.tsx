@@ -128,9 +128,10 @@ export function EndpointsTab(props: { onGoToTokens?: () => void }) {
           <div className="border-t border-border pt-4">
             <h4 className="font-medium text-text-primary">OAuth connection recovery</h4>
             <p className="mt-2 text-sm leading-6 text-text-secondary">
-              Reset registered OAuth clients, grants, and OAuth access tokens when clients cannot
-              reconnect after an origin or proxy change. Every OAuth MCP client must connect again.
-              CommandsCenter API tokens and their permissions are preserved.
+              Reset registered OAuth clients, grants, OAuth access tokens, and the registration
+              retry limit when clients cannot reconnect after an origin or proxy change. Every OAuth
+              MCP client must connect again. CommandsCenter API tokens and their permissions are
+              preserved.
             </p>
             <Button
               className="mt-3"
