@@ -35,11 +35,11 @@
     "cmdk": "^1.1.1",
     "lucide-react": "^0.542.0",
     "radix-ui": "^1.6.2",
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
     "react-dropzone": "^14.3.8",
     "react-markdown": "^10.1.0",
-    "react-router-dom": "^7.17.0",
+    "react-router": "^8.3.0",
     "rehype-sanitize": "^6.0.0",
     "tailwind-merge": "^3.6.0",
     "zustand": "^5.0.8"
@@ -49,12 +49,12 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
-    "@types/react": "^19.1.0",
-    "@types/react-dom": "^19.1.0",
-    "@vitejs/plugin-react": "^4.4.0",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.2.0",
     "jsdom": "^26.1.0",
     "tailwindcss": "^4.1.0",
     "typescript": "catalog:",
-    "vite": "^6.4.3"
+    "vite": "^7.3.6"
   }
 }

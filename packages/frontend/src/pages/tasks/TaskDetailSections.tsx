@@ -8,7 +8,7 @@ import { useTaskMutations } from "@/hooks/use-tasks-query";
 import type { Specialist, Task, TaskRun, TaskSubtask } from "@cc/shared/schemas";
 import { ChevronDown, ChevronRight, Trash2 } from "lucide-react";
 import { type ChangeEvent, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { RunHistory } from "./TaskDetailPanel";
 import {
   buildTaskContextAttachmentHref,

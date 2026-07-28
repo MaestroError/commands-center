@@ -4,7 +4,7 @@ import { EmptyState } from "@/components/common/PageStates";
 import { formatDate } from "@/components/tasks/task-format";
 import { StatusBadge } from "@/components/tasks/task-ui";
 import type { Specialist, Task } from "@cc/shared/schemas";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { Metric } from "./TaskDetailPanel";
 import { Button } from "@/components/ui/button";
 

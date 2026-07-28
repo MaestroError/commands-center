@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { NavLink } from "react-router-dom";
+import { NavLink } from "react-router";
 import { ChevronRight, Settings2 } from "lucide-react";
 
 import { isRouteActive, manageSidebarRoutes } from "@/app/routes";

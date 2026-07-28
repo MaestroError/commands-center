@@ -34,7 +34,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { type DragEvent, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import {
   BOARD_COLUMNS,
   type TaskCardIconActionVariant,

@@ -15,7 +15,7 @@ import { buildTemplateEndpointDocs } from "@cc/shared/lib";
 import type { CreateTaskTemplateInput, Specialist, Task, TaskTemplate } from "@cc/shared/schemas";
 import { Check, Copy, Info, Pencil, Play, Power, PowerOff, Trash2 } from "lucide-react";
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { CopyEndpointButton, TaskCardIconButton, TemplateDisabledBadge } from "./TaskBoard";
 import { Metric, TextBlock } from "./TaskDetailPanel";
 import { TaskTodos } from "./TaskDetailSections";

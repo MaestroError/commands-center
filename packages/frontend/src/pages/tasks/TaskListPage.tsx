@@ -15,7 +15,7 @@ import {
 import type { BoardTaskStatus, Task, TaskTemplate } from "@cc/shared/schemas";
 import { Filter } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router";
 import { TaskArchiveView } from "./TaskArchiveView";
 import { TaskBoard, TaskScheduleDropDialog } from "./TaskBoard";
 import { TaskDetailPanel } from "./TaskDetailPanel";

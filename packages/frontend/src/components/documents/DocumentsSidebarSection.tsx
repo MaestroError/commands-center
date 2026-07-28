@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router";
 import { BookOpenText, ChevronRight, FilePlus, Folder, FolderPlus, Search } from "lucide-react";
 
 import {

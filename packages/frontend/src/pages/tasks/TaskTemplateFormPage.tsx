@@ -10,7 +10,7 @@ import { useSpecialistCatalogQuery, useSpecialistsQuery } from "@/hooks/use-spec
 import { useTaskMutations, useTaskTemplateQuery } from "@/hooks/use-tasks-query";
 import type { CreateTaskTemplateInput, Specialist, TaskTemplate } from "@cc/shared/schemas";
 import { useEffect, useMemo, useState } from "react";
-import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { deriveMcpToolName } from "@cc/shared/schemas";
 import { getTaskTemplateCreationPrefill, useTaskComposerSkills } from "./task-helpers";
 import { FallbackModelsField, WeekdayPicker } from "./TaskFormPage";

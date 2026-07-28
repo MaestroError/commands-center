@@ -24,7 +24,7 @@ import {
 import type { Specialist, Task, TaskQueuePreview, TaskRun } from "@cc/shared/schemas";
 import { Check, Pencil, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { TaskTimingBadges } from "./TaskBoard";
 import {
   TaskContextPanelSection,
