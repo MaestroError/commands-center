@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
-import type * as RouterDom from "react-router";
+import type * as ReactRouter from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Specialist, Task, TaskRun, TaskSubtask } from "@cc/shared/schemas";
 
@@ -11,7 +11,7 @@ let mockParams: Record<string, string | undefined> = {};
 const navigateMock = vi.fn();
 
 vi.mock("react-router", async (importOriginal) => {
-  const actual = await importOriginal<typeof RouterDom>();
+  const actual = await importOriginal<typeof ReactRouter>();
   return {
     ...actual,
     useParams: () => mockParams,
