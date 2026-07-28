@@ -10,6 +10,7 @@ declare module "fastify" {
     oauthRecordStore: OAuthRecordStore;
     mcpOAuthService: McpOAuthService;
     enforceOAuthInteractionRateLimit(request: FastifyRequestType): Promise<void>;
+    resetOAuthRegistrationRateLimit(): void;
   }
 }
 

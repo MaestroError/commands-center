@@ -362,6 +362,37 @@ describe("OAuth routes", () => {
     }
   });
 
+  it("clears an exhausted registration quota when resetting OAuth runtime state", async () => {
+    const fixture = await createOAuthRouteServer();
+
+    try {
+      for (let index = 0; index < 10; index += 1) {
+        const registration = await registerOAuthClient(fixture, `before-reset-${index.toString()}`);
+        expect(registration.statusCode, registration.body).toBe(201);
+      }
+
+      const limited = await registerOAuthClient(fixture, "limited");
+      expect(limited.statusCode).toBe(429);
+
+      const ownerAuth = await createOwnerAuth(fixture);
+      const reset = await fixture.server.inject({
+        method: "DELETE",
+        url: "/api/oauth/runtime",
+        headers: {
+          cookie: ownerAuth.cookie,
+          [CSRF_HEADER_NAME]: ownerAuth.csrfToken,
+          origin: ORIGIN,
+        },
+      });
+      expect(reset.statusCode).toBe(200);
+
+      const registration = await registerOAuthClient(fixture, "after-reset");
+      expect(registration.statusCode, registration.body).toBe(201);
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
   it("keeps adjacent OAuth API paths behind owner authentication", async () => {
     const fixture = await createOAuthRouteServer();
 
@@ -425,6 +456,24 @@ async function createOAuthRouteServer() {
       await testDb.cleanup();
     },
   };
+}
+
+function registerOAuthClient(
+  fixture: Awaited<ReturnType<typeof createOAuthRouteServer>>,
+  suffix: string,
+) {
+  return fixture.server.inject({
+    method: "POST",
+    url: "/oauth/register",
+    headers: { host: HOST },
+    payload: {
+      client_name: `MCP route test ${suffix}`,
+      grant_types: ["authorization_code", "refresh_token"],
+      redirect_uris: [`http://127.0.0.1/callback/${suffix}`],
+      response_types: ["code"],
+      token_endpoint_auth_method: "none",
+    },
+  });
 }
 
 async function startAuthorization(fixture: Awaited<ReturnType<typeof createOAuthRouteServer>>) {

@@ -124,6 +124,7 @@ export function registerOAuthRoutes(server: AppServer, context: RuntimeContext):
     },
     () => {
       server.oauthRecordStore.clear();
+      server.resetOAuthRegistrationRateLimit();
       return { status: "reset" as const };
     },
   );
