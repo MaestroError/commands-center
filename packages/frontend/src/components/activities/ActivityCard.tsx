@@ -62,6 +62,7 @@ export function ActivityCard({
 
   return (
     <div
+      data-testid={`activity-card-${activity.id}`}
       className={`min-w-0 rounded-md border bg-surface p-3 ${
         actionRequired && !readOnly ? "border-accent/40" : "border-border"
       }`}

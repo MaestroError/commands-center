@@ -3,15 +3,16 @@ import { MemoryRouter, useLocation } from "react-router";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { Activity } from "@cc/shared/schemas";
+import { activityKindSchema, type Activity } from "@cc/shared/schemas";
 
 import { ActivityActions } from "./ActivityActions";
 
 import * as api from "@/lib/api";
 
-const { acceptMutate, createRunFollowupMutateAsync } = vi.hoisted(() => ({
+const { acceptMutate, createRunFollowupMutateAsync, runTemplateNowMutate } = vi.hoisted(() => ({
   acceptMutate: vi.fn(),
   createRunFollowupMutateAsync: vi.fn(),
+  runTemplateNowMutate: vi.fn(),
 }));
 
 vi.mock("@/lib/api", async (importOriginal) => ({
@@ -27,7 +28,12 @@ vi.mock("@/hooks/use-tasks-query", () => ({
       isPending: false,
       isError: false,
     },
+    runTemplateNow: { mutate: runTemplateNowMutate, isPending: false },
   }),
+}));
+
+vi.mock("@/hooks/use-specialists-query", () => ({
+  useSpecialistsQuery: () => ({ data: [] }),
 }));
 
 function activity(overrides: Partial<Activity> & { id: string; kind: Activity["kind"] }): Activity {
@@ -78,9 +84,18 @@ beforeEach(() => {
   );
   createRunFollowupMutateAsync.mockReset();
   createRunFollowupMutateAsync.mockResolvedValue(undefined);
+  runTemplateNowMutate.mockReset();
 });
 
 describe("ActivityActions", () => {
+  it.each(activityKindSchema.options)("%s: marks the notification as read", (kind) => {
+    const { onArchive } = renderActions(activity({ id: `activity-${kind}`, kind }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Mark read" }));
+
+    expect(onArchive).toHaveBeenCalledWith(`activity-${kind}`);
+  });
+
   it("secret_request: fills the secret value through the form", async () => {
     vi.mocked(api.fillSecret).mockResolvedValue(
       activity({ id: "a1", kind: "secret_request", status: "archived" }),

@@ -279,6 +279,50 @@ describe("OPENCODE_WORKSPACE_CONTRACT", () => {
     }
   });
 
+  it("copies the bundled OKF skill support files into a specialist workspace", async () => {
+    const testDb = await createTestDatabase();
+    const workspacePath = join(testDb.config.paths.subdirectories.specialists, "knowledge-manager");
+
+    try {
+      await writeOpenCodeWorkspace({
+        workspacePath,
+        input: {
+          name: "Knowledge Manager",
+          role: "maintain knowledge",
+          instructions: "Keep durable knowledge accurate.",
+          defaultModel: "openai/gpt-4.1",
+          capabilities: {
+            builtInSkills: ["okf-md-knowledge-base-management"],
+            workspaceSkills: [],
+            customTools: [],
+            mcpServers: [],
+            toolPermissions: [],
+            appMcpServers: [],
+            appToolPermissions: [],
+          },
+        },
+        skillRoot: resolveBuiltInSkillsRoot(),
+        workspaceSkillRoot: testDb.config.paths.subdirectories.skills,
+      });
+
+      const skillPath = join(
+        getOpenCodeWorkspacePaths(workspacePath).skillsDir,
+        "okf-md-knowledge-base-management",
+      );
+      const [skill, agentMetadata, conformanceProfile] = await Promise.all([
+        readFile(join(skillPath, "SKILL.md"), "utf8"),
+        readFile(join(skillPath, "agents", "openai.yaml"), "utf8"),
+        readFile(join(skillPath, "references", "okf-v0.2-profile.md"), "utf8"),
+      ]);
+
+      expect(skill).toContain("# OKF Markdown Knowledge Base Management");
+      expect(agentMetadata).toContain('display_name: "OKF Markdown Knowledge Base Management"');
+      expect(conformanceProfile).toContain("# OKF v0.2 Conformance Profile");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("copies renamed built-in skill aliases using the current slug", async () => {
     const testDb = await createTestDatabase();
     const skillRoot = join(testDb.cwd, "builtin-skills");

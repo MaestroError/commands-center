@@ -98,6 +98,7 @@ describe("agent routes", () => {
         "github-review-comments",
         "global-skill-authoring",
         "global-tool-authoring",
+        "okf-md-knowledge-base-management",
         "self-skill-authoring",
         "self-tool-authoring",
         "task-planner",
