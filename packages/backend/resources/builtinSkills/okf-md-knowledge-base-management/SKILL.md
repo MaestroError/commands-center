@@ -4,6 +4,7 @@ description: Manage any Markdown-based knowledge base using strict Open Knowledg
 compatibility: opencode
 metadata:
   category: knowledge
+  version: 1.0.0
 ---
 
 # OKF Markdown Knowledge Base Management
