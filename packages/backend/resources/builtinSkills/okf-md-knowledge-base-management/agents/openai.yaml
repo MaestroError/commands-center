@@ -1,0 +1,4 @@
+interface:
+  display_name: "OKF Markdown Knowledge Base Management"
+  short_description: "Manage portable, trustworthy Markdown knowledge"
+  default_prompt: "Use $okf-md-knowledge-base-management to organize and maintain this Markdown knowledge base with explicit provenance, lifecycle, indexes, and links."

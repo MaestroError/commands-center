@@ -64,7 +64,7 @@ function SecretRequestActions({ activity, onArchive, archiving }: ActivityAction
           Fill secret
         </ActionButton>
         <ActionButton variant="muted" disabled={archiving} onClick={() => onArchive(activity.id)}>
-          Dismiss
+          Mark read
         </ActionButton>
       </ActionRow>
     );
@@ -118,6 +118,14 @@ function SecretRequestActions({ activity, onArchive, archiving }: ActivityAction
           }}
         >
           Cancel
+        </ActionButton>
+        <ActionButton
+          variant="muted"
+          type="button"
+          disabled={archiving}
+          onClick={() => onArchive(activity.id)}
+        >
+          Mark read
         </ActionButton>
       </ActionRow>
       {fillSecret.isError ? <ActionError>Could not save the secret.</ActionError> : null}
@@ -190,6 +198,9 @@ function ReviewReplyActions({ activity, onArchive, archiving }: ActivityActionsP
             Open task
           </ActionButton>
         ) : null}
+        <ActionButton variant="muted" disabled={archiving} onClick={() => onArchive(activity.id)}>
+          Mark read
+        </ActionButton>
       </ActionRow>
       {error ? <ActionError>{error}</ActionError> : null}
     </div>
@@ -222,6 +233,9 @@ function TaskOutcomeActions({ activity, onArchive, archiving }: ActivityActionsP
           Open task
         </ActionButton>
       ) : null}
+      <ActionButton variant="muted" disabled={archiving} onClick={() => onArchive(activity.id)}>
+        Mark read
+      </ActionButton>
       {accept.isError ? <ActionError>Could not accept the task.</ActionError> : null}
     </ActionRow>
   );
@@ -280,7 +294,7 @@ function TaskProposalActions({ activity, onArchive, archiving }: ActivityActions
         Review & create
       </ActionButton>
       <ActionButton variant="muted" disabled={archiving} onClick={() => onArchive(activity.id)}>
-        Dismiss
+        Mark read
       </ActionButton>
     </ActionRow>
   );
@@ -322,7 +336,7 @@ function TaskTemplateProposalActions({ activity, onArchive, archiving }: Activit
         Review & create
       </ActionButton>
       <ActionButton variant="muted" disabled={archiving} onClick={() => onArchive(activity.id)}>
-        Dismiss
+        Mark read
       </ActionButton>
     </ActionRow>
   );
@@ -360,7 +374,7 @@ function RunTemplateProposalActions({ activity, onArchive, archiving }: Activity
         {runTemplateNow.isPending ? "Running…" : "Run template"}
       </ActionButton>
       <ActionButton variant="muted" disabled={archiving} onClick={() => onArchive(activity.id)}>
-        Dismiss
+        Mark read
       </ActionButton>
       {error ? <ActionError>{error}</ActionError> : null}
     </ActionRow>
@@ -405,6 +419,13 @@ function RunCommandProposalActions({ activity, onArchive, archiving }: ActivityA
             <ActionButton variant="muted" type="button" onClick={() => setConfirming(false)}>
               Cancel
             </ActionButton>
+            <ActionButton
+              variant="muted"
+              disabled={archiving}
+              onClick={() => onArchive(activity.id)}
+            >
+              Mark read
+            </ActionButton>
           </ActionRow>
         </>
       ) : (
@@ -413,7 +434,7 @@ function RunCommandProposalActions({ activity, onArchive, archiving }: ActivityA
             Run command
           </ActionButton>
           <ActionButton variant="muted" disabled={archiving} onClick={() => onArchive(activity.id)}>
-            Dismiss
+            Mark read
           </ActionButton>
         </ActionRow>
       )}
