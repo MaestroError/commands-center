@@ -89,6 +89,32 @@ async function readFirstEvent(url: string): Promise<string> {
   return decoder.decode(value ?? new Uint8Array());
 }
 
+async function readUntilText(url: string, expected: string): Promise<string> {
+  const controller = new AbortController();
+  const response = await fetch(url, {
+    headers: { Accept: "text/event-stream" },
+    signal: controller.signal,
+  });
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  let content = "";
+
+  while (!content.includes(expected)) {
+    const { done, value } = (await reader.read()) as {
+      done: boolean;
+      value: Uint8Array | undefined;
+    };
+    if (done) {
+      break;
+    }
+    content += decoder.decode(value, { stream: true });
+  }
+
+  controller.abort();
+  reader.cancel().catch(() => {});
+  return content;
+}
+
 describe("server-sent event routes", () => {
   it("streams workspace watch events for a specialist", async () => {
     const testDb = await createTestDatabase();
@@ -127,6 +153,31 @@ describe("server-sent event routes", () => {
     expect(workspaceWatchService.subscribe).toHaveBeenCalled();
   });
 
+  it("emits a connected event when a conversation stream is ready", async () => {
+    const testDb = await createTestDatabase();
+    disposers.push(() => testDb.cleanup());
+    const agentService = createSpecialistService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: opencodeService(),
+    });
+    const agent = await agentService.create({
+      name: "Connected",
+      role: "chat",
+      instructions: "Exist.",
+      defaultModel: "openai/gpt-4.1",
+      capabilities: {},
+    });
+    const conversationId = await insertConversation(testDb.client.db, agent.id);
+    const port = await bootServer(testDb, {});
+
+    const chunk = await readFirstEvent(
+      `http://127.0.0.1:${port}/api/conversations/${conversationId}/events`,
+    );
+
+    expect(chunk).toContain('"type":"connected"');
+  });
+
   it("streams opencode and live-request events for a conversation", async () => {
     const testDb = await createTestDatabase();
     disposers.push(() => testDb.cleanup());
@@ -158,8 +209,9 @@ describe("server-sent event routes", () => {
       liveRequestService: liveRequestService as never,
     });
 
-    const chunk = await readFirstEvent(
+    const chunk = await readUntilText(
       `http://127.0.0.1:${port}/api/conversations/${conversationId}/events`,
+      "message.updated",
     );
     expect(chunk).toContain("message.updated");
     expect(liveRequestService.subscribe).toHaveBeenCalled();

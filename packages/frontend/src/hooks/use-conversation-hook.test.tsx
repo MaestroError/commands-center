@@ -136,11 +136,20 @@ function noPendingInteractions(): PendingInteractions {
   return { permissions: [], question: null, liveRequests: [] };
 }
 
-async function* emptyEvents(): AsyncGenerator<ChatEvent> {}
+function waitForAbort(signal: AbortSignal): Promise<void> {
+  if (signal.aborted) {
+    return Promise.resolve();
+  }
 
-async function* oneEvent(event: ChatEvent): AsyncGenerator<ChatEvent> {
+  return new Promise((resolve) => {
+    signal.addEventListener("abort", () => resolve(), { once: true });
+  });
+}
+
+async function* oneEvent(event: ChatEvent, signal: AbortSignal): AsyncGenerator<ChatEvent> {
   await Promise.resolve();
   yield event;
+  await waitForAbort(signal);
 }
 
 describe("useConversation", () => {
@@ -151,7 +160,9 @@ describe("useConversation", () => {
       data: makeAgent(),
       error: null,
     } as ReturnType<typeof useSpecialistQuery>);
-    vi.mocked(connectConversationEvents).mockImplementation(() => emptyEvents());
+    vi.mocked(connectConversationEvents).mockImplementation((_conversationId, signal) =>
+      oneEvent({ type: "connected", properties: {} }, signal),
+    );
     vi.mocked(getActiveConversation).mockResolvedValue(makeSnapshot());
     vi.mocked(getConversation).mockResolvedValue(makeConversation({ id: "conv-specific" }));
     vi.mocked(getPendingInteractions).mockResolvedValue(noPendingInteractions());
@@ -269,17 +280,20 @@ describe("useConversation", () => {
   });
 
   it("shows session errors from async prompt event failures", async () => {
-    vi.mocked(connectConversationEvents).mockImplementation(() =>
-      oneEvent({
-        type: "session.error",
-        properties: {
-          sessionID: "sess-1",
-          error: {
-            name: "APIError",
-            message: "Provider rejected the attachment.",
+    vi.mocked(connectConversationEvents).mockImplementation((_conversationId, signal) =>
+      oneEvent(
+        {
+          type: "session.error",
+          properties: {
+            sessionID: "sess-1",
+            error: {
+              name: "APIError",
+              message: "Provider rejected the attachment.",
+            },
           },
         },
-      }),
+        signal,
+      ),
     );
     const queryClient = createQueryClient();
     const { result } = renderHook(() => useConversation("writer"), {
@@ -290,6 +304,71 @@ describe("useConversation", () => {
       expect(result.current.sendError).toBe("Provider rejected the attachment.");
     });
     expect(result.current.sessionStatus).toEqual({ type: "idle" });
+  });
+
+  it("resumes event delivery after applying a live request on a closed stream", async () => {
+    let closeFirstStream: (() => void) | undefined;
+    const firstStreamClosed = new Promise<void>((resolve) => {
+      closeFirstStream = resolve;
+    });
+    let connectionAttempt = 0;
+
+    vi.mocked(connectConversationEvents).mockImplementation((_conversationId, signal) => {
+      connectionAttempt += 1;
+
+      if (connectionAttempt === 1) {
+        return (async function* (): AsyncGenerator<ChatEvent> {
+          yield {
+            type: "cc.live_request.opened",
+            properties: { request: makeLiveRequest() },
+          };
+          await firstStreamClosed;
+        })();
+      }
+
+      return oneEvent({ type: "connected", properties: {} }, signal);
+    });
+    vi.mocked(getConversation).mockResolvedValue(
+      makeConversation({
+        messages: [
+          {
+            id: "assistant-after-apply",
+            conversationId: "conv-1",
+            role: "assistant",
+            content: "Applied successfully.",
+            parts: [{ id: "part-after-apply", type: "text", text: "Applied successfully." }],
+            attachments: [],
+            createdAt: "2026-01-01T00:01:00.000Z",
+            updatedAt: "2026-01-01T00:01:00.000Z",
+          },
+        ],
+      }),
+    );
+
+    const queryClient = createQueryClient();
+    const { result } = renderHook(() => useConversation("writer"), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    await waitFor(() => {
+      expect(result.current.liveRequests).toHaveLength(1);
+    });
+
+    await act(async () => {
+      closeFirstStream?.();
+      await result.current.resolveLiveRequest("live-1", "approve", {});
+    });
+
+    expect(resolveLiveRequest).toHaveBeenCalledWith("conv-1", "live-1", {
+      action: "approve",
+      values: {},
+    });
+    await waitFor(() => {
+      expect(connectConversationEvents).toHaveBeenCalledTimes(2);
+    });
+    expect(result.current.conversation?.messages).toContainEqual(
+      expect.objectContaining({ id: "assistant-after-apply" }),
+    );
   });
 
   it("forwards conversation actions to the API layer", async () => {
@@ -357,18 +436,21 @@ describe("useConversation", () => {
 
   it("auto-replies to permission events when auto approve is enabled", async () => {
     window.localStorage.setItem("cc-specialist-auto-approve-writer", "true");
-    vi.mocked(connectConversationEvents).mockImplementation(() =>
-      oneEvent({
-        type: "permission.asked",
-        properties: {
-          id: "perm-1",
-          sessionID: "sess-1",
-          permission: "bash",
-          patterns: [],
-          metadata: {},
-          always: [],
+    vi.mocked(connectConversationEvents).mockImplementation((_conversationId, signal) =>
+      oneEvent(
+        {
+          type: "permission.asked",
+          properties: {
+            id: "perm-1",
+            sessionID: "sess-1",
+            permission: "bash",
+            patterns: [],
+            metadata: {},
+            always: [],
+          },
         },
-      }),
+        signal,
+      ),
     );
     const queryClient = createQueryClient();
     const { result } = renderHook(() => useConversation("writer"), {

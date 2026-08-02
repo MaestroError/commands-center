@@ -88,6 +88,8 @@ export function registerConversationEventRoutes(server: AppServer, context: Runt
           }
         },
       });
+
+      writeSseEvent(raw, { type: "connected", properties: {} });
     },
   );
 }
