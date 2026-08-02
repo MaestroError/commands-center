@@ -12,4 +12,8 @@ describe("theme CSS values", () => {
   it("converts rgba values to Monaco-compatible eight-digit hex", () => {
     expect(toHexColor("rgba(37, 99, 235, 0.16)")).toBe("#2563eb29");
   });
+
+  it("expands shorthand hex to Monaco-compatible six-digit hex", () => {
+    expect(toHexColor("#fff")).toBe("#ffffff");
+  });
 });

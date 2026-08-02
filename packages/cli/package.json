@@ -1,6 +1,6 @@
 {
   "name": "commandscenter",
-  "version": "0.27.3",
+  "version": "0.27.4",
   "type": "module",
   "description": "Single-user AI specialist management — install, run, done.",
   "license": "Apache-2.0",

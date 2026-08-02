@@ -8,6 +8,10 @@ export function readThemeCssValue(variableName: `--${string}`): string {
 }
 
 export function toHexColor(value: string): string {
+  if (/^#[\da-f]{3}$/i.test(value)) {
+    return `#${[...value.slice(1)].map((channel) => channel.repeat(2)).join("")}`;
+  }
+
   if (value.startsWith("#")) {
     return value;
   }
