@@ -89,6 +89,49 @@ async function readFirstEvent(url: string): Promise<string> {
   return decoder.decode(value ?? new Uint8Array());
 }
 
+async function readUntilText(url: string, expected: string): Promise<string> {
+  const controller = new AbortController();
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, 5_000);
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+
+  try {
+    const response = await fetch(url, {
+      headers: { Accept: "text/event-stream" },
+      signal: controller.signal,
+    });
+    if (!response.body) {
+      throw new Error("SSE response has no body.");
+    }
+
+    reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let content = "";
+
+    while (!content.includes(expected)) {
+      const { done, value } = await reader.read();
+      if (done) {
+        throw new Error(`SSE stream ended before emitting ${expected}.`);
+      }
+      content += decoder.decode(value, { stream: true });
+    }
+
+    return content;
+  } catch (error) {
+    if (timedOut) {
+      throw new Error(`Timed out waiting for SSE text: ${expected}.`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+    controller.abort();
+    await reader?.cancel().catch(() => {});
+  }
+}
+
 describe("server-sent event routes", () => {
   it("streams workspace watch events for a specialist", async () => {
     const testDb = await createTestDatabase();
@@ -127,6 +170,41 @@ describe("server-sent event routes", () => {
     expect(workspaceWatchService.subscribe).toHaveBeenCalled();
   });
 
+  it("emits connected before synchronous conversation source events", async () => {
+    const testDb = await createTestDatabase();
+    disposers.push(() => testDb.cleanup());
+    const agentService = createSpecialistService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: opencodeService(),
+    });
+    const agent = await agentService.create({
+      name: "Connected",
+      role: "chat",
+      instructions: "Exist.",
+      defaultModel: "openai/gpt-4.1",
+      capabilities: {},
+    });
+    const conversationId = await insertConversation(testDb.client.db, agent.id);
+    const openCodeEventService = {
+      subscribe: vi.fn((opts: { onEvent: (event: unknown) => void }) => {
+        opts.onEvent({ type: "message.updated", properties: { sessionID: "s" } });
+      }),
+    };
+    const port = await bootServer(testDb, {
+      openCodeEventService: openCodeEventService as never,
+    });
+
+    const chunk = await readUntilText(
+      `http://127.0.0.1:${port}/api/conversations/${conversationId}/events`,
+      "message.updated",
+    );
+
+    expect(chunk.indexOf('"type":"connected"')).toBeLessThan(
+      chunk.indexOf('"type":"message.updated"'),
+    );
+  });
+
   it("streams opencode and live-request events for a conversation", async () => {
     const testDb = await createTestDatabase();
     disposers.push(() => testDb.cleanup());
@@ -158,8 +236,9 @@ describe("server-sent event routes", () => {
       liveRequestService: liveRequestService as never,
     });
 
-    const chunk = await readFirstEvent(
+    const chunk = await readUntilText(
       `http://127.0.0.1:${port}/api/conversations/${conversationId}/events`,
+      "message.updated",
     );
     expect(chunk).toContain("message.updated");
     expect(liveRequestService.subscribe).toHaveBeenCalled();

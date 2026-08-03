@@ -102,6 +102,9 @@ export const initialState: ConversationState = {
   sendError: null,
 };
 
+const INITIAL_SSE_RECONNECT_DELAY_MS = 250;
+const MAX_SSE_RECONNECT_DELAY_MS = 5_000;
+
 /**
  * Build the parts map from hydrated messages so that parts from the initial
  * fetch are available immediately without waiting for SSE.
@@ -433,7 +436,6 @@ export type UseConversationReturn = {
 export function useConversation(agentSlug: string, conversationId?: string): UseConversationReturn {
   const [state, dispatch] = useReducer(conversationReducer, initialState);
   const sseAbortRef = useRef<AbortController | null>(null);
-  const conversationIdRef = useRef<string | null>(null);
 
   // Auto-approve state with localStorage persistence
   const [autoApprove, setAutoApproveState] = useState(() => {
@@ -495,86 +497,111 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
 
   // 3. Manage SSE connection
   const activeConversationId = state.conversation?.id ?? null;
+  const activeAgentId = agent?.id;
 
   useEffect(() => {
-    if (!activeConversationId) return;
-    if (conversationIdRef.current === activeConversationId && sseAbortRef.current) return;
+    if (!activeConversationId || !activeAgentId) return;
 
-    // Close previous connection
     sseAbortRef.current?.abort();
 
     const controller = new AbortController();
     sseAbortRef.current = controller;
-    conversationIdRef.current = activeConversationId;
+
+    const hydratePendingInteractions = (pending: PendingInteractions): void => {
+      if (controller.signal.aborted) return;
+
+      const permissionsToSurface: typeof pending.permissions = [];
+      if (autoApproveRef.current) {
+        for (const permission of pending.permissions) {
+          void apiReplyPermission(activeConversationId, permission.id, "once").catch(() => {
+            if (controller.signal.aborted) return;
+            dispatch({
+              type: "SSE_EVENT",
+              event: { type: "permission.asked", properties: permission },
+            });
+          });
+        }
+      } else {
+        permissionsToSurface.push(...pending.permissions);
+      }
+
+      dispatch({
+        type: "HYDRATE_PENDING",
+        pending: { ...pending, permissions: permissionsToSurface },
+      });
+    };
 
     void (async () => {
-      try {
-        // Rehydrate anything already blocking this conversation on the user
-        // (permission/question/live request) — the SSE stream only delivers
-        // events fired while a browser tab is subscribed, so navigating away
-        // and back (or a page reload) would otherwise strand the prompt.
-        // Fired right as the stream subscribes below rather than awaited
-        // first, so we don't open a gap where an event fires before we're
-        // listening; HYDRATE_PENDING merges (never drops) live SSE events.
-        void getPendingInteractions(activeConversationId)
-          .then((pending) => {
+      void getPendingInteractions(activeConversationId)
+        .then(hydratePendingInteractions)
+        .catch(() => {
+          // The live stream remains the fallback for interactions raised after this point.
+        });
+
+      let connectionAttempt = 0;
+      let reconnectDelay = INITIAL_SSE_RECONNECT_DELAY_MS;
+
+      while (!controller.signal.aborted) {
+        connectionAttempt += 1;
+
+        try {
+          let connectionReady = false;
+
+          for await (const event of connectConversationEvents(
+            activeConversationId,
+            controller.signal,
+          )) {
             if (controller.signal.aborted) return;
 
-            // Auto-approve rehydrated permissions the same way the live path
-            // does — but keep them out of state only once the reply is known to
-            // have been accepted. If a reply fails, surface the permission so
-            // the operator can act on it instead of it silently vanishing.
-            const permissionsToSurface: typeof pending.permissions = [];
-            if (autoApproveRef.current) {
-              for (const permission of pending.permissions) {
-                void apiReplyPermission(activeConversationId, permission.id, "once").catch(() => {
+            if (event.type === "connected") {
+              if (connectionReady) continue;
+              connectionReady = true;
+              reconnectDelay = INITIAL_SSE_RECONNECT_DELAY_MS;
+
+              if (connectionAttempt > 1) {
+                try {
+                  const [detail, pending] = await Promise.all([
+                    getConversation(activeAgentId, activeConversationId),
+                    getPendingInteractions(activeConversationId),
+                  ]);
+
                   if (controller.signal.aborted) return;
-                  dispatch({
-                    type: "SSE_EVENT",
-                    event: { type: "permission.asked", properties: permission },
-                  });
-                });
+                  dispatch({ type: "HYDRATE_DETAIL", detail });
+                  hydratePendingInteractions(pending);
+                } catch {
+                  if (controller.signal.aborted) return;
+                }
               }
-            } else {
-              permissionsToSurface.push(...pending.permissions);
+
+              continue;
             }
 
-            dispatch({
-              type: "HYDRATE_PENDING",
-              pending: { ...pending, permissions: permissionsToSurface },
-            });
-          })
-          .catch(() => {
-            // Best-effort rehydration — the SSE stream will still deliver
-            // any interactions raised from here on live.
-          });
-
-        for await (const event of connectConversationEvents(
-          activeConversationId,
-          controller.signal,
-        )) {
-          if (controller.signal.aborted) break;
-
-          // Auto-approve: if permission.asked and auto-approve is enabled, auto-reply
-          if (event.type === "permission.asked" && autoApproveRef.current) {
-            const requestId = (event.properties as { id?: string }).id;
-            if (requestId) {
-              void apiReplyPermission(activeConversationId, requestId, "once");
-              continue; // Don't dispatch to state — handled immediately
+            if (event.type === "permission.asked" && autoApproveRef.current) {
+              const requestId = (event.properties as { id?: string }).id;
+              if (requestId) {
+                void apiReplyPermission(activeConversationId, requestId, "once");
+                continue;
+              }
             }
+
+            dispatch({ type: "SSE_EVENT", event });
           }
-
-          dispatch({ type: "SSE_EVENT", event });
+        } catch {
+          if (controller.signal.aborted) return;
         }
-      } catch {
-        // Connection closed or aborted — expected when switching conversations
+
+        await waitForAbortableDelay(reconnectDelay, controller.signal);
+        reconnectDelay = Math.min(reconnectDelay * 2, MAX_SSE_RECONNECT_DELAY_MS);
       }
     })();
 
     return () => {
       controller.abort();
+      if (sseAbortRef.current === controller) {
+        sseAbortRef.current = null;
+      }
     };
-  }, [activeConversationId]);
+  }, [activeAgentId, activeConversationId]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -802,4 +829,22 @@ function upsertPermissionRequest(
 // "this prompt is gone" rather than a transient failure the user should retry.
 function isStaleRequestError(error: unknown): boolean {
   return error instanceof ApiRequestError && (error.status === 404 || error.status === 410);
+}
+
+function waitForAbortableDelay(delayMs: number, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve) => {
+    const timeout = setTimeout(finish, delayMs);
+
+    signal.addEventListener("abort", finish, { once: true });
+
+    function finish(): void {
+      clearTimeout(timeout);
+      signal.removeEventListener("abort", finish);
+      resolve();
+    }
+  });
 }

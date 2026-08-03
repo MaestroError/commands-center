@@ -64,6 +64,8 @@ export function registerConversationEventRoutes(server: AppServer, context: Runt
         { once: true },
       );
 
+      writeSseEvent(raw, { type: "connected", properties: {} });
+
       // Subscribe to OpenCode events
       context.openCodeEventService.subscribe({
         directory: loaded.agent.workspace_path,
