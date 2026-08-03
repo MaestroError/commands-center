@@ -559,14 +559,18 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
               reconnectDelay = INITIAL_SSE_RECONNECT_DELAY_MS;
 
               if (connectionAttempt > 1) {
-                const [detail, pending] = await Promise.all([
-                  getConversation(activeAgentId, activeConversationId),
-                  getPendingInteractions(activeConversationId),
-                ]);
+                try {
+                  const [detail, pending] = await Promise.all([
+                    getConversation(activeAgentId, activeConversationId),
+                    getPendingInteractions(activeConversationId),
+                  ]);
 
-                if (controller.signal.aborted) return;
-                dispatch({ type: "HYDRATE_DETAIL", detail });
-                hydratePendingInteractions(pending);
+                  if (controller.signal.aborted) return;
+                  dispatch({ type: "HYDRATE_DETAIL", detail });
+                  hydratePendingInteractions(pending);
+                } catch {
+                  if (controller.signal.aborted) return;
+                }
               }
 
               continue;

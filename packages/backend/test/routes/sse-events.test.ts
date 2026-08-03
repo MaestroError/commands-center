@@ -91,28 +91,45 @@ async function readFirstEvent(url: string): Promise<string> {
 
 async function readUntilText(url: string, expected: string): Promise<string> {
   const controller = new AbortController();
-  const response = await fetch(url, {
-    headers: { Accept: "text/event-stream" },
-    signal: controller.signal,
-  });
-  const reader = response.body!.getReader();
-  const decoder = new TextDecoder();
-  let content = "";
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, 5_000);
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
 
-  while (!content.includes(expected)) {
-    const { done, value } = (await reader.read()) as {
-      done: boolean;
-      value: Uint8Array | undefined;
-    };
-    if (done) {
-      break;
+  try {
+    const response = await fetch(url, {
+      headers: { Accept: "text/event-stream" },
+      signal: controller.signal,
+    });
+    if (!response.body) {
+      throw new Error("SSE response has no body.");
     }
-    content += decoder.decode(value, { stream: true });
-  }
 
-  controller.abort();
-  reader.cancel().catch(() => {});
-  return content;
+    reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let content = "";
+
+    while (!content.includes(expected)) {
+      const { done, value } = await reader.read();
+      if (done) {
+        throw new Error(`SSE stream ended before emitting ${expected}.`);
+      }
+      content += decoder.decode(value, { stream: true });
+    }
+
+    return content;
+  } catch (error) {
+    if (timedOut) {
+      throw new Error(`Timed out waiting for SSE text: ${expected}.`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+    controller.abort();
+    await reader?.cancel().catch(() => {});
+  }
 }
 
 describe("server-sent event routes", () => {
@@ -153,7 +170,7 @@ describe("server-sent event routes", () => {
     expect(workspaceWatchService.subscribe).toHaveBeenCalled();
   });
 
-  it("emits a connected event when a conversation stream is ready", async () => {
+  it("emits connected before synchronous conversation source events", async () => {
     const testDb = await createTestDatabase();
     disposers.push(() => testDb.cleanup());
     const agentService = createSpecialistService({
@@ -169,13 +186,23 @@ describe("server-sent event routes", () => {
       capabilities: {},
     });
     const conversationId = await insertConversation(testDb.client.db, agent.id);
-    const port = await bootServer(testDb, {});
+    const openCodeEventService = {
+      subscribe: vi.fn((opts: { onEvent: (event: unknown) => void }) => {
+        opts.onEvent({ type: "message.updated", properties: { sessionID: "s" } });
+      }),
+    };
+    const port = await bootServer(testDb, {
+      openCodeEventService: openCodeEventService as never,
+    });
 
-    const chunk = await readFirstEvent(
+    const chunk = await readUntilText(
       `http://127.0.0.1:${port}/api/conversations/${conversationId}/events`,
+      "message.updated",
     );
 
-    expect(chunk).toContain('"type":"connected"');
+    expect(chunk.indexOf('"type":"connected"')).toBeLessThan(
+      chunk.indexOf('"type":"message.updated"'),
+    );
   });
 
   it("streams opencode and live-request events for a conversation", async () => {

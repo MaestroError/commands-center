@@ -371,6 +371,55 @@ describe("useConversation", () => {
     );
   });
 
+  it("keeps a reconnected stream active when state reconciliation fails", async () => {
+    let connectionAttempt = 0;
+
+    vi.mocked(connectConversationEvents).mockImplementation((_conversationId, signal) => {
+      connectionAttempt += 1;
+
+      if (connectionAttempt === 1) {
+        return (async function* (): AsyncGenerator<ChatEvent> {
+          await Promise.resolve();
+          yield { type: "connected", properties: {} };
+        })();
+      }
+
+      return (async function* (): AsyncGenerator<ChatEvent> {
+        yield { type: "connected", properties: {} };
+        yield {
+          type: "message.updated",
+          properties: {
+            sessionID: "sess-1",
+            message: {
+              id: "assistant-after-failed-refresh",
+              conversationId: "",
+              role: "assistant",
+              content: "",
+              parts: [],
+              attachments: [],
+              createdAt: "2026-01-01T00:02:00.000Z",
+              updatedAt: "2026-01-01T00:02:00.000Z",
+            },
+          },
+        };
+        await waitForAbort(signal);
+      })();
+    });
+    vi.mocked(getConversation).mockRejectedValue(new Error("refresh failed"));
+
+    const queryClient = createQueryClient();
+    const { result } = renderHook(() => useConversation("writer"), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    await waitFor(() => {
+      expect(result.current.conversation?.messages).toContainEqual(
+        expect.objectContaining({ id: "assistant-after-failed-refresh" }),
+      );
+    });
+    expect(connectConversationEvents).toHaveBeenCalledTimes(2);
+  });
+
   it("forwards conversation actions to the API layer", async () => {
     const queryClient = createQueryClient();
     const { result } = renderHook(() => useConversation("writer"), {
