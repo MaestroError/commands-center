@@ -7,6 +7,7 @@ import { IntegrationsPage } from "./IntegrationsPage";
 import { useSpecialistMutations, useSpecialistsQuery } from "@/hooks/use-specialists-query";
 import { useMcpServerMutations, useMcpServersQuery } from "@/hooks/use-mcp-servers-query";
 import { useSecretsQuery } from "@/hooks/use-secrets-query";
+import { useActiveTaskRunsQuery } from "@/hooks/use-tasks-query";
 
 vi.mock("@/hooks/use-specialists-query", () => ({
   useSpecialistsQuery: vi.fn(),
@@ -22,9 +23,14 @@ vi.mock("@/hooks/use-secrets-query", () => ({
   useSecretsQuery: vi.fn(),
 }));
 
+vi.mock("@/hooks/use-tasks-query", () => ({
+  useActiveTaskRunsQuery: vi.fn(),
+}));
+
 const createMutateAsync = vi.fn();
 const updateMutateAsync = vi.fn();
 const setEnabledMutateAsync = vi.fn();
+const activateMutateAsync = vi.fn();
 const removeMutateAsync = vi.fn();
 const startAuthMutateAsync = vi.fn();
 const completeAuthMutateAsync = vi.fn();
@@ -68,6 +74,7 @@ beforeEach(() => {
   createMutateAsync.mockReset();
   updateMutateAsync.mockReset();
   setEnabledMutateAsync.mockReset();
+  activateMutateAsync.mockReset();
   removeMutateAsync.mockReset();
   startAuthMutateAsync.mockReset();
   completeAuthMutateAsync.mockReset();
@@ -96,6 +103,7 @@ beforeEach(() => {
     create: { mutateAsync: createMutateAsync, isPending: false },
     update: { mutateAsync: updateMutateAsync, isPending: false },
     setEnabled: { mutateAsync: setEnabledMutateAsync, isPending: false },
+    activate: { mutateAsync: activateMutateAsync, isPending: false, error: null },
     remove: { mutateAsync: removeMutateAsync, isPending: false },
     startAuth: { mutateAsync: startAuthMutateAsync, isPending: false },
     completeAuth: { mutateAsync: completeAuthMutateAsync, isPending: false },
@@ -109,6 +117,8 @@ beforeEach(() => {
     isLoading: false,
     error: null,
   } as never);
+
+  vi.mocked(useActiveTaskRunsQuery).mockReturnValue({ data: [] } as never);
 
   vi.mocked(useSpecialistsQuery).mockReturnValue({
     data: [
@@ -172,11 +182,11 @@ describe("IntegrationsPage", () => {
     expect(screen.queryByText("Built-in MCP")).not.toBeInTheDocument();
   });
 
-  it("activates Composio with API key using the predefined header", async () => {
+  it("saves Composio disabled with the predefined API key header", async () => {
     createMutateAsync.mockResolvedValue({
       id: "mcp-composio",
       name: "my-composio",
-      enabled: true,
+      enabled: false,
       config: {
         url: "https://connect.composio.dev/mcp",
         transport: "streamable-http",
@@ -200,11 +210,11 @@ describe("IntegrationsPage", () => {
     fireEvent.change(screen.getByLabelText("Composio API key"), {
       target: { value: "secret-key" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Activate Composio" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save Composio" }));
 
     await waitFor(() => {
       expect(createMutateAsync).toHaveBeenCalledWith({
-        enabled: true,
+        enabled: false,
         name: "my-composio",
         config: {
           url: "https://connect.composio.dev/mcp",
@@ -214,6 +224,61 @@ describe("IntegrationsPage", () => {
         },
       });
     });
+    expect(
+      screen.getByText(
+        "Composio API key saved. Activate Composio when you are ready to restart the AI engine.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("lets the user cancel a Composio restart and activate later", async () => {
+    mockConfiguredComposio({ enabled: false, requiresEngineRestart: true });
+    vi.mocked(useActiveTaskRunsQuery).mockReturnValue({
+      data: [{ status: "running" }, { status: "running" }],
+    } as never);
+    activateMutateAsync.mockResolvedValue({ name: "composio" });
+
+    const user = userEvent.setup();
+    render(<IntegrationsPage />);
+
+    await user.click(screen.getByRole("button", { name: "Activate" }));
+    expect(
+      screen.getByRole("heading", { name: "Restart the AI engine to activate Composio?" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/2 task runs are currently active/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(activateMutateAsync).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "Activate" }));
+    await user.click(screen.getByRole("button", { name: "Restart and activate" }));
+
+    await waitFor(() => {
+      expect(activateMutateAsync).toHaveBeenCalledWith({
+        id: "mcp-composio",
+        restartEngine: true,
+      });
+    });
+  });
+
+  it("activates Composio without prompting when the saved key is already loaded", async () => {
+    mockConfiguredComposio({ enabled: false, requiresEngineRestart: false });
+    activateMutateAsync.mockResolvedValue({ name: "composio" });
+
+    const user = userEvent.setup();
+    render(<IntegrationsPage />);
+
+    await user.click(screen.getByRole("button", { name: "Activate" }));
+
+    await waitFor(() => {
+      expect(activateMutateAsync).toHaveBeenCalledWith({
+        id: "mcp-composio",
+        restartEngine: false,
+      });
+    });
+    expect(
+      screen.queryByRole("heading", { name: "Restart the AI engine to activate Composio?" }),
+    ).not.toBeInTheDocument();
   });
 
   it("renders MCP server cards and toggles enabled state", async () => {
@@ -1102,3 +1167,33 @@ describe("IntegrationsPage", () => {
     await waitFor(() => expect(removeMutateAsync).toHaveBeenCalledWith({ id: "composio-1" }));
   });
 });
+
+function mockConfiguredComposio(options: {
+  enabled: boolean;
+  requiresEngineRestart: boolean;
+}): void {
+  vi.mocked(useMcpServersQuery).mockReturnValue({
+    data: [
+      {
+        id: "mcp-composio",
+        name: "composio",
+        enabled: options.enabled,
+        config: {
+          url: "https://connect.composio.dev/mcp",
+          transport: "streamable-http",
+          authMethod: "headers",
+          headers: [{ key: "x-consumer-api-key", value: "{env:CC_MCP_COMPOSIO_API_KEY}" }],
+        },
+        missingSecrets: [],
+        requiresEngineRestart: options.requiresEngineRestart,
+        runtimeStatus: { status: options.enabled ? "connected" : "disabled" },
+        tools: [],
+        createdAt: "2026-04-22T10:00:00.000Z",
+        updatedAt: "2026-04-22T10:00:00.000Z",
+      },
+    ],
+    isLoading: false,
+    error: null,
+    refetch: vi.fn(),
+  } as never);
+}

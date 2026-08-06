@@ -689,6 +689,8 @@ export {
   type UpdateSystemUpdatePreferencesInput,
 } from "./system.js";
 export {
+  MCP_ENGINE_RESTART_REQUIRED_REASON,
+  activateMcpServerInputSchema,
   createMcpServerInputSchema,
   mcpAuthRemoveResultSchema,
   mcpAuthStartResultSchema,
@@ -705,6 +707,7 @@ export {
   mcpTransportSchema,
   setMcpServerEnabledInputSchema,
   updateMcpServerInputSchema,
+  type ActivateMcpServerInput,
   type CreateMcpServerInput,
   type McpAuthRemoveResult,
   type McpAuthStartResult,

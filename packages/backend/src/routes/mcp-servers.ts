@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 
 import {
+  activateMcpServerInputSchema,
   createMcpServerInputSchema,
   setMcpServerEnabledInputSchema,
   updateMcpServerInputSchema,
@@ -69,6 +70,7 @@ export function registerMcpServerRoutes(server: AppServer, context: RuntimeConte
     config: context.config,
     opencodeService: context.opencodeService,
     secretService: context.secretService,
+    orchestrator: context.orchestrator,
   });
 
   app.get("/api/mcp-servers", async () => service.list());
@@ -105,6 +107,17 @@ export function registerMcpServerRoutes(server: AppServer, context: RuntimeConte
       },
     },
     async (request) => service.setEnabled(request.params.mcpServerId, request.body.enabled),
+  );
+
+  app.post(
+    "/api/mcp-servers/:mcpServerId/activate",
+    {
+      schema: {
+        params: mcpServerParamsSchema,
+        body: activateMcpServerInputSchema,
+      },
+    },
+    async (request) => service.activate(request.params.mcpServerId, request.body),
   );
 
   app.post(

@@ -50,12 +50,19 @@ export const mcpAuthRemoveResultSchema = z.object({
   success: z.literal(true),
 });
 
+export const MCP_ENGINE_RESTART_REQUIRED_REASON = "engine_restart_required";
+
+export const activateMcpServerInputSchema = z.object({
+  restartEngine: z.boolean().default(false),
+});
+
 export const mcpServerSchema = z.object({
   id: z.string().min(1),
   name: z.string().trim().min(1),
   enabled: z.boolean(),
   config: mcpServerConfigSchema,
   missingSecrets: z.array(z.string().trim().min(1)).default([]),
+  requiresEngineRestart: z.boolean().default(false),
   runtimeStatus: mcpRuntimeStatusSchema.optional(),
   tools: mcpToolListSchema.default([]),
   createdAt: z.string().datetime(),
@@ -80,6 +87,7 @@ export const setMcpServerEnabledInputSchema = z.object({
 });
 
 export type CreateMcpServerInput = z.infer<typeof createMcpServerInputSchema>;
+export type ActivateMcpServerInput = z.infer<typeof activateMcpServerInputSchema>;
 export type McpAuthRemoveResult = z.infer<typeof mcpAuthRemoveResultSchema>;
 export type McpAuthStartResult = z.infer<typeof mcpAuthStartResultSchema>;
 export type McpAuthMethod = z.infer<typeof mcpAuthMethodSchema>;

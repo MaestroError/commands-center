@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   FileSaveConflictError,
+  McpEngineRestartRequiredError,
   WorkspaceSkillUploadRenameError,
   abortConversation,
   buildFileManagerDownloadHref,
@@ -11,6 +12,7 @@ import {
   archiveSpecialist,
   archiveTask,
   acceptTask,
+  activateMcpServer,
   authenticateMcp,
   closeTerminalSession,
   copySpecialistCustomToolToGlobal,
@@ -686,6 +688,55 @@ describe("void wrappers", () => {
 });
 
 describe("wrappers with bespoke error handling", () => {
+  it("activateMcpServer throws McpEngineRestartRequiredError when restart consent is needed", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      jsonResponse(
+        {
+          error: {
+            code: "conflict",
+            message: "Restart required.",
+            details: { reason: "engine_restart_required" },
+          },
+        },
+        { status: 409, statusText: "Conflict" },
+      ),
+    );
+
+    await expect(activateMcpServer("composio", { restartEngine: false })).rejects.toBeInstanceOf(
+      McpEngineRestartRequiredError,
+    );
+  });
+
+  it("activateMcpServer returns the activated server after restart consent", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      jsonResponse({
+        id: "composio",
+        name: "composio",
+        enabled: true,
+        config: {
+          transport: "streamable-http",
+          url: "https://connect.composio.dev/mcp",
+          authMethod: "headers",
+          headers: [],
+        },
+        missingSecrets: [],
+        requiresEngineRestart: false,
+        tools: [],
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      }),
+    );
+
+    await expect(activateMcpServer("composio", { restartEngine: true })).resolves.toMatchObject({
+      enabled: true,
+      requiresEngineRestart: false,
+    });
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/mcp-servers/composio/activate",
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ restartEngine: true }) }),
+    );
+  });
+
   it("saveFileManagerFileContent throws FileSaveConflictError on 409", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       jsonResponse(

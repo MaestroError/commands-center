@@ -170,6 +170,155 @@ describe("mcp server routes", () => {
     }
   });
 
+  it("requires restart consent before activating an MCP server with newer secrets", async () => {
+    const testDb = await createTestDatabase();
+    const orchestrator = createOrchestrator(new Date(0).toISOString());
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
+      orchestrator,
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+    });
+
+    try {
+      const created = await server.inject({
+        method: "POST",
+        url: "/api/mcp-servers",
+        payload: {
+          name: "composio",
+          enabled: false,
+          config: {
+            url: "https://connect.composio.dev/mcp",
+            transport: "streamable-http",
+            authMethod: "headers",
+            headers: [{ key: "x-consumer-api-key", value: "secret" }],
+          },
+        },
+      });
+      const createdBody = created.json<{ id: string }>();
+
+      const activated = await server.inject({
+        method: "POST",
+        url: `/api/mcp-servers/${createdBody.id}/activate`,
+        payload: { restartEngine: false },
+      });
+
+      expect(activated.statusCode).toBe(409);
+      expect(activated.json()).toMatchObject({
+        error: { code: "conflict", details: { reason: "engine_restart_required" } },
+      });
+      expect(orchestrator.restart).not.toHaveBeenCalled();
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("restarts the engine before activating an MCP server when consent is provided", async () => {
+    const testDb = await createTestDatabase();
+    const orchestrator = createOrchestrator(new Date(0).toISOString());
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
+      orchestrator,
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+    });
+
+    try {
+      const created = await server.inject({
+        method: "POST",
+        url: "/api/mcp-servers",
+        payload: {
+          name: "composio",
+          enabled: false,
+          config: {
+            url: "https://connect.composio.dev/mcp",
+            transport: "streamable-http",
+            authMethod: "headers",
+            headers: [{ key: "x-consumer-api-key", value: "secret" }],
+          },
+        },
+      });
+      const createdBody = created.json<{ id: string }>();
+
+      const activated = await server.inject({
+        method: "POST",
+        url: `/api/mcp-servers/${createdBody.id}/activate`,
+        payload: { restartEngine: true },
+      });
+
+      expect(activated.statusCode).toBe(200);
+      expect(activated.json()).toMatchObject({
+        enabled: true,
+        requiresEngineRestart: false,
+      });
+      expect(orchestrator.restart).toHaveBeenCalledWith("Activate MCP server 'composio'");
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("keeps an MCP server disabled when its approved engine restart fails", async () => {
+    const testDb = await createTestDatabase();
+    const orchestrator = createOrchestrator(new Date(0).toISOString());
+    orchestrator.restart.mockRejectedValueOnce(new Error("restart failed"));
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
+      orchestrator,
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+    });
+
+    try {
+      const created = await server.inject({
+        method: "POST",
+        url: "/api/mcp-servers",
+        payload: {
+          name: "composio",
+          enabled: false,
+          config: {
+            url: "https://connect.composio.dev/mcp",
+            transport: "streamable-http",
+            authMethod: "headers",
+            headers: [{ key: "x-consumer-api-key", value: "secret" }],
+          },
+        },
+      });
+      const createdBody = created.json<{ id: string }>();
+
+      const activated = await server.inject({
+        method: "POST",
+        url: `/api/mcp-servers/${createdBody.id}/activate`,
+        payload: { restartEngine: true },
+      });
+      const listed = await server.inject({ method: "GET", url: "/api/mcp-servers" });
+
+      expect(activated.statusCode).toBe(500);
+      expect(listed.json()).toEqual([
+        expect.objectContaining({ id: createdBody.id, enabled: false }),
+      ]);
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
   it("supports MCP auth lifecycle routes", async () => {
     const testDb = await createTestDatabase();
     const server = await createServer({
@@ -287,17 +436,24 @@ describe("mcp server routes", () => {
   });
 });
 
-function createOrchestrator() {
+function createOrchestrator(initialStartedAt = new Date().toISOString()) {
+  let startedAt = initialStartedAt;
+  const restart = vi.fn(() => {
+    startedAt = new Date(Date.now() + 1_000).toISOString();
+    return Promise.resolve();
+  });
+
   return {
     start: () => Promise.resolve(),
     stop: () => Promise.resolve(),
-    restart: () => Promise.resolve(),
+    restart,
     refreshHealth: () => Promise.resolve(true),
     getStatus: () => ({
       state: "healthy" as const,
       healthy: true,
       url: "http://127.0.0.1:4100",
       workspaceDir: "/tmp/workspace",
+      startedAt,
       restartCount: 0,
       maxRestarts: 3,
     }),

@@ -31,7 +31,8 @@ export function ComposioDialog(props: {
           <div>
             <h2 className="text-lg font-semibold text-text-primary">Connect Composio</h2>
             <p className="mt-1 text-sm text-text-secondary">
-              CC manages the endpoint and transport. Authenticate with your Composio API key.
+              CC manages the endpoint and transport. Save your Composio API key now, then activate
+              the integration when you are ready to restart the AI engine.
             </p>
           </div>
           <button
@@ -65,7 +66,8 @@ export function ComposioDialog(props: {
               value={apiKey}
             />
             <p className="mt-2 text-xs text-text-secondary">
-              Sent through the predefined <code>{COMPOSIO_API_KEY_HEADER}</code> header.
+              Get this from Composio For You → Settings → Sessions &amp; API Keys. CC sends it
+              through the predefined <code>{COMPOSIO_API_KEY_HEADER}</code> header.
             </p>
           </Field>
 
@@ -76,7 +78,7 @@ export function ComposioDialog(props: {
               Cancel
             </Button>
             <Button disabled={props.busy} type="submit">
-              {props.busy ? "Connecting..." : "Activate Composio"}
+              {props.busy ? "Saving..." : "Save Composio"}
             </Button>
           </div>
         </form>

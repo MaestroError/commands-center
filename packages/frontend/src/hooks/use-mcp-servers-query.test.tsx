@@ -3,6 +3,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/api", () => ({
+  activateMcpServer: vi.fn(),
   authenticateMcp: vi.fn(),
   completeMcpAuth: vi.fn(),
   createMcpServer: vi.fn(),
@@ -16,6 +17,7 @@ vi.mock("@/lib/api", () => ({
 }));
 
 import {
+  activateMcpServer,
   authenticateMcp,
   completeMcpAuth,
   createMcpServer,
@@ -49,6 +51,7 @@ function buildMcpServer(overrides: Partial<McpServer> = {}): McpServer {
       environment: {},
     },
     missingSecrets: [],
+    requiresEngineRestart: false,
     runtimeStatus: { status: "connected" },
     tools: [],
     createdAt: "2026-01-01T00:00:00.000Z",
@@ -84,6 +87,7 @@ describe("useMcpServersQuery", () => {
     const refreshedServers = [buildMcpServer()];
 
     vi.mocked(createMcpServer).mockResolvedValue(buildMcpServer());
+    vi.mocked(activateMcpServer).mockResolvedValue(buildMcpServer());
     vi.mocked(refreshMcpServers).mockResolvedValue(refreshedServers);
     vi.mocked(updateMcpServer).mockResolvedValue(buildMcpServer({ name: "Updated" }));
     vi.mocked(setMcpServerEnabled).mockResolvedValue(buildMcpServer());
@@ -122,6 +126,7 @@ describe("useMcpServersQuery", () => {
       await result.current.refresh.mutateAsync();
       await result.current.update.mutateAsync({ id: "server-1", input: updateInput });
       await result.current.setEnabled.mutateAsync({ id: "server-1", enabled: true });
+      await result.current.activate.mutateAsync({ id: "server-1", restartEngine: true });
       await result.current.remove.mutateAsync({ id: "server-1" });
       await result.current.startAuth.mutateAsync({ id: "server-1" });
       await result.current.authenticate.mutateAsync({ id: "server-1" });
@@ -133,6 +138,7 @@ describe("useMcpServersQuery", () => {
     expect(refreshMcpServers).toHaveBeenCalled();
     expect(updateMcpServer).toHaveBeenCalledWith("server-1", updateInput);
     expect(setMcpServerEnabled).toHaveBeenCalledWith("server-1", true);
+    expect(activateMcpServer).toHaveBeenCalledWith("server-1", { restartEngine: true });
     expect(deleteMcpServer).toHaveBeenCalledWith("server-1");
     expect(startMcpAuth).toHaveBeenCalledWith("server-1");
     expect(authenticateMcp).toHaveBeenCalledWith("server-1");

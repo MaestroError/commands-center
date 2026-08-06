@@ -74,6 +74,7 @@ function makeMcpServer(overrides: Partial<McpServer> = {}): McpServer {
       headers: [],
     },
     missingSecrets: [],
+    requiresEngineRestart: false,
     runtimeStatus: { status: "connected" },
     tools: [{ id: "github_create_issue", name: "create_issue" }],
     createdAt: "2026-01-01T00:00:00.000Z",
