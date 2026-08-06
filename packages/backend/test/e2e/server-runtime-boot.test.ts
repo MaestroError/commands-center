@@ -260,7 +260,11 @@ describe("startServerRuntime opencode state dir", () => {
 
     const runtime = await startServerRuntime({
       cwd,
-      env: { NODE_ENV: "test", CC_LOG_LEVEL: "silent" },
+      env: {
+        NODE_ENV: "test",
+        CC_LOG_LEVEL: "silent",
+        NPM_CONFIG_CACHE: "/home/node/.npm",
+      },
       overrides: { host: "127.0.0.1", port: 0 },
       installSignalHandlers: false,
       createOrchestrator: (options) => {
@@ -275,6 +279,61 @@ describe("startServerRuntime opencode state dir", () => {
       // env (options.env here, which sets none).
       expect(childEnv["XDG_DATA_HOME"]).toBeUndefined();
       expect(childEnv["XDG_STATE_HOME"]).toBeUndefined();
+      expect(childEnv["NPM_CONFIG_CACHE"]).toBe("/home/node/.npm");
+    } finally {
+      await runtime.shutdownRuntime?.();
+    }
+  });
+});
+
+describe("startServerRuntime npm cache", () => {
+  it("injects the configured npm cache over an ambient value", async () => {
+    const cwd = await makeTempDir();
+    const cacheDir = join(cwd, ".cc", "npm-cache");
+    let capturedResolveEnv: (() => Promise<NodeJS.ProcessEnv>) | undefined;
+
+    const runtime = await startServerRuntime({
+      cwd,
+      env: {
+        NODE_ENV: "test",
+        CC_LOG_LEVEL: "silent",
+        CC_NPM_CACHE_DIR: cacheDir,
+        NPM_CONFIG_CACHE: "/home/node/.npm",
+      },
+      overrides: { host: "127.0.0.1", port: 0 },
+      installSignalHandlers: false,
+      createOrchestrator: (options) => {
+        capturedResolveEnv = options.resolveEnv;
+        return createFakeOrchestrator();
+      },
+    });
+
+    try {
+      const childEnv = await capturedResolveEnv!();
+      expect(childEnv["NPM_CONFIG_CACHE"]).toBe(cacheDir);
+    } finally {
+      await runtime.shutdownRuntime?.();
+    }
+  });
+
+  it("creates the configured npm cache directory", async () => {
+    const cwd = await makeTempDir();
+    const cacheDir = join(cwd, ".cc", "nested", "npm-cache");
+
+    const runtime = await startServerRuntime({
+      cwd,
+      env: {
+        NODE_ENV: "test",
+        CC_LOG_LEVEL: "silent",
+        CC_NPM_CACHE_DIR: cacheDir,
+      },
+      overrides: { host: "127.0.0.1", port: 0 },
+      installSignalHandlers: false,
+      createOrchestrator: () => createFakeOrchestrator(),
+    });
+
+    try {
+      await expect(stat(cacheDir)).resolves.toBeDefined();
     } finally {
       await runtime.shutdownRuntime?.();
     }

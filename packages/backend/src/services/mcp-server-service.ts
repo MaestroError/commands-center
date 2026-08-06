@@ -619,6 +619,7 @@ function renderConfigEntry(
       type: "local",
       command: serverConfig.command,
       enabled: row.enabled,
+      timeout: config.timeouts.mcpStdioMs,
       ...(Object.keys(serverConfig.environment).length > 0
         ? { environment: serverConfig.environment }
         : {}),

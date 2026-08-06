@@ -38,6 +38,10 @@ export function buildOpenCodeStateEnv(stateDir: string | undefined): NodeJS.Proc
   return env;
 }
 
+export function buildNpmCacheEnv(npmCacheDir: string | undefined): NodeJS.ProcessEnv {
+  return npmCacheDir ? { NPM_CONFIG_CACHE: npmCacheDir } : {};
+}
+
 /**
  * Creates the XDG root directories under `stateDir` so OpenCode can write into
  * them on first boot. No-op when `stateDir` is undefined. OpenCode also creates
@@ -53,4 +57,12 @@ export async function ensureOpenCodeStateDirs(stateDir: string | undefined): Pro
   );
 
   await Promise.all(directories.map((directory) => mkdir(directory, { recursive: true })));
+}
+
+export async function ensureNpmCacheDir(npmCacheDir: string | undefined): Promise<void> {
+  if (!npmCacheDir) {
+    return;
+  }
+
+  await mkdir(npmCacheDir, { recursive: true });
 }

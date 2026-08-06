@@ -424,10 +424,75 @@ describe("mcp-server-service", () => {
         type: "local",
         command: ["npx", "-y", "@modelcontextprotocol/server-filesystem", "/tmp/workspace"],
         enabled: true,
+        timeout: 120000,
         environment: {
           NODE_ENV: "{env:CC_MCP_FILESYSTEM_ENV_NODE_ENV}",
         },
       });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("renders the configured timeout on stdio MCP servers", async () => {
+    const testDb = await createTestDatabase();
+    const config = {
+      ...testDb.config,
+      timeouts: { ...testDb.config.timeouts, mcpStdioMs: 45_000 },
+    };
+    const service = createMcpServerService({
+      db: testDb.client.db,
+      config,
+      opencodeService: createMockOpenCodeService(),
+      secretService: createSecretService({ db: testDb.client.db, config }),
+    });
+
+    try {
+      await service.create({
+        name: "fetcher",
+        enabled: true,
+        config: {
+          transport: "stdio",
+          command: ["npx", "-y", "fetcher-mcp"],
+          environment: {},
+        },
+      });
+
+      const rendered = JSON.parse(
+        await readFile(join(testDb.config.paths.workspaceDir, "opencode.jsonc"), "utf8"),
+      ) as { mcp: Record<string, Record<string, unknown>> };
+
+      expect(rendered.mcp["fetcher"]?.["timeout"]).toBe(45_000);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("keeps the stdio timeout out of portable MCP configuration", async () => {
+    const testDb = await createTestDatabase();
+    const service = createMcpServerService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService(),
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+    });
+
+    try {
+      await service.create({
+        name: "fetcher",
+        enabled: true,
+        config: {
+          transport: "stdio",
+          command: ["npx", "-y", "fetcher-mcp"],
+          environment: {},
+        },
+      });
+
+      const portable = JSON.parse(
+        await readFile(join(testDb.config.paths.subdirectories.configuration, "mcp.json"), "utf8"),
+      ) as { servers: Array<{ config: Record<string, unknown> }> };
+
+      expect(portable.servers[0]?.config).not.toHaveProperty("timeout");
     } finally {
       await testDb.cleanup();
     }

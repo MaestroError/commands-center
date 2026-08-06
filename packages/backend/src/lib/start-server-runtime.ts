@@ -64,7 +64,12 @@ import { documentReconciler } from "../services/document-service.js";
 import { specialistReconciler } from "../services/specialist-file.js";
 import { taskTemplateReconciler } from "../services/task-service.js";
 import { bootstrapRuntimePaths, bootstrapWorkspaceRoot } from "./runtime-paths.js";
-import { buildOpenCodeStateEnv, ensureOpenCodeStateDirs } from "../opencode/opencode-env.js";
+import {
+  buildNpmCacheEnv,
+  buildOpenCodeStateEnv,
+  ensureNpmCacheDir,
+  ensureOpenCodeStateDirs,
+} from "../opencode/opencode-env.js";
 import { runBootReconcile } from "./workspace-reconciler.js";
 import { runWorkspaceMigrations } from "../workspace-migrations/service.js";
 import { createDrainController, type DrainHandlers } from "./drain-protocol.js";
@@ -181,7 +186,10 @@ export async function startServerRuntime(
   });
   logPublicBindingGuidance(config, logger);
 
-  await ensureOpenCodeStateDirs(config.opencode.stateDir);
+  await Promise.all([
+    ensureOpenCodeStateDirs(config.opencode.stateDir),
+    ensureNpmCacheDir(config.opencode.npmCacheDir),
+  ]);
 
   // Base the OpenCode child environment on the same env used to parse config
   // (options.env for tests/programmatic callers, process.env for the CLI, which
@@ -193,12 +201,13 @@ export async function startServerRuntime(
   const orchestrator = orchestratorFactory({
     config,
     logger,
-    // Spread the state-dir XDG overrides last so they win over any ambient XDG_*
-    // variables and secrets, keeping OpenCode's global state under CC_OPENCODE_STATE_DIR.
+    // Spread CC runtime overrides after ambient variables and secrets so the
+    // configured OpenCode state and npm cache locations win.
     resolveEnv: async () => ({
       ...childBaseEnv,
       ...(await secretService.buildEnvMap()),
       ...buildOpenCodeStateEnv(config.opencode.stateDir),
+      ...buildNpmCacheEnv(config.opencode.npmCacheDir),
     }),
   });
 
