@@ -37,7 +37,18 @@ export const CC_MANAGED_MCP_TIMEOUT_MS = 30 * 60 * 1000;
 const BLOCKING_WAIT_MARGIN_MS = 60 * 1000;
 
 // Longest a tool may block before it must give up, given its group's tool-call
-// timeout. Always leaves the caller time to receive the result.
+// timeout. The result is always strictly less than that timeout, so the caller is
+// still listening when the result comes back.
+//
+// A group whose whole window is too small to give up the full margin gets half of
+// it instead: clamping to the margin there would hand back a budget *longer* than
+// the caller waits, which is the very failure this module exists to prevent.
 export function blockingWaitBudgetMs(toolCallTimeoutMs: number): number {
-  return Math.max(toolCallTimeoutMs - BLOCKING_WAIT_MARGIN_MS, BLOCKING_WAIT_MARGIN_MS);
+  if (toolCallTimeoutMs <= 0) {
+    return 0;
+  }
+
+  return toolCallTimeoutMs > BLOCKING_WAIT_MARGIN_MS * 2
+    ? toolCallTimeoutMs - BLOCKING_WAIT_MARGIN_MS
+    : Math.floor(toolCallTimeoutMs / 2);
 }
