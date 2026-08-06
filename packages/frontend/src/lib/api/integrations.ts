@@ -1,6 +1,9 @@
 import { apiFetch, readApiError, requestJson } from "./client";
 
 import {
+  MCP_ENGINE_RESTART_REQUIRED_REASON,
+  activateMcpServerInputSchema,
+  apiErrorResponseSchema,
   createMcpServerInputSchema,
   mcpAuthRemoveResultSchema,
   mcpAuthStartResultSchema,
@@ -12,6 +15,7 @@ import {
   providerStatusListSchema,
   setMcpServerEnabledInputSchema,
   type CreateMcpServerInput,
+  type ActivateMcpServerInput,
   type McpAuthRemoveResult,
   type McpAuthStartResult,
   type McpServer,
@@ -21,6 +25,13 @@ import {
   type UpdateMcpServerInput,
   updateMcpServerInputSchema,
 } from "@cc/shared/schemas";
+
+export class McpEngineRestartRequiredError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "McpEngineRestartRequiredError";
+  }
+}
 
 export async function listProviders(): Promise<ProviderStatus[]> {
   return requestJson<ProviderStatus[]>("/api/providers", providerStatusListSchema);
@@ -59,6 +70,41 @@ export async function setMcpServerEnabled(id: string, enabled: boolean): Promise
       body: setMcpServerEnabledInputSchema.parse({ enabled }),
     },
   );
+}
+
+export async function activateMcpServer(
+  id: string,
+  input: ActivateMcpServerInput,
+): Promise<McpServer> {
+  const response = await apiFetch(`/api/mcp-servers/${encodeURIComponent(id)}/activate`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(activateMcpServerInputSchema.parse(input)),
+  });
+  const payload = (await response.json().catch(() => undefined)) as unknown;
+
+  if (!response.ok) {
+    const apiError = apiErrorResponseSchema.safeParse(payload);
+    if (
+      response.status === 409 &&
+      apiError.success &&
+      readRestartRequiredReason(apiError.data.error.details) === MCP_ENGINE_RESTART_REQUIRED_REASON
+    ) {
+      throw new McpEngineRestartRequiredError(apiError.data.error.message);
+    }
+
+    throw new Error(readApiError(payload, response.status, response.statusText));
+  }
+
+  return mcpServerSchema.parse(payload);
+}
+
+function readRestartRequiredReason(details: unknown): string | undefined {
+  if (!details || typeof details !== "object" || !("reason" in details)) {
+    return undefined;
+  }
+
+  return typeof details.reason === "string" ? details.reason : undefined;
 }
 
 export async function deleteMcpServer(id: string): Promise<void> {

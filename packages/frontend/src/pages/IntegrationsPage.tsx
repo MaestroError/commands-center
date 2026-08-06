@@ -1,8 +1,11 @@
 import { PageHeader } from "@/components/common/PageHeader";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
 import { useMcpServerMutations, useMcpServersQuery } from "@/hooks/use-mcp-servers-query";
 import { useSecretsQuery } from "@/hooks/use-secrets-query";
 import { useSpecialistMutations, useSpecialistsQuery } from "@/hooks/use-specialists-query";
+import { useActiveTaskRunsQuery } from "@/hooks/use-tasks-query";
+import { McpEngineRestartRequiredError } from "@/lib/api";
 import type { McpServer } from "@cc/shared/schemas";
 import { useState } from "react";
 import { ComposioDialog, McpAuthDialog } from "./integrations/integration-dialogs";
@@ -48,9 +51,12 @@ export function IntegrationsPage() {
   const mcpServersQuery = useMcpServersQuery();
   const mcpMutations = useMcpServerMutations();
   const secretsQuery = useSecretsQuery();
+  const activeRunsQuery = useActiveTaskRunsQuery();
   const [dialog, setDialog] = useState<DialogState>();
   const [authServer, setAuthServer] = useState<McpServer>();
   const [composioDialogOpen, setComposioDialogOpen] = useState(false);
+  const [confirmingComposioRestart, setConfirmingComposioRestart] = useState(false);
+  const [composioActivationError, setComposioActivationError] = useState<string>();
   const [successMessage, setSuccessMessage] = useState<string>();
   const [configuredExpanded, setConfiguredExpanded] = usePersistentBooleanState(
     CONFIGURED_SECTION_STORAGE_KEY,
@@ -66,6 +72,28 @@ export function IntegrationsPage() {
   const unsetSecretKeys = new Set(
     secretMeta.filter((secret) => !secret.isSet).map((secret) => secret.key),
   );
+  const activeRunCount =
+    activeRunsQuery.data?.filter((run) => run.status === "running").length ?? 0;
+
+  async function activateComposio(restartEngine: boolean): Promise<void> {
+    if (!composioServer) {
+      return;
+    }
+
+    setComposioActivationError(undefined);
+
+    try {
+      await mcpMutations.activate.mutateAsync({ id: composioServer.id, restartEngine });
+      setSuccessMessage("Composio activated.");
+    } catch (error) {
+      if (!restartEngine && error instanceof McpEngineRestartRequiredError) {
+        setConfirmingComposioRestart(true);
+        return;
+      }
+
+      setComposioActivationError(readError(error));
+    }
+  }
 
   return (
     <div className="grid gap-4">
@@ -117,7 +145,8 @@ export function IntegrationsPage() {
             mcpMutations.authenticate.isPending ||
             mcpMutations.remove.isPending ||
             mcpMutations.removeAuth.isPending ||
-            mcpMutations.setEnabled.isPending
+            mcpMutations.setEnabled.isPending ||
+            mcpMutations.activate.isPending
           }
           onActivate={() => setComposioDialogOpen(true)}
           onAuthenticate={async () => {
@@ -129,18 +158,18 @@ export function IntegrationsPage() {
             const updated = await mcpMutations.authenticate.mutateAsync({ id: composioServer.id });
             setSuccessMessage(`${updated.name} authenticated.`);
           }}
-          onDeactivate={async () => {
+          onRemove={async () => {
             if (!composioServer) {
               return;
             }
 
-            if (!window.confirm(`Deactivate Composio MCP server '${composioServer.name}'?`)) {
+            if (!window.confirm(`Remove Composio integration '${composioServer.name}'?`)) {
               return;
             }
 
             setSuccessMessage(undefined);
             await mcpMutations.remove.mutateAsync({ id: composioServer.id });
-            setSuccessMessage("Composio deactivated.");
+            setSuccessMessage("Composio removed.");
           }}
           onRemoveAuth={async () => {
             if (!composioServer) {
@@ -157,13 +186,25 @@ export function IntegrationsPage() {
             }
 
             setSuccessMessage(undefined);
-            const nextEnabled = !composioServer.enabled;
-            await mcpMutations.setEnabled.mutateAsync({
-              id: composioServer.id,
-              enabled: nextEnabled,
-            });
-            setSuccessMessage(`Composio ${nextEnabled ? "enabled" : "disabled"}.`);
+            setComposioActivationError(undefined);
+
+            if (composioServer.enabled) {
+              await mcpMutations.setEnabled.mutateAsync({
+                id: composioServer.id,
+                enabled: false,
+              });
+              setSuccessMessage("Composio disabled.");
+              return;
+            }
+
+            if (composioServer.requiresEngineRestart) {
+              setConfirmingComposioRestart(true);
+              return;
+            }
+
+            await activateComposio(false);
           }}
+          activationError={composioActivationError}
           server={composioServer}
         />
       ) : null}
@@ -336,7 +377,7 @@ export function IntegrationsPage() {
             setSuccessMessage(undefined);
 
             await mcpMutations.create.mutateAsync({
-              enabled: true,
+              enabled: false,
               name: input.name,
               config: {
                 transport: "streamable-http",
@@ -346,9 +387,39 @@ export function IntegrationsPage() {
               },
             });
 
-            setSuccessMessage("Composio activated.");
+            setSuccessMessage(
+              "Composio API key saved. Activate Composio when you are ready to restart the AI engine.",
+            );
             setComposioDialogOpen(false);
           }}
+        />
+      ) : null}
+
+      {confirmingComposioRestart ? (
+        <ConfirmDialog
+          confirmDisabled={mcpMutations.activate.isPending}
+          confirmLabel={mcpMutations.activate.isPending ? "Restarting…" : "Restart and activate"}
+          description={
+            <div className="grid gap-3">
+              <p>
+                The saved Composio API key is not loaded by the current AI engine. Restarting
+                reloads the key and briefly interrupts active specialist sessions.
+              </p>
+              {activeRunCount > 0 ? (
+                <p className="text-warning-foreground">
+                  {activeRunCount} task run{activeRunCount === 1 ? " is" : "s are"} currently
+                  active. Cancel and activate later if you want to let{" "}
+                  {activeRunCount === 1 ? "it" : "them"} finish first.
+                </p>
+              ) : null}
+            </div>
+          }
+          onCancel={() => setConfirmingComposioRestart(false)}
+          onConfirm={() => {
+            setConfirmingComposioRestart(false);
+            void activateComposio(true);
+          }}
+          title="Restart the AI engine to activate Composio?"
         />
       ) : null}
 
@@ -489,12 +560,13 @@ function McpServerCard(props: {
 
 function ComposioSection(props: {
   server?: McpServer;
+  activationError?: string;
   busy: boolean;
   onActivate: () => void;
   onAuthenticate: () => Promise<void>;
   onRemoveAuth: () => Promise<void>;
   onToggleEnabled: () => Promise<void>;
-  onDeactivate: () => Promise<void>;
+  onRemove: () => Promise<void>;
 }) {
   if (!props.server) {
     return (
@@ -533,7 +605,7 @@ function ComposioSection(props: {
               is preconfigured by CC.
             </p>
           </div>
-          <Button onClick={props.onActivate} type="button">
+          <Button disabled={props.busy} onClick={props.onActivate} type="button">
             Connect Composio
           </Button>
         </div>
@@ -586,27 +658,55 @@ function ComposioSection(props: {
         <div className="flex flex-wrap gap-2">
           {props.server.config.transport !== "stdio" &&
           props.server.config.authMethod === "oauth" ? (
-            <Button variant="secondary" onClick={() => void props.onAuthenticate()} type="button">
+            <Button
+              variant="secondary"
+              disabled={props.busy}
+              onClick={() => void props.onAuthenticate()}
+              type="button"
+            >
               {status.status === "connected" ? "Re-authenticate" : "Authenticate"}
             </Button>
           ) : null}
           {props.server.config.transport !== "stdio" &&
           props.server.config.authMethod === "oauth" &&
           status.status === "connected" ? (
-            <Button variant="secondary" onClick={() => void props.onRemoveAuth()} type="button">
+            <Button
+              variant="secondary"
+              disabled={props.busy}
+              onClick={() => void props.onRemoveAuth()}
+              type="button"
+            >
               Remove auth
             </Button>
           ) : null}
-          <Button variant="secondary" onClick={() => void props.onToggleEnabled()} type="button">
-            {props.busy ? "Updating..." : props.server.enabled ? "Disable" : "Enable"}
+          <Button
+            variant="secondary"
+            disabled={props.busy}
+            onClick={() => void props.onToggleEnabled()}
+            type="button"
+          >
+            {props.busy ? "Updating..." : props.server.enabled ? "Disable" : "Activate"}
           </Button>
-          <Button variant="danger" onClick={() => void props.onDeactivate()} type="button">
-            Deactivate
+          <Button
+            variant="danger"
+            disabled={props.busy}
+            onClick={() => void props.onRemove()}
+            type="button"
+          >
+            Remove
           </Button>
         </div>
       </div>
 
       {"error" in status ? <p className="mt-3 text-sm text-danger">{status.error}</p> : null}
+      {props.server.requiresEngineRestart && !props.server.enabled ? (
+        <p className="mt-3 text-sm text-warning-foreground">
+          Activating Composio requires an AI engine restart to load the saved API key.
+        </p>
+      ) : null}
+      {props.activationError ? (
+        <p className="mt-3 text-sm text-danger">{props.activationError}</p>
+      ) : null}
     </section>
   );
 }

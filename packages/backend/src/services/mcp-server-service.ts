@@ -11,6 +11,8 @@ import { BadRequestError, ConflictError, NotFoundError } from "../lib/api-error.
 import type { RuntimeConfig } from "../lib/runtime-config.js";
 import type { WorkspaceReconciler } from "../lib/workspace-reconciler.js";
 import {
+  MCP_ENGINE_RESTART_REQUIRED_REASON,
+  activateMcpServerInputSchema,
   createMcpServerInputSchema,
   mcpAuthRemoveResultSchema,
   mcpAuthStartResultSchema,
@@ -18,6 +20,7 @@ import {
   mcpServerListSchema,
   mcpServerSchema,
   updateMcpServerInputSchema,
+  type ActivateMcpServerInput,
   type CreateMcpServerInput,
   type McpAuthRemoveResult,
   type McpAuthStartResult,
@@ -28,6 +31,7 @@ import {
   type UpdateMcpServerInput,
 } from "@cc/shared/schemas";
 import type { AppDb } from "../db/client.js";
+import type { OpenCodeOrchestrator } from "../orchestrator/opencode-orchestrator.js";
 import type { OpenCodeService } from "./opencode-service.js";
 import type { SecretService } from "./secret-service.js";
 import {
@@ -176,6 +180,7 @@ export function createMcpServerService(options: {
   config: RuntimeConfig;
   opencodeService: OpenCodeService;
   secretService: SecretService;
+  orchestrator?: Pick<OpenCodeOrchestrator, "getStatus" | "restart">;
 }) {
   return {
     async list(): Promise<McpServer[]> {
@@ -338,6 +343,34 @@ export function createMcpServerService(options: {
       return readOne(row);
     },
 
+    async activate(id: string, input: ActivateMcpServerInput): Promise<McpServer> {
+      const parsed = activateMcpServerInputSchema.parse(input);
+      const existing = await getRow(id);
+      if (!existing) {
+        throw new NotFoundError("MCP server not found.");
+      }
+
+      const config = mcpServerConfigSchema.parse(JSON.parse(existing.config_json) as unknown);
+      const requiresEngineRestart = await readRequiresEngineRestart(config);
+
+      if (requiresEngineRestart && !parsed.restartEngine) {
+        throw new ConflictError(
+          "The AI engine must restart before this MCP server can use its updated secrets.",
+          { reason: MCP_ENGINE_RESTART_REQUIRED_REASON },
+        );
+      }
+
+      if (requiresEngineRestart) {
+        if (!options.orchestrator) {
+          throw new Error("OpenCode orchestrator is required to restart the AI engine.");
+        }
+
+        await options.orchestrator.restart(`Activate MCP server '${existing.name}'`);
+      }
+
+      return this.setEnabled(id, true);
+    },
+
     async startAuth(id: string): Promise<McpAuthStartResult> {
       const row = await getRow(id);
       if (!row) {
@@ -483,23 +516,40 @@ export function createMcpServerService(options: {
       options.opencodeService.listMcpToolIds(options.config.paths.workspaceDir).catch(() => []),
     ]);
 
-    const missingByServer = await Promise.all(
-      servers.map(async (server) => ({
-        server,
-        missingSecrets: await options.secretService.listMissing(
-          listReferencedSecrets(server.config),
-        ),
-      })),
+    const runtimeByServer = await Promise.all(
+      servers.map(async (server) => {
+        const referencedSecrets = listReferencedSecrets(server.config);
+        const [missingSecrets, requiresEngineRestart] = await Promise.all([
+          options.secretService.listMissing(referencedSecrets),
+          readRequiresEngineRestart(server.config),
+        ]);
+
+        return { server, missingSecrets, requiresEngineRestart };
+      }),
     );
 
-    return missingByServer.map(({ server, missingSecrets }) =>
+    return runtimeByServer.map(({ server, missingSecrets, requiresEngineRestart }) =>
       mcpServerSchema.parse({
         ...server,
         missingSecrets,
+        requiresEngineRestart,
         runtimeStatus: readStatus(statuses, server.name, server.enabled),
         tools: readTools(toolIds, server.name),
       }),
     );
+  }
+
+  async function readRequiresEngineRestart(config: McpServerConfig): Promise<boolean> {
+    const latestSecretUpdate = await options.secretService.getLatestSetUpdate(
+      listReferencedSecrets(config),
+    );
+    if (!latestSecretUpdate) {
+      return false;
+    }
+
+    const engineStartedAt = options.orchestrator?.getStatus().startedAt;
+
+    return engineStartedAt === undefined || latestSecretUpdate > new Date(engineStartedAt);
   }
 }
 

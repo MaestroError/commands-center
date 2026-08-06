@@ -14,6 +14,7 @@ import {
   workspaceWatchEventSchema,
 } from "../../src/schemas/file-manager.js";
 import {
+  activateMcpServerInputSchema,
   createMcpServerInputSchema,
   mcpRuntimeStatusSchema,
   mcpServerConfigSchema,
@@ -25,6 +26,10 @@ import {
 } from "../../src/schemas/opencode-files.js";
 
 describe("workspace integration schemas", () => {
+  it("defaults MCP activation restart consent to false", () => {
+    expect(activateMcpServerInputSchema.parse({})).toEqual({ restartEngine: false });
+  });
+
   it("coerces file manager directory limits and applies preference defaults", () => {
     expect(
       fileManagerDirectorySearchQuerySchema.parse({

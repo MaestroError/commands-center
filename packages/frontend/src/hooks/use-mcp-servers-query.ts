@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
+  activateMcpServer,
   authenticateMcp,
   completeMcpAuth,
   createMcpServer,
@@ -54,6 +55,11 @@ export function useMcpServerMutations() {
     setEnabled: useMutation({
       mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) =>
         setMcpServerEnabled(id, enabled),
+      onSuccess: invalidateMcpServers,
+    }),
+    activate: useMutation({
+      mutationFn: ({ id, restartEngine }: { id: string; restartEngine: boolean }) =>
+        activateMcpServer(id, { restartEngine }),
       onSuccess: invalidateMcpServers,
     }),
     remove: useMutation({

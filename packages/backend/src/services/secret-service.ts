@@ -99,10 +99,18 @@ export function createSecretService(options: { db: AppDb; config: RuntimeConfig 
       await writeSecretsManifest(options.config, allRows);
     },
 
-    async set(key: string, plainValue: string): Promise<void> {
+    async set(key: string, plainValue: string): Promise<boolean> {
       const normalizedKey = key.trim();
-      const encryptedValue = encrypt(options.config.secretKey, plainValue);
       const existing = await findByKey(options.db, normalizedKey);
+
+      if (
+        existing &&
+        decryptOrUndefined(options.config.secretKey, existing.encrypted_value) === plainValue
+      ) {
+        return false;
+      }
+
+      const encryptedValue = encrypt(options.config.secretKey, plainValue);
 
       if (existing) {
         await options.db
@@ -122,6 +130,8 @@ export function createSecretService(options: { db: AppDb; config: RuntimeConfig 
 
       const allRows = await options.db.select().from(secrets).orderBy(asc(secrets.key));
       await writeSecretsManifest(options.config, allRows);
+
+      return true;
     },
 
     async delete(key: string): Promise<void> {
@@ -164,6 +174,29 @@ export function createSecretService(options: { db: AppDb; config: RuntimeConfig 
         const plainValue = byKey.get(key);
         return plainValue === undefined;
       });
+    },
+
+    async getLatestSetUpdate(keys: string[]): Promise<Date | undefined> {
+      const uniqueKeys = [...new Set(keys.map((key) => key.trim()).filter(Boolean))];
+      if (uniqueKeys.length === 0) {
+        return undefined;
+      }
+
+      const rows = await options.db
+        .select({
+          encrypted_value: secrets.encrypted_value,
+          updated_at: secrets.updated_at,
+        })
+        .from(secrets)
+        .where(inArray(secrets.key, uniqueKeys));
+
+      return rows.reduce<Date | undefined>((latest, row) => {
+        if (decryptOrUndefined(options.config.secretKey, row.encrypted_value) === undefined) {
+          return latest;
+        }
+
+        return latest === undefined || row.updated_at > latest ? row.updated_at : latest;
+      }, undefined);
     },
   };
 }

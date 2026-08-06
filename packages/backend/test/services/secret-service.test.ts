@@ -50,6 +50,41 @@ describe("secret-service", () => {
     }
   });
 
+  it("does not rewrite an unchanged secret value", async () => {
+    const testDb = await createTestDatabase();
+    const service = createSecretService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      expect(await service.set("CC_TEST_TOKEN", "same-value")).toBe(true);
+      const [before] = await service.list();
+
+      expect(await service.set("CC_TEST_TOKEN", "same-value")).toBe(false);
+      const [after] = await service.list();
+
+      expect(after?.updatedAt).toBe(before?.updatedAt);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("reports the newest update among set secrets", async () => {
+    const testDb = await createTestDatabase();
+    const service = createSecretService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      await service.set("SET_KEY", "value");
+      await service.ensure(["MISSING_KEY"]);
+
+      const setSecret = (await service.list()).find((secret) => secret.key === "SET_KEY");
+
+      await expect(service.getLatestSetUpdate(["SET_KEY", "MISSING_KEY"])).resolves.toEqual(
+        setSecret ? new Date(setSecret.updatedAt) : undefined,
+      );
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("set writes the key to configuration/secrets.json without the value", async () => {
     const testDb = await createTestDatabase();
     const service = createSecretService({ db: testDb.client.db, config: testDb.config });

@@ -17,10 +17,11 @@ function createSecretServiceStub() {
   return {
     list: () => Promise.resolve([]),
     ensure: () => Promise.resolve(),
-    set: () => Promise.resolve(),
+    set: () => Promise.resolve(true),
     delete: () => Promise.resolve(),
     buildEnvMap: () => Promise.resolve({}),
     listMissing: () => Promise.resolve([]),
+    getLatestSetUpdate: () => Promise.resolve(undefined),
   };
 }
 
