@@ -490,9 +490,15 @@ describe("mcp-server-service", () => {
 
       const portable = JSON.parse(
         await readFile(join(testDb.config.paths.subdirectories.configuration, "mcp.json"), "utf8"),
-      ) as { servers: Array<{ config: Record<string, unknown> }> };
+      ) as { servers: Array<{ name: string; config: Record<string, unknown> }> };
 
-      expect(portable.servers[0]?.config).not.toHaveProperty("timeout");
+      expect(portable.servers).toHaveLength(1);
+      const [portableServer] = portable.servers;
+      if (!portableServer) {
+        throw new Error("Expected the portable fetcher MCP server entry.");
+      }
+      expect(portableServer.name).toBe("fetcher");
+      expect(portableServer.config).not.toHaveProperty("timeout");
     } finally {
       await testDb.cleanup();
     }

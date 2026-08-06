@@ -264,13 +264,14 @@ export function loadRuntimeConfig(options?: {
       ? parsedEnv.data.CC_OPENCODE_STATE_DIR
       : resolve(cwd, parsedEnv.data.CC_OPENCODE_STATE_DIR)
     : undefined;
-  const npmCacheDir = parsedEnv.data.CC_NPM_CACHE_DIR
-    ? isAbsolute(parsedEnv.data.CC_NPM_CACHE_DIR)
+  let npmCacheDir: string | undefined;
+  if (parsedEnv.data.CC_NPM_CACHE_DIR) {
+    npmCacheDir = isAbsolute(parsedEnv.data.CC_NPM_CACHE_DIR)
       ? parsedEnv.data.CC_NPM_CACHE_DIR
-      : resolve(cwd, parsedEnv.data.CC_NPM_CACHE_DIR)
-    : parsedEnv.data.CC_DOCKER
-      ? "/workspace/.cc/npm-cache"
-      : undefined;
+      : resolve(cwd, parsedEnv.data.CC_NPM_CACHE_DIR);
+  } else if (parsedEnv.data.CC_DOCKER) {
+    npmCacheDir = "/workspace/.cc/npm-cache";
+  }
 
   const resolvedHost = options?.overrides?.host ?? parsedEnv.data.CC_HOST;
   const resolvedPort = options?.overrides?.port ?? parsedEnv.data.CC_PORT;
