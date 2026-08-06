@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AppDb } from "../../src/db/client";
 import { conversations } from "../../src/db/schema/index";
 import { createApiTokenService } from "../../src/services/api-token-service";
+import { createLiveRequestService } from "../../src/services/live-request-service";
 import { createLogger } from "../../src/lib/logger";
 import { createSchedulerService } from "../../src/services/scheduler-service";
 import { createSecretService } from "../../src/services/secret-service";
@@ -229,7 +230,11 @@ describe("server-sent event routes", () => {
         );
       }),
     };
-    const liveRequestService = { subscribe: vi.fn(), dispose: vi.fn() };
+    const liveRequestService = {
+      subscribe: vi.fn(),
+      listByConversation: vi.fn(() => []),
+      dispose: vi.fn(),
+    };
 
     const port = await bootServer(testDb, {
       openCodeEventService: openCodeEventService as never,
@@ -242,6 +247,53 @@ describe("server-sent event routes", () => {
     );
     expect(chunk).toContain("message.updated");
     expect(liveRequestService.subscribe).toHaveBeenCalled();
+  });
+
+  // A live request is published once, to whoever is subscribed at that instant.
+  // A stream that connects afterwards — first load, or any reconnect — would
+  // otherwise never learn about an open form, leaving the operator on a chat with
+  // no review tab while the specialist blocks on it.
+  it("replays already-open live requests to a stream that connects later", async () => {
+    const testDb = await createTestDatabase();
+    disposers.push(() => testDb.cleanup());
+    const agentService = createSpecialistService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: opencodeService(),
+    });
+    const agent = await agentService.create({
+      name: "Reviewer",
+      role: "chat",
+      instructions: "Exist.",
+      defaultModel: "openai/gpt-4.1",
+      capabilities: {},
+    });
+    const conversationId = await insertConversation(testDb.client.db, agent.id);
+    const liveRequestService = createLiveRequestService();
+    disposers.push(() => {
+      liveRequestService.dispose();
+      return Promise.resolve();
+    });
+    const port = await bootServer(testDb, { liveRequestService });
+
+    // Opened with nobody listening. The promise stays pending, as it does while
+    // the specialist waits for the operator.
+    void liveRequestService
+      .create({
+        conversationId,
+        kind: "self_task_template_create_review",
+        closable: false,
+        presentation: { title: "Review task template", cancelLabel: "Cancel" },
+        fields: [],
+      })
+      .catch(() => {});
+
+    const chunk = await readUntilText(
+      `http://127.0.0.1:${port}/api/conversations/${conversationId}/events`,
+      "cc.live_request.opened",
+    );
+
+    expect(chunk).toContain("Review task template");
   });
 });
 

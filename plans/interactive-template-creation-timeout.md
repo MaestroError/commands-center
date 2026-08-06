@@ -52,6 +52,23 @@ have additional properties`, and the real message never reaches the specialist. 
 error from these tools surfaced as that opaque schema complaint. `show_file_to_user`
 already had the correct shape (text content only).
 
+### 3. The review form could stay invisible until a page reload
+
+Two independent ways the operator lost sight of a form the specialist was blocking on
+— which then burned the wait budget from defect 1:
+
+- **A missed publish was never recovered.** `liveRequestService.publish` delivers to
+  whoever is subscribed at that instant; there is no replay log. A stream that connects
+  afterwards — the first load after the form opened, or any reconnect — never learned
+  about it. The client's `getPendingInteractions` fetch covered part of this, but it
+  runs _before_ the server registers the subscription, so anything opened in between
+  fell through both.
+- **A conversation refetch wiped it.** `HYDRATE`/`HYDRATE_DETAIL` reset
+  `pendingPermissions`, `pendingQuestion`, `liveRequests`, and `todos` to empty. Those
+  are live backend state keyed by the conversation, not part of the detail payload, so
+  re-fetching the _same_ conversation dropped an open form (or a permission prompt)
+  from the UI with nothing to bring it back but a reload.
+
 ### Contributing: workspace sync could leave a stale timeout
 
 `isConfigUpToDate` compared only `url`, `enabled`, and the `Authorization` header, so a
@@ -74,6 +91,14 @@ operator can finish reviewing.
   the public MCP registry, so the actual message reaches the caller.
 - **`isConfigUpToDate` compares `timeout`**, so a workspace can no longer sit on a stale
   or missing tool-call timeout.
+- **The conversation event stream replays open live requests on connect**
+  (`routes/conversation-events.ts`), and subscribes _before_ announcing `connected` so
+  nothing published in between is dropped. Delivery is at-least-once; the client applies
+  by id, so a duplicate is a no-op. Any stream — first load or reconnect — now sees every
+  open form without depending on a client-side fetch winning a race.
+- **`HYDRATE`/`HYDRATE_DETAIL` keep pending interactions when the conversation id is
+  unchanged** (`liveInteractionState`), and clear them only on a real switch. This covers
+  permission prompts and questions too, which had the same disappearing-prompt failure.
 
 ## Verification
 
@@ -97,7 +122,14 @@ chain (client abandons at its timeout → cancellation is discarded → late App
 into a dead stream) is established from the SDK and transport source, **not** from an
 observed live failure. Nothing here reproduces a real `-32001`.
 
-Whole backend suite: 1362 tests, plus typecheck, eslint, knip, prettier.
+**Defect 3 is reproduced and proven fixed, both halves.** `test/routes/sse-events.test.ts`
+opens a live request with nobody listening, then connects a real SSE client over a real
+socket and reads until `cc.live_request.opened`; before the replay it times out after
+5 s. `use-conversation.test.ts` asserts a same-conversation `HYDRATE_DETAIL` keeps the
+live request, permission, and question (it dropped them before), and that a switch to a
+different conversation still clears them.
+
+Whole suite: 1363 backend + 1496 frontend tests, plus typecheck, eslint, knip, prettier.
 
 ## Remaining work
 
@@ -105,10 +137,11 @@ Whole backend suite: 1362 tests, plus typecheck, eslint, knip, prettier.
    the template id promptly. Also check the specialist's `opencode.jsonc` really carries
    `mcp.cc_default_interactive.timeout === 600000` — a restart is needed for the sync
    fix to take effect, since opencode reads that config at startup.
-2. **The form not appearing until a page reload** (step 2 of the repro) is untouched and
-   is causally relevant: it burns minutes of the operator's budget before Apply. Likely
-   the live-request/SSE delivery race — a reconnecting stream should re-fetch pending
-   live requests. See `plans/verify-conversation-sse-reconnect-bug.md`.
+2. **A form still goes to the specialist's _current_ chat conversation**
+   (`resolveCurrent`). An operator reading an older conversation from history sees no
+   tab, and no reload helps, because the form belongs to a conversation they are not
+   viewing. Surfacing "a review is waiting in <conversation>" globally would close that
+   gap; not attempted here.
 3. **Client cancellation still cannot reach a running tool**: the stateless per-request
    server means `notifications/cancelled` has nowhere to land. Bounding the wait removes
    the damage (nothing is applied behind the caller's back), but a tool already inside

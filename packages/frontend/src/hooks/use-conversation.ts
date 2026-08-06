@@ -119,6 +119,31 @@ function buildPartsMap(messages: ConversationMessage[]): Record<string, Conversa
   return map;
 }
 
+/**
+ * Pending interactions and todos are live backend state keyed by the
+ * conversation — they are not carried in the conversation payload, so a
+ * re-fetch of the SAME conversation must not drop them. Dropping them would
+ * make an open review form or permission prompt vanish from the UI while the
+ * specialist is still blocked on it, leaving a page reload as the only way to
+ * get it back. Switching conversations does clear them: they belong to the one
+ * being left.
+ */
+function liveInteractionState(
+  state: ConversationState,
+  nextConversationId: string,
+): Pick<ConversationState, "pendingPermissions" | "pendingQuestion" | "liveRequests" | "todos"> {
+  if (state.conversation?.id !== nextConversationId) {
+    return { pendingPermissions: [], pendingQuestion: null, liveRequests: [], todos: [] };
+  }
+
+  return {
+    pendingPermissions: state.pendingPermissions,
+    pendingQuestion: state.pendingQuestion,
+    liveRequests: state.liveRequests,
+    todos: state.todos,
+  };
+}
+
 export function conversationReducer(state: ConversationState, action: Action): ConversationState {
   switch (action.type) {
     case "HYDRATE":
@@ -128,10 +153,7 @@ export function conversationReducer(state: ConversationState, action: Action): C
         parts: buildPartsMap(action.snapshot.current.messages),
         previousConversations: action.snapshot.previous,
         sessionStatus: { type: "idle" },
-        pendingPermissions: [],
-        pendingQuestion: null,
-        liveRequests: [],
-        todos: [],
+        ...liveInteractionState(state, action.snapshot.current.id),
         sendError: null,
       };
 
@@ -142,10 +164,7 @@ export function conversationReducer(state: ConversationState, action: Action): C
         parts: buildPartsMap(action.detail.messages),
         previousConversations: action.previous ?? state.previousConversations,
         sessionStatus: { type: "idle" },
-        pendingPermissions: [],
-        pendingQuestion: null,
-        liveRequests: [],
-        todos: [],
+        ...liveInteractionState(state, action.detail.id),
         sendError: null,
       };
 
