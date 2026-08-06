@@ -98,11 +98,11 @@ test.describe("@design-system protected content baselines", () => {
       DESKTOP_VIEWPORT,
     );
 
-    await expect(
-      page
-        .getByTestId("milkdown-editor")
-        .locator(".ProseMirror[role='textbox'][contenteditable='false']"),
-    ).toBeVisible();
+    const readonlyEditor = page
+      .getByTestId("milkdown-editor")
+      .locator(".ProseMirror[role='textbox'][contenteditable='false']");
+    await expect(readonlyEditor).toHaveCount(1);
+    await expect(readonlyEditor).toBeVisible();
 
     await expectMilkdownTheme(page, "light");
   });

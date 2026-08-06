@@ -104,6 +104,12 @@ global state — provider connections, MCP auth, sessions, and its SQLite db —
 volume and survives redeploys. Without the volume (or if you clear `CC_OPENCODE_STATE_DIR`), you
 must reconnect providers after every rebuild.
 
+CommandsCenter also uses `/workspace/.cc/npm-cache` as npm's cache in Docker. Packages downloaded
+by cold `npx -y <package>` MCP launches are therefore reused after redeploys. Local/stdio MCPs get
+120 seconds by default for initialization, discovery, and requests. Override these installation-wide
+defaults with `CC_NPM_CACHE_DIR` and `CC_MCP_STDIO_TIMEOUT_MS`, then redeploy the container. No
+suggested MCP packages are preinstalled.
+
 > **Migrating an existing deployment.** If you already have a running instance from before this
 > variable existed, its OpenCode state lives at `~/.local/share/opencode` inside the old container
 > and is not on the volume. Provider connections will need to be re-added once after upgrading to

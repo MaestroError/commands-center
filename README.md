@@ -82,6 +82,8 @@ SQLite is stored at `$CC_DATA_DIR/cc.db` (default: `~/.cc/data/cc.db`). Set `CC_
 
 Set `CC_OPENCODE_STATE_DIR` to persist the managed OpenCode engine's global state (provider connections, MCP auth, sessions, and its SQLite db). When set, CommandsCenter redirects the `opencode serve` child's XDG data/config/cache/state directories under that root; leave it empty to use OpenCode's default `$HOME`-derived paths (`~/.local/share/opencode`, etc.). Docker deployments default it to `/workspace/.cc/opencode` so connections survive container rebuilds. Note that CommandsCenter terminals and task runs are children of the OpenCode process, so tools launched inside them (e.g. `gh`) also see the redirected XDG paths.
 
+Local/stdio MCP servers use a 120-second timeout by default. Set `CC_MCP_STDIO_TIMEOUT_MS` to a positive millisecond value to override the initialization, discovery, and request timeout. Docker deployments also default npm's cache to `/workspace/.cc/npm-cache`, so cold `npx -y <package>` downloads are reused after container recreation when `/workspace` is mounted. Set `CC_NPM_CACHE_DIR` to override that location; non-Docker installs leave npm's native cache unchanged when it is unset. Restart CommandsCenter or the container after changing either value.
+
 ### Global NPM Install
 
 ```bash
@@ -402,7 +404,10 @@ docker run -d --name commandscenter \
 The image already sets `NODE_ENV`, `CC_HOST`, `CC_PORT`, and the workspace/data
 paths as defaults ([`Dockerfile`](Dockerfile)). Direct access needs the volume
 mount and `CC_PUBLIC_ORIGIN`; a public-domain reverse-proxy deployment must also
-set `CC_TRUST_PROXY=true`.
+set `CC_TRUST_PROXY=true`. With `CC_DOCKER=true`, npm packages downloaded by
+`npx` are cached under `/workspace/.cc/npm-cache` on the same volume. Override
+that path with `CC_NPM_CACHE_DIR` and the 120-second local MCP timeout with
+`CC_MCP_STDIO_TIMEOUT_MS`, then restart the container to apply either change.
 
 On first container start, `ccenter` creates `/workspace/.cc/.env` on the mounted volume and generates `CC_SECRET_KEY` there.
 

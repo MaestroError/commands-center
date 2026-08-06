@@ -35,6 +35,33 @@ describe("loadRuntimeConfig", () => {
     );
   });
 
+  it("defaults the stdio MCP timeout to 120 seconds", () => {
+    const config = loadRuntimeConfig({
+      cwd: "/tmp/project",
+      env: { NODE_ENV: "test" },
+    });
+
+    expect(config.timeouts.mcpStdioMs).toBe(120_000);
+  });
+
+  it("accepts a positive stdio MCP timeout override", () => {
+    const config = loadRuntimeConfig({
+      cwd: "/tmp/project",
+      env: { NODE_ENV: "test", CC_MCP_STDIO_TIMEOUT_MS: "45000" },
+    });
+
+    expect(config.timeouts.mcpStdioMs).toBe(45_000);
+  });
+
+  it("rejects an invalid stdio MCP timeout override", () => {
+    expect(() =>
+      loadRuntimeConfig({
+        cwd: "/tmp/project",
+        env: { NODE_ENV: "test", CC_MCP_STDIO_TIMEOUT_MS: "0" },
+      }),
+    ).toThrow("CC_MCP_STDIO_TIMEOUT_MS must be a positive integer");
+  });
+
   it("redacts sensitive startup details from the logged configuration", () => {
     const config = loadRuntimeConfig({
       cwd: "/tmp/project",
@@ -70,6 +97,7 @@ describe("loadRuntimeConfig", () => {
         opencodeHealthPollMs: 2000,
         opencodeRestartWindowMs: 60000,
         mcpAuthMs: 90000,
+        mcpStdioMs: 120000,
         drainMs: 15000,
       },
       updates: {
@@ -356,5 +384,45 @@ describe("loadRuntimeConfig", () => {
     });
 
     expect(config.opencode.stateDir).toBe("/tmp/project/.cc/opencode");
+  });
+
+  it("uses a persistent workspace npm cache in Docker", () => {
+    const config = loadRuntimeConfig({
+      cwd: "/tmp/project",
+      env: { NODE_ENV: "test", CC_DOCKER: "true" },
+    });
+
+    expect(config.opencode.npmCacheDir).toBe("/workspace/.cc/npm-cache");
+  });
+
+  it("prefers an explicit npm cache path over the Docker default", () => {
+    const config = loadRuntimeConfig({
+      cwd: "/tmp/project",
+      env: {
+        NODE_ENV: "test",
+        CC_DOCKER: "true",
+        CC_NPM_CACHE_DIR: "/var/cache/commandscenter/npm",
+      },
+    });
+
+    expect(config.opencode.npmCacheDir).toBe("/var/cache/commandscenter/npm");
+  });
+
+  it("resolves a relative npm cache path against cwd", () => {
+    const config = loadRuntimeConfig({
+      cwd: "/tmp/project",
+      env: { NODE_ENV: "test", CC_NPM_CACHE_DIR: ".cc/npm-cache" },
+    });
+
+    expect(config.opencode.npmCacheDir).toBe("/tmp/project/.cc/npm-cache");
+  });
+
+  it("preserves npm native cache behavior outside Docker", () => {
+    const config = loadRuntimeConfig({
+      cwd: "/tmp/project",
+      env: { NODE_ENV: "test" },
+    });
+
+    expect(config.opencode.npmCacheDir).toBeUndefined();
   });
 });

@@ -4,7 +4,24 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { buildOpenCodeStateEnv, ensureOpenCodeStateDirs } from "../../src/opencode/opencode-env";
+import {
+  buildNpmCacheEnv,
+  buildOpenCodeStateEnv,
+  ensureNpmCacheDir,
+  ensureOpenCodeStateDirs,
+} from "../../src/opencode/opencode-env";
+
+describe("buildNpmCacheEnv", () => {
+  it("returns an empty object when npmCacheDir is undefined", () => {
+    expect(buildNpmCacheEnv(undefined)).toEqual({});
+  });
+
+  it("maps the configured npm cache directory", () => {
+    expect(buildNpmCacheEnv("/workspace/.cc/npm-cache")).toEqual({
+      NPM_CONFIG_CACHE: "/workspace/.cc/npm-cache",
+    });
+  });
+});
 
 describe("buildOpenCodeStateEnv", () => {
   it("returns an empty object when stateDir is undefined", () => {
@@ -51,6 +68,24 @@ describe("ensureOpenCodeStateDirs", () => {
       for (const sub of ["data", "config", "cache", "state"]) {
         await expect(stat(join(stateDir, sub))).resolves.toBeDefined();
       }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("ensureNpmCacheDir", () => {
+  it("does nothing when npmCacheDir is undefined", async () => {
+    await expect(ensureNpmCacheDir(undefined)).resolves.toBeUndefined();
+  });
+
+  it("creates the npm cache directory recursively", async () => {
+    const root = await mkdtemp(join(tmpdir(), "cc-npm-cache-"));
+    const cacheDir = join(root, "nested", "npm-cache");
+
+    try {
+      await ensureNpmCacheDir(cacheDir);
+      await expect(stat(cacheDir)).resolves.toBeDefined();
     } finally {
       await rm(root, { recursive: true, force: true });
     }

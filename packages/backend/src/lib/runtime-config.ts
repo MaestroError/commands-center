@@ -15,6 +15,7 @@ const DEFAULT_OPENCODE_PORT = 4100;
 const DEFAULT_OPENCODE_MAX_RESTARTS = 3;
 const DEFAULT_OPENCODE_RESTART_WINDOW_MS = 60_000;
 const DEFAULT_MCP_AUTH_TIMEOUT_MS = 90_000;
+const DEFAULT_MCP_STDIO_TIMEOUT_MS = 120_000;
 const DEFAULT_DRAIN_TIMEOUT_MS = 15_000;
 const DEFAULT_UPDATE_INTERVAL_MS = 21_600_000;
 const DEFAULT_UPDATE_REGISTRY_URL = "https://registry.npmjs.org/commandscenter/latest";
@@ -127,6 +128,7 @@ const envSchema = z.object({
     DEFAULT_OPENCODE_RESTART_WINDOW_MS,
   ),
   CC_MCP_AUTH_TIMEOUT_MS: positiveInteger("CC_MCP_AUTH_TIMEOUT_MS", DEFAULT_MCP_AUTH_TIMEOUT_MS),
+  CC_MCP_STDIO_TIMEOUT_MS: positiveInteger("CC_MCP_STDIO_TIMEOUT_MS", DEFAULT_MCP_STDIO_TIMEOUT_MS),
   CC_DRAIN_TIMEOUT_MS: positiveInteger("CC_DRAIN_TIMEOUT_MS", DEFAULT_DRAIN_TIMEOUT_MS),
   CC_UPDATE_CHECK: booleanString(true),
   CC_UPDATE_INTERVAL_MS: positiveInteger("CC_UPDATE_INTERVAL_MS", DEFAULT_UPDATE_INTERVAL_MS),
@@ -142,6 +144,7 @@ const envSchema = z.object({
   CC_TRUST_PROXY: booleanString(false),
   CC_OPENCODE_PATH: z.string().trim().optional(),
   CC_OPENCODE_STATE_DIR: z.string().trim().optional(),
+  CC_NPM_CACHE_DIR: z.string().trim().optional(),
   CC_SECRET_KEY: z.string().trim().optional().default(DEFAULT_SECRET_KEY),
   CC_MAX_TASKS: optionalLimit("CC_MAX_TASKS"),
 });
@@ -181,6 +184,7 @@ export type RuntimeConfig = {
     opencodeHealthPollMs: number;
     opencodeRestartWindowMs: number;
     mcpAuthMs: number;
+    mcpStdioMs: number;
     drainMs: number;
   };
   opencode: {
@@ -195,6 +199,7 @@ export type RuntimeConfig = {
      * uses its default `$HOME`-derived XDG paths. See `opencode-env.ts`.
      */
     stateDir?: string;
+    npmCacheDir?: string;
   };
   updates: {
     enabled: boolean;
@@ -259,6 +264,14 @@ export function loadRuntimeConfig(options?: {
       ? parsedEnv.data.CC_OPENCODE_STATE_DIR
       : resolve(cwd, parsedEnv.data.CC_OPENCODE_STATE_DIR)
     : undefined;
+  let npmCacheDir: string | undefined;
+  if (parsedEnv.data.CC_NPM_CACHE_DIR) {
+    npmCacheDir = isAbsolute(parsedEnv.data.CC_NPM_CACHE_DIR)
+      ? parsedEnv.data.CC_NPM_CACHE_DIR
+      : resolve(cwd, parsedEnv.data.CC_NPM_CACHE_DIR);
+  } else if (parsedEnv.data.CC_DOCKER) {
+    npmCacheDir = "/workspace/.cc/npm-cache";
+  }
 
   const resolvedHost = options?.overrides?.host ?? parsedEnv.data.CC_HOST;
   const resolvedPort = options?.overrides?.port ?? parsedEnv.data.CC_PORT;
@@ -302,6 +315,7 @@ export function loadRuntimeConfig(options?: {
       opencodeHealthPollMs: parsedEnv.data.CC_OPENCODE_HEALTH_POLL_MS,
       opencodeRestartWindowMs: parsedEnv.data.CC_OPENCODE_RESTART_WINDOW_MS,
       mcpAuthMs: parsedEnv.data.CC_MCP_AUTH_TIMEOUT_MS,
+      mcpStdioMs: parsedEnv.data.CC_MCP_STDIO_TIMEOUT_MS,
       drainMs: parsedEnv.data.CC_DRAIN_TIMEOUT_MS,
     },
     opencode: {
@@ -310,6 +324,7 @@ export function loadRuntimeConfig(options?: {
       maxRestarts: parsedEnv.data.CC_OPENCODE_MAX_RESTARTS,
       baseUrl: `http://${parsedEnv.data.CC_OPENCODE_HOST}:${String(parsedEnv.data.CC_OPENCODE_PORT)}`,
       stateDir: opencodeStateDir,
+      npmCacheDir,
     },
     updates: {
       enabled: parsedEnv.data.CC_UPDATE_CHECK,
