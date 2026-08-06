@@ -1,6 +1,7 @@
 import type { AnySchema } from "@modelcontextprotocol/sdk/server/zod-compat";
 
 import { CC_MANAGED_GROUP_METAS } from "./group-metadata.js";
+import { CC_DEFAULT_INTERACTIVE_TOOL_CALL_TIMEOUT_MS } from "./live-request-timeouts.js";
 import {
   createNotificationToolDefinitions,
   notificationToolMetadata,
@@ -436,7 +437,7 @@ export function createCcManagedMcpServerRegistry(options: {
       companionPromptId: null,
       systemManaged: true,
       interactive: true,
-      toolCallTimeoutMs: 10 * 60 * 1000,
+      toolCallTimeoutMs: CC_DEFAULT_INTERACTIVE_TOOL_CALL_TIMEOUT_MS,
       catalogTools: [
         showFileToUserToolMetadata,
         runSelfTaskToolMetadata,

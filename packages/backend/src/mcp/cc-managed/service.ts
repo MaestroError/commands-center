@@ -20,6 +20,7 @@ import {
   createCcManagedMcpAuthTokenService,
   type CcManagedMcpAuthTokenService,
 } from "./auth-token-service.js";
+import { withStreamKeepalive, type StreamKeepaliveSender } from "./stream-keepalive.js";
 import type { RuntimeConfig } from "../../lib/runtime-config.js";
 
 type RouteContext = {
@@ -42,6 +43,8 @@ export function createCcManagedMcpService(options: {
   registry: readonly CcManagedMcpServerDefinition[];
   authStateStore?: CcManagedMcpAuthStateStore;
   authTokenService?: CcManagedMcpAuthTokenService;
+  // Overridable so tests do not have to wait out a real beat.
+  keepaliveIntervalMs?: number;
 }) {
   const authStateStore = options.authStateStore ?? createCcManagedMcpAuthStateStore(options.config);
   const authTokenService =
@@ -171,6 +174,9 @@ export function createCcManagedMcpService(options: {
           tools: {
             listChanged: true,
           },
+          // Declared so tool calls may emit `notifications/message`; the SDK
+          // refuses to send them otherwise. Used for the stream keepalive.
+          logging: {},
         },
         instructions: definition.description,
       },
@@ -184,7 +190,15 @@ export function createCcManagedMcpService(options: {
           inputSchema: tool.inputSchema,
           outputSchema: tool.outputSchema,
         },
-        (args: unknown) => tool.execute(args, { agentSlug }),
+        // The SDK passes `extra` second when the tool declares an input schema.
+        // Its `sendNotification` is bound to this call's `relatedRequestId`, so
+        // the keepalive lands on this request's own response stream.
+        (args: unknown, extra: { sendNotification: StreamKeepaliveSender }) =>
+          withStreamKeepalive(
+            extra.sendNotification,
+            async () => tool.execute(args, { agentSlug }),
+            options.keepaliveIntervalMs,
+          ),
       );
     }
 

@@ -101,7 +101,10 @@ async function readWorkspaceConfig(workspacePath: string): Promise<Record<string
 
 function isConfigUpToDate(
   config: Record<string, unknown>,
-  nextEntries: Record<string, { url: string; headers: Record<string, string>; enabled: boolean }>,
+  nextEntries: Record<
+    string,
+    { url: string; headers: Record<string, string>; enabled: boolean; timeout?: number }
+  >,
 ): boolean {
   const mcp = config["mcp"];
   const permission = config["permission"];
@@ -131,6 +134,10 @@ function isConfigUpToDate(
     return (
       (current as Record<string, unknown>)["url"] === entry.url &&
       (current as Record<string, unknown>)["enabled"] === entry.enabled &&
+      // The tool-call timeout must be compared too. A workspace left on a stale
+      // (or absent) timeout falls back to the MCP SDK's 60s default, which cuts
+      // the operator-blocking tools off long before their review form expires.
+      (current as Record<string, unknown>)["timeout"] === entry.timeout &&
       currentHeaders &&
       typeof currentHeaders === "object" &&
       (currentHeaders as Record<string, unknown>)["Authorization"] ===

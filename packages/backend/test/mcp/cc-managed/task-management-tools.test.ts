@@ -9,6 +9,10 @@ import {
   createTaskLiveToolDefinitions,
   createTasksManagementToolDefinitions,
 } from "../../../src/mcp/cc-managed/groups/cc-tasks-management/tools/task-management-tools";
+import {
+  blockingWaitBudgetMs,
+  CC_MANAGED_MCP_TIMEOUT_MS,
+} from "../../../src/mcp/cc-managed/live-request-timeouts";
 import { createTaskExecutionService } from "../../../src/services/task-execution-service";
 import { createTaskService } from "../../../src/services/task-service";
 import { createTestDatabase } from "../../helpers/db";
@@ -255,6 +259,12 @@ describe("task live tools", () => {
     expect(result.isError).toBeFalsy();
     expect((result.structuredContent as { title: string }).title).toBe("Reviewed title");
     expect(liveRequestService.create).toHaveBeenCalledOnce();
+
+    // The form must expire before cc_app's tool-call timeout. A form that outlives
+    // its caller applies the change with nobody left to receive the result.
+    const request = liveRequestService.create.mock.calls[0]![0] as { timeoutMs?: number };
+    expect(request.timeoutMs).toBe(blockingWaitBudgetMs(CC_MANAGED_MCP_TIMEOUT_MS));
+    expect(request.timeoutMs).toBeLessThan(CC_MANAGED_MCP_TIMEOUT_MS);
   });
 
   it("drafts an update to an existing task through review", async () => {

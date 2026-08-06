@@ -7,6 +7,7 @@ import type {
   ConversationMessage,
   ConversationPart,
   ConversationSummary,
+  LiveRequest,
 } from "@cc/shared/schemas";
 import type { ChatEvent, TodoItem } from "@cc/shared/schemas";
 
@@ -30,6 +31,21 @@ function makeMessage(overrides: Partial<ConversationMessage> = {}): Conversation
 
 function makePart(overrides: Partial<ConversationPart> = {}): ConversationPart {
   return { id: "part-1", type: "text", text: "initial", ...overrides };
+}
+
+function makeLiveRequest(overrides: Partial<LiveRequest> = {}): LiveRequest {
+  return {
+    id: "live-1",
+    conversationId: "conv-1",
+    kind: "self_task_template_create_review",
+    presentation: { title: "Review task template", cancelLabel: "Cancel" },
+    fields: [],
+    actions: [],
+    metadata: {},
+    closable: false,
+    createdAt: new Date().toISOString(),
+    ...overrides,
+  };
 }
 
 function makeConversation(overrides: Partial<ConversationDetail> = {}): ConversationDetail {
@@ -209,6 +225,58 @@ describe("HYDRATE_DETAIL", () => {
     expect(next.sessionStatus).toEqual({ type: "idle" });
     expect(next.pendingPermissions).toEqual([]);
     expect(next.todos).toEqual([]);
+  });
+
+  // Pending interactions are live backend state keyed by the conversation, not
+  // part of the detail payload. Dropping them on a refetch of the SAME
+  // conversation makes an open review form vanish from the UI while the
+  // specialist is still blocked on it, and only a page reload brings it back.
+  it("keeps pending interactions when rehydrating the same conversation", () => {
+    const conversation = makeConversation({ id: "conv-same" });
+    const liveRequest = makeLiveRequest({ conversationId: "conv-same" });
+    const state: ConversationState = {
+      ...initialState,
+      conversation,
+      liveRequests: [liveRequest],
+      pendingPermissions: [
+        {
+          id: "perm-1",
+          sessionID: "s",
+          permission: "read",
+          patterns: [],
+          metadata: {},
+          always: [],
+        },
+      ],
+      pendingQuestion: { id: "q-1", sessionID: "s", questions: [] },
+    };
+
+    const next = conversationReducer(state, {
+      type: "HYDRATE_DETAIL",
+      detail: makeConversation({ id: "conv-same", title: "Renamed" }),
+    });
+
+    expect(next.conversation?.title).toBe("Renamed");
+    expect(next.liveRequests).toEqual([liveRequest]);
+    expect(next.pendingPermissions).toHaveLength(1);
+    expect(next.pendingQuestion?.id).toBe("q-1");
+  });
+
+  it("drops pending interactions when hydrating a different conversation", () => {
+    const state: ConversationState = {
+      ...initialState,
+      conversation: makeConversation({ id: "conv-old" }),
+      liveRequests: [makeLiveRequest({ conversationId: "conv-old" })],
+      pendingQuestion: { id: "q-1", sessionID: "s", questions: [] },
+    };
+
+    const next = conversationReducer(state, {
+      type: "HYDRATE_DETAIL",
+      detail: makeConversation({ id: "conv-new" }),
+    });
+
+    expect(next.liveRequests).toEqual([]);
+    expect(next.pendingQuestion).toBeNull();
   });
 });
 

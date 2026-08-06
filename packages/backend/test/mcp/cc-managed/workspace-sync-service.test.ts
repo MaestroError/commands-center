@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import type { AppDb } from "../../../src/db/client";
 import { agents } from "../../../src/db/schema/index";
+import { CC_DEFAULT_INTERACTIVE_TOOL_CALL_TIMEOUT_MS } from "../../../src/mcp/cc-managed/live-request-timeouts";
 import { syncCcManagedMcpSpecialistWorkspaces } from "../../../src/mcp/cc-managed/workspace-sync-service";
 import { resolveSpecialistWorkspacePath } from "../../../src/services/specialist-workspace";
 import { createTestDatabase } from "../../helpers/db";
@@ -78,5 +79,49 @@ describe("syncCcManagedMcpSpecialistWorkspaces", () => {
     expect(rewrite).toBe(1);
     const rewritten = JSON.parse(await readFile(join(workspacePath, "opencode.jsonc"), "utf8"));
     expect(rewritten).toHaveProperty("permission");
+  });
+
+  it("rewrites a workspace whose MCP tool-call timeout is stale", async () => {
+    const testDb = await createTestDatabase();
+    disposers.push(() => testDb.cleanup());
+    await insertAgent(testDb.client.db, "sync-timeout");
+
+    await syncCcManagedMcpSpecialistWorkspaces({
+      db: testDb.client.db,
+      config: testDb.config,
+      logger,
+    });
+    const workspacePath = resolveSpecialistWorkspacePath({
+      config: testDb.config,
+      slug: "sync-timeout",
+      status: "active",
+    });
+    const configPath = join(workspacePath, "opencode.jsonc");
+    const written = JSON.parse(await readFile(configPath, "utf8")) as {
+      mcp: Record<string, { timeout?: number }>;
+    };
+    const interactiveTimeout = written.mcp["cc_default_interactive"]?.timeout;
+
+    expect(interactiveTimeout).toBe(CC_DEFAULT_INTERACTIVE_TOOL_CALL_TIMEOUT_MS);
+
+    // Drop the timeout, leaving url/enabled/auth intact. Without it opencode falls
+    // back to the MCP SDK's 60s default and cuts the operator-blocking tools off
+    // mid-review, so the sync must notice and rewrite.
+    delete written.mcp["cc_default_interactive"]?.timeout;
+    await writeFile(configPath, JSON.stringify(written, null, 2), "utf8");
+
+    const rewrite = await syncCcManagedMcpSpecialistWorkspaces({
+      db: testDb.client.db,
+      config: testDb.config,
+      logger,
+    });
+
+    expect(rewrite).toBe(1);
+    const rewritten = JSON.parse(await readFile(configPath, "utf8")) as {
+      mcp: Record<string, { timeout?: number }>;
+    };
+    expect(rewritten.mcp["cc_default_interactive"]?.timeout).toBe(
+      CC_DEFAULT_INTERACTIVE_TOOL_CALL_TIMEOUT_MS,
+    );
   });
 });

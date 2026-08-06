@@ -8,6 +8,11 @@ import {
 import type { SpecialistService } from "../../../../../services/specialist-service.js";
 import type { ConversationService } from "../../../../../services/conversation-service.js";
 import type { LiveRequestService } from "../../../../../services/live-request-service.js";
+import { blockingWaitBudgetMs, CC_MANAGED_MCP_TIMEOUT_MS } from "../../../live-request-timeouts.js";
+
+// These tools live in cc_app; their review form must close before that group's
+// tool-call timeout. See live-request-timeouts.ts.
+const REVIEW_TIMEOUT_MS = blockingWaitBudgetMs(CC_MANAGED_MCP_TIMEOUT_MS);
 
 type SpecialistManagementToolOptions = {
   agentService: SpecialistService;
@@ -482,9 +487,11 @@ async function executeTool(
   } catch (error) {
     const message = error instanceof Error ? error.message : fallbackMessage;
 
+    // Error results must not carry structuredContent: the MCP client validates it
+    // against the tool's output schema even when isError is set, and rejects the
+    // whole result with -32602 instead of surfacing this message.
     return {
       isError: true,
-      structuredContent: { error: { message } },
       content: [{ type: "text", text: message }],
     };
   }
@@ -539,6 +546,7 @@ async function confirmRemove(
     conversationId: snapshot.current.id,
     kind: "specialist_management_confirmation",
     closable: false,
+    timeoutMs: REVIEW_TIMEOUT_MS,
     presentation: {
       title: "Remove specialist",
       description: `Archive specialist '${input.targetAgentName}' and remove it from active use.`,
@@ -607,6 +615,7 @@ async function reviewAgentMutation(
     conversationId: snapshot.current.id,
     kind: input.kind,
     closable: false,
+    timeoutMs: REVIEW_TIMEOUT_MS,
     presentation: {
       title: input.title,
       description: input.description,

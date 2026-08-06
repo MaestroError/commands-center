@@ -64,6 +64,20 @@ export function registerConversationEventRoutes(server: AppServer, context: Runt
         { once: true },
       );
 
+      // Subscribe before announcing the connection so nothing published in
+      // between is dropped. Live requests are published once, in memory, with no
+      // replay log — a missed publish would otherwise strand the operator with no
+      // review tab while the specialist blocks on it.
+      context.liveRequestService?.subscribe({
+        conversationId: loaded.conversation.id,
+        signal: abortController.signal,
+        onEvent: (event) => {
+          if (!raw.destroyed) {
+            writeSseEvent(raw, event);
+          }
+        },
+      });
+
       writeSseEvent(raw, { type: "connected", properties: {} });
 
       // Subscribe to OpenCode events
@@ -81,15 +95,18 @@ export function registerConversationEventRoutes(server: AppServer, context: Runt
         },
       });
 
-      context.liveRequestService?.subscribe({
-        conversationId: loaded.conversation.id,
-        signal: abortController.signal,
-        onEvent: (event) => {
-          if (!raw.destroyed) {
-            writeSseEvent(raw, event);
-          }
-        },
-      });
+      // Catch this stream up on requests opened before it existed: a first load
+      // after the form opened, or any reconnect. Runs after both subscriptions so
+      // a failure here cannot cost the stream its live events. Delivery is
+      // at-least-once — a request that also arrived live is applied by id on the
+      // client, so the duplicate is a no-op.
+      for (const request of context.liveRequestService?.listByConversation(
+        loaded.conversation.id,
+      ) ?? []) {
+        if (!raw.destroyed) {
+          writeSseEvent(raw, { type: "cc.live_request.opened", properties: { request } });
+        }
+      }
     },
   );
 }

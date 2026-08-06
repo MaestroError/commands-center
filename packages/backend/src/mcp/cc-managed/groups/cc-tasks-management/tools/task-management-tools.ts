@@ -21,11 +21,16 @@ import type { ConversationService } from "../../../../../services/conversation-s
 import type { LiveRequestService } from "../../../../../services/live-request-service.js";
 import type { TaskExecutionService } from "../../../../../services/task-execution-service.js";
 import type { TaskService } from "../../../../../services/task-service.js";
+import { blockingWaitBudgetMs, CC_MANAGED_MCP_TIMEOUT_MS } from "../../../live-request-timeouts.js";
 import {
   withTaskBoardUrl,
   withTaskRunBoardUrl,
   withTaskTemplateBoardUrl,
 } from "../../../task-board-urls.js";
+
+// The draft tools below live in cc_app; their review form must close before that
+// group's tool-call timeout. See live-request-timeouts.ts.
+const REVIEW_TIMEOUT_MS = blockingWaitBudgetMs(CC_MANAGED_MCP_TIMEOUT_MS);
 
 type TaskManagementToolOptions = {
   db: AppDb;
@@ -869,9 +874,11 @@ async function executeTool(
   } catch (error) {
     const message = error instanceof Error ? error.message : fallbackMessage;
 
+    // Error results must not carry structuredContent: the MCP client validates it
+    // against the tool's output schema even when isError is set, and rejects the
+    // whole result with -32602 instead of surfacing this message.
     return {
       isError: true,
-      structuredContent: { error: { message } },
       content: [{ type: "text", text: message }],
     };
   }
@@ -939,6 +946,7 @@ async function reviewTaskMutation(
     conversationId: snapshot.current.id,
     kind: input.kind,
     closable: false,
+    timeoutMs: REVIEW_TIMEOUT_MS,
     presentation: {
       title: input.title,
       description: input.description,

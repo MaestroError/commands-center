@@ -23,7 +23,7 @@
 - **Nothing tears down a live request when the agent turn is interrupted/aborted.** Grepped all `cancel()`/`dispose()` callers — there is no "turn aborted → cancel its forms" path. So **"Tool execution aborted" did not delete the request**; the abort and the not-found are independent symptoms.
 - **The MCP tool call is loopback** (`http://127.0.0.1:<port>/...`) — `packages/backend/src/mcp/cc-managed/workspace-entry-service.ts:106`. A public reverse proxy therefore does **not** sit on the agent↔backend path, but **does** sit on the browser↔backend **SSE** stream.
 - **The frontend resolves with `state.conversation.id`, not the live request's own `conversationId`** — `packages/frontend/src/hooks/use-conversation.ts:603-606`. A divergence here yields a deterministic "not found" (causes #4 above). In the reported case the form _did_ appear in the chat, implying the ids matched at open time, so this is a secondary suspect.
-- **Timeout settings are NOT the cause.** `cc_app` has no explicit `toolCallTimeoutMs`; being `interactive` it resolves to the 30-min interactive window (`workspace-entry-service.ts:13,94-104`), matching the live-request TTL. Both are 30 min.
+- **Timeout settings are NOT the cause.** `cc_app` has no explicit `toolCallTimeoutMs`; being `interactive` it resolves to the 30-min interactive window (`workspace-entry-service.ts:13,94-104`), matching the live-request TTL. Both are 30 min. _(Update: they were exactly equal, so a form that expired at the same moment its caller did produced a race. Review forms are now bounded a minute below the caller's timeout — see `plans/interactive-template-creation-timeout.md`.)_
 
 ## Leading hypothesis
 

@@ -6,6 +6,11 @@ import type {
   CustomToolCopyConflict,
 } from "../../../../../services/custom-tool-action-service.js";
 import type { LiveRequestService } from "../../../../../services/live-request-service.js";
+import { blockingWaitBudgetMs, CC_MANAGED_MCP_TIMEOUT_MS } from "../../../live-request-timeouts.js";
+
+// This tool lives in cc_app; the conflict prompt must close before that group's
+// tool-call timeout. See live-request-timeouts.ts.
+const REVIEW_TIMEOUT_MS = blockingWaitBudgetMs(CC_MANAGED_MCP_TIMEOUT_MS);
 
 const copyCustomToolToSpecialistInputSchema = z.object({
   toolSlug: z.string().trim().min(1),
@@ -123,6 +128,7 @@ async function requestConflictDecision(options: {
     ),
     kind: "custom_tool_copy_conflict",
     closable: false,
+    timeoutMs: REVIEW_TIMEOUT_MS,
     presentation: {
       title: "Tool name conflict",
       description:
