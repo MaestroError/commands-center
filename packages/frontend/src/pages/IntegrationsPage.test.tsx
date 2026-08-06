@@ -844,6 +844,37 @@ describe("IntegrationsPage", () => {
     expect(screen.queryByText("No MCP servers configured yet")).toBeInTheDocument();
   });
 
+  it("disables Composio actions while a mutation is pending", () => {
+    mockConfiguredComposio({
+      enabled: true,
+      requiresEngineRestart: false,
+      authMethod: "oauth",
+    });
+    vi.mocked(useMcpServerMutations).mockReturnValue({
+      create: { mutateAsync: createMutateAsync, isPending: false },
+      update: { mutateAsync: updateMutateAsync, isPending: false },
+      setEnabled: { mutateAsync: setEnabledMutateAsync, isPending: false },
+      activate: { mutateAsync: activateMutateAsync, isPending: false, error: null },
+      remove: { mutateAsync: removeMutateAsync, isPending: true },
+      startAuth: { mutateAsync: startAuthMutateAsync, isPending: false },
+      completeAuth: { mutateAsync: completeAuthMutateAsync, isPending: false },
+      authenticate: { mutateAsync: authenticateMutateAsync, isPending: false },
+      removeAuth: { mutateAsync: removeAuthMutateAsync, isPending: false },
+      refresh: { mutate: vi.fn(), isPending: false },
+    } as never);
+
+    render(<IntegrationsPage />);
+
+    const composioSection = screen
+      .getByRole("heading", { name: "Composio" })
+      .closest("section") as HTMLElement;
+
+    expect(within(composioSection).getByRole("button", { name: "Re-authenticate" })).toBeDisabled();
+    expect(within(composioSection).getByRole("button", { name: "Remove auth" })).toBeDisabled();
+    expect(within(composioSection).getByRole("button", { name: "Updating..." })).toBeDisabled();
+    expect(within(composioSection).getByRole("button", { name: "Remove" })).toBeDisabled();
+  });
+
   it("removes Composio from the dedicated section", async () => {
     removeMutateAsync.mockResolvedValue(undefined);
     vi.mocked(useMcpServersQuery).mockReturnValue({
@@ -1171,6 +1202,7 @@ describe("IntegrationsPage", () => {
 function mockConfiguredComposio(options: {
   enabled: boolean;
   requiresEngineRestart: boolean;
+  authMethod?: "headers" | "oauth";
 }): void {
   vi.mocked(useMcpServersQuery).mockReturnValue({
     data: [
@@ -1178,12 +1210,20 @@ function mockConfiguredComposio(options: {
         id: "mcp-composio",
         name: "composio",
         enabled: options.enabled,
-        config: {
-          url: "https://connect.composio.dev/mcp",
-          transport: "streamable-http",
-          authMethod: "headers",
-          headers: [{ key: "x-consumer-api-key", value: "{env:CC_MCP_COMPOSIO_API_KEY}" }],
-        },
+        config:
+          options.authMethod === "oauth"
+            ? {
+                url: "https://connect.composio.dev/mcp",
+                transport: "streamable-http",
+                authMethod: "oauth",
+                headers: [],
+              }
+            : {
+                url: "https://connect.composio.dev/mcp",
+                transport: "streamable-http",
+                authMethod: "headers",
+                headers: [{ key: "x-consumer-api-key", value: "{env:CC_MCP_COMPOSIO_API_KEY}" }],
+              },
         missingSecrets: [],
         requiresEngineRestart: options.requiresEngineRestart,
         runtimeStatus: { status: options.enabled ? "connected" : "disabled" },

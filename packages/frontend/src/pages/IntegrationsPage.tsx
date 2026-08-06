@@ -605,7 +605,7 @@ function ComposioSection(props: {
               is preconfigured by CC.
             </p>
           </div>
-          <Button onClick={props.onActivate} type="button">
+          <Button disabled={props.busy} onClick={props.onActivate} type="button">
             Connect Composio
           </Button>
         </div>
@@ -658,14 +658,24 @@ function ComposioSection(props: {
         <div className="flex flex-wrap gap-2">
           {props.server.config.transport !== "stdio" &&
           props.server.config.authMethod === "oauth" ? (
-            <Button variant="secondary" onClick={() => void props.onAuthenticate()} type="button">
+            <Button
+              variant="secondary"
+              disabled={props.busy}
+              onClick={() => void props.onAuthenticate()}
+              type="button"
+            >
               {status.status === "connected" ? "Re-authenticate" : "Authenticate"}
             </Button>
           ) : null}
           {props.server.config.transport !== "stdio" &&
           props.server.config.authMethod === "oauth" &&
           status.status === "connected" ? (
-            <Button variant="secondary" onClick={() => void props.onRemoveAuth()} type="button">
+            <Button
+              variant="secondary"
+              disabled={props.busy}
+              onClick={() => void props.onRemoveAuth()}
+              type="button"
+            >
               Remove auth
             </Button>
           ) : null}
@@ -677,7 +687,12 @@ function ComposioSection(props: {
           >
             {props.busy ? "Updating..." : props.server.enabled ? "Disable" : "Activate"}
           </Button>
-          <Button variant="danger" onClick={() => void props.onRemove()} type="button">
+          <Button
+            variant="danger"
+            disabled={props.busy}
+            onClick={() => void props.onRemove()}
+            type="button"
+          >
             Remove
           </Button>
         </div>
