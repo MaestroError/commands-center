@@ -69,6 +69,31 @@ Two independent ways the operator lost sight of a form the specialist was blocki
   re-fetching the _same_ conversation dropped an open form (or a permission prompt)
   from the UI with nothing to bring it back but a reload.
 
+### 4. The caller's HTTP client hangs up on a silent stream after 5 minutes
+
+This one was listed as an unverified suspicion; it is now measured, and it is real.
+
+opencode ships as a Bun binary, and `BUN_BE_BUN=1 <opencode> script.js` runs it as the
+plain Bun runtime — so the exact client can be tested. Against a server that sends SSE
+headers and then nothing (what our transport does while a tool blocks — hono flushes the
+headers when the stream has produced no data yet), Bun 1.3.14 as shipped by opencode
+1.17.20 aborts the fetch at **300.1 s**, identically whether or not the headers were
+flushed first:
+
+```
+[B flushed ] [client] RESULT: FAILED at 300.1s — TimeoutError: The operation timed out. (code=23)
+[A no-flush] [client] RESULT: FAILED at 300.1s — TimeoutError: The operation timed out. (code=23)
+```
+
+Nothing tells the server. It keeps waiting, the operator clicks Apply, the template is
+created, and the result is written to a socket the client abandoned minutes earlier —
+the specialist sees only `-32001` once its own tool-call timeout expires. That is the
+reported bug end to end, and it means the 9-minute review budget from defect 1 was not
+by itself enough: **any review that took longer than five minutes still failed.**
+
+The MCP path is loopback (`127.0.0.1`), so no reverse proxy is involved — this is the
+client's own limit.
+
 ### Contributing: workspace sync could leave a stale timeout
 
 `isConfigUpToDate` compared only `url`, `enabled`, and the `Authorization` header, so a
@@ -99,6 +124,15 @@ operator can finish reviewing.
 - **`HYDRATE`/`HYDRATE_DETAIL` keep pending interactions when the conversation id is
   unchanged** (`liveInteractionState`), and clear them only on a real switch. This covers
   permission prompts and questions too, which had the same disappearing-prompt failure.
+- **Every tool call now beats on its own response stream every 30 s**
+  (`mcp/cc-managed/stream-keepalive.ts`, wired once at the `registerTool` boundary in
+  `service.ts`). The SDK routes `extra.sendNotification` to this request's stream via
+  `relatedRequestId`, so the body never goes idle long enough for the 300 s cap; a client
+  with no handler for `notifications/message` drops it silently. The server declares the
+  `logging` capability, which the SDK requires before it will send one. Beats are
+  best-effort: once the stream is gone the send throws and the heartbeat stands down
+  without disturbing the call. Quick tools never emit one — they finish long before the
+  first beat is due.
 
 ## Verification
 
@@ -129,7 +163,26 @@ socket and reads until `cc.live_request.opened`; before the replay it times out 
 live request, permission, and question (it dropped them before), and that a switch to a
 different conversation still clears them.
 
-Whole suite: 1363 backend + 1496 frontend tests, plus typecheck, eslint, knip, prettier.
+**Defect 4 is measured, and the fix is verified three ways.** The 300 s cap above came from
+driving the shipped runtime directly. Re-running that same client against a server that
+beats every 30 s, the connection that previously died at 300.1 s instead sailed past it
+and took delivery at 600 s:
+
+```
+[client] CHUNK at 300.0s: … notifications/message …
+[client] CHUNK at 600.0s: data: {"jsonrpc":"2.0","id":1,"result":{"late":true}}
+[client] RESULT: survived the silent body
+```
+
+For the fix in this codebase,
+`test/mcp/cc-managed/stream-keepalive.test.ts` stands up the real service on a real
+socket, connects a real MCP `Client`, and asserts `notifications/message` arrive **while
+the tool call is still outstanding** — bytes after the result would not have kept the
+socket alive. Removing the keepalive from `service.ts` makes that test time out. Fake-timer
+unit tests cover the heartbeat stopping when the call settles and standing down (without
+failing the call) once the stream is gone.
+
+Whole suite: 1367 backend + 1496 frontend tests, plus typecheck, eslint, knip, prettier.
 
 ## Remaining work
 
@@ -147,14 +200,13 @@ Whole suite: 1363 backend + 1496 frontend tests, plus typecheck, eslint, knip, p
    the damage (nothing is applied behind the caller's back), but a tool already inside
    `createTemplate` when the caller gives up still completes. Making cancellation
    observable would require session-scoped MCP server instances.
-4. **Unverified: idle-stream tolerance of the client.** While a tool blocks, the POST's
-   SSE response carries no bytes. Fastify holds it open (`requestTimeout` defaults to 0),
-   but whether opencode's Bun `fetch` tolerates a 9-minute silent body could not be
-   determined from the shipped binary. If it does not, waits in the ~5–9 min band would
-   still fail the same way. A server→client `ping` on the request stream would rule the
-   class out; not added without evidence.
-5. **Frontend affordance:** a resolve that 404s (expired form) should say "this review
+4. **Frontend affordance:** a resolve that 404s (expired form) should say "this review
    expired — ask the agent to re-draft" rather than leaving an Apply button that fails.
+5. **The keepalive interval is tied to one measured number.** 30 s against a 300 s cap
+   leaves wide margin, but the cap is Bun's, not a protocol guarantee: a future runtime
+   could lower it. `scratchpad/idle-client.js` in this investigation re-measures it in one
+   command (`BUN_BE_BUN=1 <opencode binary> idle-client.js`) if interactive tools ever
+   start timing out again after an opencode upgrade.
 
 See also `plans/investigations/cc-app-draft-live-request-not-found.md` for the related
 "Live request not found" reports.

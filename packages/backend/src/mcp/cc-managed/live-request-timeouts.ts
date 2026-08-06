@@ -17,6 +17,12 @@
 // clicks Apply, the template/task is really created, and the agent still reports a
 // timeout — so a retry creates a duplicate. Every blocking wait must end *before*
 // the caller's tool-call timeout, which is what blockingWaitBudgetMs enforces.
+//
+// The tool-call timeout is not the only clock the caller runs: its HTTP client
+// abandons a response body that stays silent for 300 s (measured on Bun, the
+// runtime opencode ships). That one is handled by the keepalive in
+// stream-keepalive.ts rather than by shrinking the budget — the beats keep the
+// stream alive so the budgets below remain the binding limit.
 
 // Tool-call timeout published for cc_default_interactive.
 export const CC_DEFAULT_INTERACTIVE_TOOL_CALL_TIMEOUT_MS = 10 * 60 * 1000;
