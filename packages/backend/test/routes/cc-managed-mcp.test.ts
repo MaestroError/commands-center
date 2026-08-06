@@ -1,6 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { describe, expect, it, vi } from "vitest";
 
 import { createLogger } from "../../src/lib/logger";
@@ -24,6 +26,83 @@ type InjectServer = Awaited<ReturnType<typeof createServer>>;
 type TestConfig = Awaited<ReturnType<typeof createTestDatabase>>["config"];
 
 describe("cc-managed MCP routes", () => {
+  // Drives the real MCP client over HTTP rather than server.inject, because the
+  // failure this guards against is client-side: the SDK validates a tool result's
+  // structuredContent against the cached output schema even when isError is set,
+  // and rejects the whole call with -32602 instead of surfacing the message.
+  it("delivers a tool's real error message to a live MCP client", async () => {
+    const testDb = await createTestDatabase();
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+    });
+    const client = new Client({ name: "interactive-test-client", version: "1.0.0" });
+
+    try {
+      const created = await server.inject({
+        method: "POST",
+        url: "/api/specialists",
+        payload: {
+          name: "Drafter",
+          role: "draft tasks",
+          instructions: "Draft useful tasks.",
+          defaultModel: "openai/gpt-4.1",
+          capabilities: {
+            builtInSkills: [],
+            workspaceSkills: [],
+            customTools: [],
+            mcpServers: [],
+            toolPermissions: [],
+            appMcpServers: [],
+            appToolPermissions: [],
+          },
+        },
+      });
+
+      expect(created.statusCode).toBe(201);
+
+      const tokenService = createCcManagedMcpAuthTokenService({
+        authStateStore: createCcManagedMcpAuthStateStore(testDb.config),
+      });
+      const token = await tokenService.issueToken("drafter", "cc_default_interactive");
+
+      await server.listen({ port: 0, host: "127.0.0.1" });
+      const address = server.server.address();
+      const port = typeof address === "object" && address ? address.port : 0;
+
+      await client.connect(
+        new StreamableHTTPClientTransport(
+          new URL(
+            `http://127.0.0.1:${String(port)}/api/mcp/cc/cc-default-interactive/specialists/drafter`,
+          ),
+          { requestInit: { headers: { Authorization: `Bearer ${token}` } } },
+        ),
+      );
+      // Caching the output schemas is what arms the client-side validation.
+      await client.listTools();
+
+      const result = await client.callTool({
+        name: "draft_self_task_update",
+        arguments: { taskId: "missing-task" },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.structuredContent).toBeUndefined();
+      expect((result.content as Array<{ text?: string }>)[0]?.text).toContain("Task not found");
+    } finally {
+      await client.close();
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
   it("serves the cc_app MCP endpoint with agent-scoped auth", async () => {
     const testDb = await createTestDatabase();
     testDb.config.server.port = 43123;
@@ -4236,10 +4315,17 @@ describe("cc-managed MCP routes", () => {
         2,
       );
       const foreignResult = parseSseJson(foreign.body) as {
-        result?: { isError?: boolean; structuredContent?: { error?: { message?: string } } };
+        result?: {
+          isError?: boolean;
+          structuredContent?: unknown;
+          content?: Array<{ text?: string }>;
+        };
       };
       expect(foreignResult.result?.isError).toBe(true);
-      expect(foreignResult.result?.structuredContent?.error?.message).toContain("not found");
+      // The message travels in the text content: an error-shaped structuredContent
+      // would fail the client's output-schema validation and mask it.
+      expect(foreignResult.result?.structuredContent).toBeUndefined();
+      expect(foreignResult.result?.content?.[0]?.text).toContain("not found");
     } finally {
       await server.close();
       await testDb.cleanup();

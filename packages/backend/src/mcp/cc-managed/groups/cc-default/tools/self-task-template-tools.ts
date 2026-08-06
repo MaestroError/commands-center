@@ -357,9 +357,11 @@ async function executeTool(
   } catch (error) {
     const message = error instanceof Error ? error.message : fallbackMessage;
 
+    // Error results must not carry structuredContent: the MCP client validates it
+    // against the tool's output schema even when isError is set, and rejects the
+    // whole result with -32602 instead of surfacing this message.
     return {
       isError: true,
-      structuredContent: { error: { message } },
       content: [{ type: "text", text: message }],
     };
   }

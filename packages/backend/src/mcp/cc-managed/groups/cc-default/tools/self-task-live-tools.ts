@@ -22,6 +22,10 @@ import {
   updateSelfTaskTemplateInputSchema,
 } from "./self-task-template-tools.js";
 import {
+  blockingWaitBudgetMs,
+  CC_DEFAULT_INTERACTIVE_TOOL_CALL_TIMEOUT_MS,
+} from "../../../live-request-timeouts.js";
+import {
   withTaskBoardUrl,
   withTaskRunBoardUrl,
   withTaskTemplateBoardUrl,
@@ -39,8 +43,12 @@ type SelfTaskLiveToolOptions = {
 // Terminal run statuses — polling stops when any of these is observed.
 const TERMINAL_RUN_STATUSES = new Set(["completed", "failed", "cancelled"]);
 // How often to re-check the run status. 3 s is gentle on the DB; the
-// 10-min cc_default_interactive timeout gives ample room to wait.
+// cc_default_interactive timeout gives ample room to wait.
 const RUN_POLL_INTERVAL_MS = 3_000;
+// Longest these tools may block — for the operator review form and for the
+// run_self_task poll alike. Ends before the caller's tool-call timeout so the
+// result still reaches the specialist; see live-request-timeouts.ts.
+const BLOCKING_WAIT_MS = blockingWaitBudgetMs(CC_DEFAULT_INTERACTIVE_TOOL_CALL_TIMEOUT_MS);
 
 type ToolResult = {
   content: Array<{ type: "text"; text: string }>;
@@ -157,48 +165,22 @@ export function createSelfTaskLiveToolDefinitions(options: SelfTaskLiveToolOptio
           });
 
           // Poll until the run reaches a terminal state. Using DB polling rather
-          // than a subscribe model — the 10-min cc_default_interactive timeout
-          // gives ample headroom, and 3 s intervals produce negligible DB load.
-          const terminal = await pollForTerminalRun(
-            options.taskService,
-            run.id,
-            9 * 60 * 1_000, // hard deadline just under the 10-min MCP timeout
-          );
+          // than a subscribe model — the cc_default_interactive timeout gives
+          // ample headroom, and 3 s intervals produce negligible DB load.
+          const terminal = await pollForTerminalRun(options.taskService, run.id, BLOCKING_WAIT_MS);
 
           if (terminal.status === "failed") {
-            const msg = terminal.errorMessage ?? "Task run failed.";
-            const structuredContent = {
-              error: { message: msg },
-              run: mcpTaskRunSchema.parse(withTaskRunBoardUrl(options.config, terminal)),
-            };
-            return {
-              isError: true,
-              structuredContent,
-              content: [
-                {
-                  type: "text" as const,
-                  text: `${msg}\n\n${JSON.stringify(structuredContent, null, 2)}`,
-                },
-              ],
-            };
+            return failure(
+              terminal.errorMessage ?? "Task run failed.",
+              mcpTaskRunSchema.parse(withTaskRunBoardUrl(options.config, terminal)),
+            );
           }
 
           if (terminal.status === "cancelled") {
-            const msg = "Task run was cancelled before it could complete.";
-            const structuredContent = {
-              error: { message: msg },
-              run: mcpTaskRunSchema.parse(withTaskRunBoardUrl(options.config, terminal)),
-            };
-            return {
-              isError: true,
-              structuredContent,
-              content: [
-                {
-                  type: "text" as const,
-                  text: `${msg}\n\n${JSON.stringify(structuredContent, null, 2)}`,
-                },
-              ],
-            };
+            return failure(
+              "Task run was cancelled before it could complete.",
+              mcpTaskRunSchema.parse(withTaskRunBoardUrl(options.config, terminal)),
+            );
           }
 
           return success(
@@ -484,12 +466,25 @@ async function executeTool(
   } catch (error) {
     const message = error instanceof Error ? error.message : fallbackMessage;
 
-    return {
-      isError: true,
-      structuredContent: { error: { message } },
-      content: [{ type: "text", text: message }],
-    };
+    return failure(message);
   }
+}
+
+// Error results carry their detail in the text content only. The MCP client
+// validates `structuredContent` against the tool's declared output schema even
+// on error results, so an error-shaped payload here is rejected with
+// "-32602 Structured content does not match the tool's output schema" and the
+// real message never reaches the specialist.
+function failure(message: string, details?: Record<string, unknown>): ToolResult {
+  return {
+    isError: true,
+    content: [
+      {
+        type: "text",
+        text: details ? `${message}\n\n${JSON.stringify(details, null, 2)}` : message,
+      },
+    ],
+  };
 }
 
 // Appends the full structured result to the tool's text output so the UI's
@@ -553,10 +548,15 @@ async function openReviewForm(
   }
 
   const snapshot = await options.conversationService.resolveCurrent(input.agentId);
-  const decision = await options.liveRequestService.create({
+  const decision = await requestReview(options.liveRequestService, {
     conversationId: snapshot.current.id,
     kind: input.kind,
     closable: false,
+    // Expire the form before the caller's tool-call timeout. A form that
+    // outlives its caller would apply the change with nobody left to receive
+    // the result, so the agent reports a timeout for work that really happened
+    // and duplicates it on retry.
+    timeoutMs: BLOCKING_WAIT_MS,
     presentation: {
       title: input.title,
       description: input.description,
@@ -586,6 +586,26 @@ async function openReviewForm(
   });
 
   return reviewDecisionSchema.parse(decision).values;
+}
+
+// An expired form rejects with a bare "Live request timed out." Say instead that
+// nothing was applied, so the specialist reports that rather than retrying a
+// change that might already exist.
+async function requestReview(
+  liveRequestService: LiveRequestService,
+  input: Parameters<LiveRequestService["create"]>[0],
+): Promise<Awaited<ReturnType<LiveRequestService["create"]>>> {
+  try {
+    return await liveRequestService.create(input);
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("timed out")) {
+      throw new Error(
+        "The operator did not submit the review form in time, so nothing was created or changed. Ask whether to open it again.",
+      );
+    }
+
+    throw error;
+  }
 }
 
 function textField(
