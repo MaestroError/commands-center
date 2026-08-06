@@ -158,18 +158,18 @@ export function IntegrationsPage() {
             const updated = await mcpMutations.authenticate.mutateAsync({ id: composioServer.id });
             setSuccessMessage(`${updated.name} authenticated.`);
           }}
-          onDeactivate={async () => {
+          onRemove={async () => {
             if (!composioServer) {
               return;
             }
 
-            if (!window.confirm(`Deactivate Composio MCP server '${composioServer.name}'?`)) {
+            if (!window.confirm(`Remove Composio integration '${composioServer.name}'?`)) {
               return;
             }
 
             setSuccessMessage(undefined);
             await mcpMutations.remove.mutateAsync({ id: composioServer.id });
-            setSuccessMessage("Composio deactivated.");
+            setSuccessMessage("Composio removed.");
           }}
           onRemoveAuth={async () => {
             if (!composioServer) {
@@ -566,7 +566,7 @@ function ComposioSection(props: {
   onAuthenticate: () => Promise<void>;
   onRemoveAuth: () => Promise<void>;
   onToggleEnabled: () => Promise<void>;
-  onDeactivate: () => Promise<void>;
+  onRemove: () => Promise<void>;
 }) {
   if (!props.server) {
     return (
@@ -677,8 +677,8 @@ function ComposioSection(props: {
           >
             {props.busy ? "Updating..." : props.server.enabled ? "Disable" : "Activate"}
           </Button>
-          <Button variant="danger" onClick={() => void props.onDeactivate()} type="button">
-            Deactivate
+          <Button variant="danger" onClick={() => void props.onRemove()} type="button">
+            Remove
           </Button>
         </div>
       </div>

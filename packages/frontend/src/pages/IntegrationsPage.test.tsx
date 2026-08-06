@@ -844,7 +844,7 @@ describe("IntegrationsPage", () => {
     expect(screen.queryByText("No MCP servers configured yet")).toBeInTheDocument();
   });
 
-  it("deactivates Composio from the dedicated section", async () => {
+  it("removes Composio from the dedicated section", async () => {
     removeMutateAsync.mockResolvedValue(undefined);
     vi.mocked(useMcpServersQuery).mockReturnValue({
       data: [
@@ -871,10 +871,10 @@ describe("IntegrationsPage", () => {
 
     render(<IntegrationsPage />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Deactivate" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
 
     await waitFor(() => {
-      expect(confirmSpy).toHaveBeenCalledWith("Deactivate Composio MCP server 'composio'?");
+      expect(confirmSpy).toHaveBeenCalledWith("Remove Composio integration 'composio'?");
       expect(removeMutateAsync).toHaveBeenCalledWith({ id: "mcp-composio" });
     });
   });
@@ -1163,7 +1163,7 @@ describe("IntegrationsPage", () => {
       expect(setEnabledMutateAsync).toHaveBeenCalledWith({ id: "composio-1", enabled: false }),
     );
 
-    await user.click(within(composioSection).getByRole("button", { name: "Deactivate" }));
+    await user.click(within(composioSection).getByRole("button", { name: "Remove" }));
     await waitFor(() => expect(removeMutateAsync).toHaveBeenCalledWith({ id: "composio-1" }));
   });
 });
