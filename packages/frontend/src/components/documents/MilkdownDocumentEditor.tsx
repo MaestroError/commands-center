@@ -21,6 +21,7 @@ type MilkdownDocumentEditorProps = {
 export function MilkdownDocumentEditor(props: MilkdownDocumentEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const crepeRef = useRef<Crepe | null>(null);
+  const lifecycleRef = useRef<Promise<void>>(Promise.resolve());
   const onChangeRef = useRef(props.onChange);
   onChangeRef.current = props.onChange;
   // Bridges the Milkdown slash-menu (runs outside React) to React dialog state.
@@ -69,17 +70,31 @@ export function MilkdownDocumentEditor(props: MilkdownDocumentEditorProps) {
       });
     });
 
-    void crepe.create().then(() => {
-      if (props.readonly) {
+    let disposed = false;
+    let created = false;
+    const createPromise = lifecycleRef.current.then(async () => {
+      if (disposed) return;
+
+      crepeRef.current = crepe;
+      await crepe.create();
+      created = true;
+
+      if (!disposed && props.readonly) {
         crepe.setReadonly(true);
       }
     });
-
-    crepeRef.current = crepe;
+    lifecycleRef.current = createPromise;
 
     return () => {
-      void crepe.destroy();
-      crepeRef.current = null;
+      disposed = true;
+      lifecycleRef.current = createPromise.then(async () => {
+        if (crepeRef.current === crepe) {
+          crepeRef.current = null;
+        }
+        if (created) {
+          await crepe.destroy();
+        }
+      });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
