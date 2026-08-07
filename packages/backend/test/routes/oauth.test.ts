@@ -237,6 +237,33 @@ describe("OAuth routes", () => {
     }
   });
 
+  it("connects a second MCP client that approves with a different API token", async () => {
+    const fixture = await createOAuthRouteServer();
+
+    try {
+      const first = fixture.apiTokenService.createToken(
+        "First MCP client",
+        permissionsForPresets("tasks"),
+      );
+      const second = fixture.apiTokenService.createToken(
+        "Second MCP client",
+        permissionsForPresets("tasks"),
+      );
+      const browser = createCookieJar();
+      const firstAccessToken = await connectMcpClient(fixture, browser, "first", first.token);
+      const secondAccessToken = await connectMcpClient(fixture, browser, "second", second.token);
+
+      expect((await fixture.server.mcpOAuthService.resolveAccessToken(firstAccessToken))?.id).toBe(
+        first.record.id,
+      );
+      expect((await fixture.server.mcpOAuthService.resolveAccessToken(secondAccessToken))?.id).toBe(
+        second.record.id,
+      );
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
   it("denies an authorization interaction without requiring an API token", async () => {
     const fixture = await createOAuthRouteServer();
 
@@ -519,6 +546,139 @@ async function startAuthorization(fixture: Awaited<ReturnType<typeof createOAuth
     uid,
     verifier,
   };
+}
+
+type CookieJar = {
+  header(requestPath: string): string;
+  store(response: { headers: { [key: string]: unknown } }): void;
+};
+
+/** A path-aware cookie store, so consecutive connections share one "browser". */
+function createCookieJar(): CookieJar {
+  const cookies = new Map<string, { name: string; path: string; value: string }>();
+
+  return {
+    header(requestPath) {
+      return [...cookies.values()]
+        .filter(
+          (cookie) =>
+            requestPath === cookie.path ||
+            (requestPath.startsWith(cookie.path) &&
+              (cookie.path.endsWith("/") || requestPath[cookie.path.length] === "/")),
+        )
+        .map((cookie) => `${cookie.name}=${cookie.value}`)
+        .join("; ");
+    },
+    store(response) {
+      const header = response.headers["set-cookie"];
+      const values = Array.isArray(header)
+        ? header.filter((value): value is string => typeof value === "string")
+        : typeof header === "string"
+          ? [header]
+          : [];
+
+      for (const value of values) {
+        const [pair = "", ...attributes] = value.split(";").map((part) => part.trim());
+        const separator = pair.indexOf("=");
+        const name = pair.slice(0, separator);
+        const cookieValue = pair.slice(separator + 1);
+        const path =
+          attributes
+            .find((attribute) => attribute.toLowerCase().startsWith("path="))
+            ?.slice("path=".length) ?? "/";
+        const key = `${name} ${path}`;
+
+        if (cookieValue === "") {
+          cookies.delete(key);
+          continue;
+        }
+
+        cookies.set(key, { name, path, value: cookieValue });
+      }
+    },
+  };
+}
+
+/** Runs a full register → authorize → approve → resume → token cycle. */
+async function connectMcpClient(
+  fixture: Awaited<ReturnType<typeof createOAuthRouteServer>>,
+  browser: CookieJar,
+  suffix: string,
+  apiToken: string,
+): Promise<string> {
+  const redirectUri = `http://127.0.0.1/callback/${suffix}`;
+  const registration = await registerOAuthClient(fixture, suffix);
+  const clientId = readRequiredString(registration.json(), "client_id");
+  const verifier = `${suffix}-code-verifier-value-that-is-long-enough`;
+  const challenge = createHash("sha256").update(verifier).digest("base64url");
+  const authorization = await fixture.server.inject({
+    method: "GET",
+    url: `/oauth/authorize?${new URLSearchParams({
+      client_id: clientId,
+      code_challenge: challenge,
+      code_challenge_method: "S256",
+      redirect_uri: redirectUri,
+      resource: RESOURCE,
+      response_type: "code",
+      scope: "mcp",
+      state: `state-${suffix}`,
+    }).toString()}`,
+    headers: { cookie: browser.header("/oauth/authorize"), host: HOST },
+  });
+  browser.store(authorization);
+  const location = readRequiredHeader(authorization.headers.location);
+  const uid = /^\/oauth-interaction\/([A-Za-z0-9_-]+)$/.exec(location)?.[1];
+
+  if (!uid) {
+    throw new Error(`Authorization did not start an interaction: ${authorization.body}`);
+  }
+
+  const interactionPath = `/api/oauth/interactions/${uid}`;
+  const approval = await fixture.server.inject({
+    method: "POST",
+    url: interactionPath,
+    headers: { cookie: browser.header(interactionPath), host: HOST, origin: ORIGIN },
+    payload: { decision: "approve", apiToken },
+  });
+  browser.store(approval);
+
+  if (approval.statusCode !== 200) {
+    throw new Error(`Authorization approval failed: ${approval.body}`);
+  }
+
+  const resumeUrl = new URL(readRequiredString(approval.json(), "redirectTo"));
+  const resumed = await fixture.server.inject({
+    method: "GET",
+    url: `${resumeUrl.pathname}${resumeUrl.search}`,
+    headers: { cookie: browser.header(resumeUrl.pathname), host: HOST },
+  });
+  browser.store(resumed);
+  const callback = new URL(readRequiredHeader(resumed.headers.location));
+  const code = callback.searchParams.get("code");
+
+  if (!code) {
+    throw new Error(`Authorization did not return a code: ${resumed.body}`);
+  }
+
+  const exchanged = await fixture.server.inject({
+    method: "POST",
+    url: "/oauth/token",
+    headers: { "content-type": "application/x-www-form-urlencoded", host: HOST },
+    payload: new URLSearchParams({
+      client_id: clientId,
+      code,
+      code_verifier: verifier,
+      grant_type: "authorization_code",
+      redirect_uri: redirectUri,
+      resource: RESOURCE,
+    }).toString(),
+  });
+
+  if (exchanged.statusCode !== 200) {
+    throw new Error(`Authorization code exchange failed: ${exchanged.body}`);
+  }
+
+  return readRequiredString(exchanged.json(), "access_token");
 }
 
 async function createOAuthPrincipal(fixture: Awaited<ReturnType<typeof createOAuthRouteServer>>) {

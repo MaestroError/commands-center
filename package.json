@@ -60,7 +60,8 @@
       "brace-expansion@5.0.5": "5.0.9",
       "find-my-way@<9.7.0": "9.7.0",
       "postcss@<8.5.18": "8.5.18",
-      "js-yaml@4.1.1": "4.3.1"
+      "js-yaml@4.1.1": "4.3.1",
+      "nanoid@<3.3.17": "3.3.17"
     },
     "onlyBuiltDependencies": [
       "better-sqlite3",
