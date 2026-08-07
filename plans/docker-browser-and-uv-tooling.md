@@ -92,3 +92,11 @@ running container.
   `status: ok` with OpenCode and the scheduler healthy.
 - Passed ESLint autofix, Prettier, TypeScript typecheck, all unit tests, and the
   full Playwright E2E suite (170 passed, 56 skipped).
+
+## CI audit follow-up
+
+- Upgrade the existing `js-yaml@4.1.1` security override from 4.3.0 to the
+  patched 4.3.1 release required by GHSA-5p4m-2wfm-xmqj.
+- Regenerate the pnpm lockfile without broad dependency upgrades.
+- Verify the high-severity audit, lint, typecheck, and tests before updating the
+  pull request.
