@@ -6,10 +6,10 @@ Portainer, CapRover): the app is a single container that listens on port `3000`,
 state under a mounted `/workspace` volume, and must be told its public origin and that Coolify's
 proxy is trusted.
 
-CommandsCenter does not publish a prebuilt Docker image — the image is built from the
-[`Dockerfile`](../Dockerfile), which installs the published `commandscenter` npm package. So a
-user does **not** need the source repository; the Dockerfile is self-contained (it has no
-`COPY` of local files) and can be built from its contents alone.
+CommandsCenter does not publish a prebuilt Docker image. Choose the lean
+[`Dockerfile`](../Dockerfile), or the recommended opt-in [`Dockerfile.full`](../Dockerfile.full)
+when agents need browser-based or Python MCPs. Both install the published `commandscenter` npm
+package and are self-contained, so a user does **not** need the source repository.
 
 ## What you get
 
@@ -30,8 +30,12 @@ container.
 
 1. Coolify dashboard → your Project/Environment → **+ Create New Resource**.
 2. Under **Docker Based**, choose **Dockerfile** (deploy without Git).
-3. Paste the entire contents of [`Dockerfile`](../Dockerfile) into the editor and create the
-   resource.
+3. Choose one image definition and paste its entire contents into the editor:
+   - **Full (recommended for MCP use):** [`Dockerfile.full`](../Dockerfile.full), with `uv`/`uvx`,
+     Playwright, Chromium, and its Debian dependencies.
+   - **Basic:** [`Dockerfile`](../Dockerfile), with the CommandsCenter runtime and base development
+     tools only.
+4. Create the resource.
 
 > **Why "Dockerfile" and not "Docker Image"?** There is no published CommandsCenter image to
 > pull, so "Docker Image" does not apply. "Docker Compose Empty" also works but is awkward for a
@@ -127,8 +131,9 @@ The bundled OpenCode engine takes ~30–90s to warm up on first boot. `/api/heal
 
 ## 6. Deploy, claim, verify
 
-1. Click **Deploy**. Watch **Build logs** (a few minutes — it runs `npm install -g
-commandscenter`), then **Application logs**.
+1. Click **Deploy**, then watch **Build logs** and **Application logs**. The Full image's first
+   build takes longer because it downloads Playwright Chromium and installs its Debian
+   dependencies.
 2. Wait for `opencode engine is healthy`. On the first boot of an unclaimed workspace, the logs
    also print a one-time **claim code** and claim URL:
    ```
@@ -171,7 +176,7 @@ Your `/workspace` volume survives, so it is a clean in-place upgrade.
 
 ## Preinstalled tools, and adding your own
 
-The provided [`Dockerfile`](../Dockerfile) bakes a base toolchain into the image:
+Both provided Dockerfiles bake this base toolchain into the image:
 
 - **Node.js 24** and **npm** (from the `node:24-bookworm-slim` base)
 - **git** and **gh** (GitHub CLI)
@@ -179,6 +184,22 @@ The provided [`Dockerfile`](../Dockerfile) bakes a base toolchain into the image
 - **Python 3** (`python3`, with `python` aliased to it)
 - Build tooling: **g++**, **make**
 - `commandscenter` (the `ccenter` CLI) and the bundled OpenCode engine
+
+The opt-in Full image additionally includes:
+
+- **uv** and **uvx** (copied from Astral's official pinned container image)
+- **Playwright** and its pinned **Chromium** browser with Debian runtime dependencies
+
+The Full image is recommended when using MCP integrations. Its browser runtime adds meaningful
+image size, but lets browser-based MCPs run as the unprivileged `node` user without installing OS
+packages in a live container. Chromium is exposed as `/usr/local/bin/chromium`; the suggested
+Playwright MCP selects it for headless execution. The suggested Mermaid MCP skips its package's
+privileged `postinstall`, because the required browser and libraries are already present. These two
+suggestions are not expected to work in the Basic image.
+
+After upgrading an existing deployment, edit an existing Mermaid MCP and add
+`npm_config_ignore_scripts=true` to its **Environment** field, or remove it and add it again from
+Suggested MCPs. New suggested configurations include this automatically.
 
 > **The container is immutable — tools you install at runtime do not survive.** Anything you add
 > inside a running container with `apt-get`, `pip`, `npm install -g`, `uvx`, etc. lives only in
@@ -196,7 +217,6 @@ as root:
 RUN apt-get update \
   && apt-get install -y --no-install-recommends python3-pip jq ripgrep \
   && rm -rf /var/lib/apt/lists/* \
-  && pip install --no-cache-dir --break-system-packages uv \
   && npm install -g your-cli
 ```
 
@@ -210,6 +230,8 @@ Then redeploy so Coolify rebuilds the image with your tools included.
 | OAuth sees HTTP or clients share limits   | `CC_TRUST_PROXY` is unset or `false`   | Set `CC_TRUST_PROXY=true` and redeploy.                                   |
 | Health "degraded" for ~1 min after boot   | OpenCode engine cold start             | Normal; it becomes healthy within ~90s.                                   |
 | Data lost after redeploy                  | No persistent `/workspace` volume      | Add the Volume Mount in [§4](#4-persistent-storage-required).             |
+| `Executable not found in $PATH: "uvx"`    | Deployment uses the Basic image        | Switch to `Dockerfile.full` and force a no-cache rebuild.                 |
+| Mermaid exits with `Connection closed`    | Old preset runs privileged postinstall | Add `npm_config_ignore_scripts=true`, then disable and re-enable it.      |
 | SSL not issued                            | DNS not resolving to the server        | Point the `A` record first, then redeploy.                                |
 
 To read logs from an exited container (Coolify's Logs tab only attaches to running containers):

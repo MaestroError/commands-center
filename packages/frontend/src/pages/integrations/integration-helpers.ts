@@ -227,7 +227,7 @@ export const SUGGESTED_MCP_SERVERS: SuggestedMcpServer[] = [
       name: "playwright",
       transport: "stdio",
       authMethod: "none",
-      commandText: "npx\n-y\n@playwright/mcp@latest",
+      commandText: "npx\n-y\n@playwright/mcp@latest\n--headless\n--browser\nchromium",
     },
   },
   {
@@ -270,6 +270,7 @@ export const SUGGESTED_MCP_SERVERS: SuggestedMcpServer[] = [
       transport: "stdio",
       authMethod: "none",
       commandText: "npx\n-y\nmcp-mermaid",
+      environmentText: "npm_config_ignore_scripts=true",
     },
   },
   {

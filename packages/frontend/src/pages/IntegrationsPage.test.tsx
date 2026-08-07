@@ -920,6 +920,30 @@ describe("IntegrationsPage", () => {
     expect(screen.getByRole("combobox", { name: "Auth method" })).toHaveTextContent("oauth");
   });
 
+  it("prefills the Playwright suggestion for headless container execution", () => {
+    render(<IntegrationsPage />);
+
+    fireEvent.change(screen.getByLabelText("Search suggested MCPs"), {
+      target: { value: "playwright" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add Playwright" }));
+
+    expect(screen.getByLabelText("Command")).toHaveValue(
+      "npx\n-y\n@playwright/mcp@latest\n--headless\n--browser\nchromium",
+    );
+  });
+
+  it("prefills the Mermaid suggestion without privileged npm lifecycle scripts", () => {
+    render(<IntegrationsPage />);
+
+    fireEvent.change(screen.getByLabelText("Search suggested MCPs"), {
+      target: { value: "mermaid" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add Mermaid" }));
+
+    expect(screen.getByLabelText("Environment")).toHaveValue("npm_config_ignore_scripts=true");
+  });
+
   it("hides a suggestion when a server with the same name is already configured", () => {
     vi.mocked(useMcpServersQuery).mockReturnValue({
       data: [

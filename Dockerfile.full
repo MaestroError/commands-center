@@ -1,0 +1,42 @@
+ARG UV_VERSION=0.11.33
+
+FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
+
+FROM node:24-bookworm-slim
+
+ARG CCENTER_PACKAGE_SPEC=commandscenter
+ARG PLAYWRIGHT_VERSION=1.62.0
+
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+ENV PLAYWRIGHT_MCP_EXECUTABLE_PATH=/usr/local/bin/chromium
+
+COPY --from=uv /uv /uvx /usr/local/bin/
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates curl g++ gh git make openssh-client python-is-python3 python3 \
+  && npm install -g "$CCENTER_PACKAGE_SPEC" "playwright@$PLAYWRIGHT_VERSION" \
+  && playwright install --with-deps chromium \
+  && chmod -R a+rX "$PLAYWRIGHT_BROWSERS_PATH" \
+  && node -e 'const fs = require("node:fs"); const { chromium } = require("/usr/local/lib/node_modules/playwright"); fs.symlinkSync(chromium.executablePath(), "/usr/local/bin/chromium")' \
+  && mkdir -p /workspace \
+  && chown -R node:node /workspace \
+  && rm -rf /var/lib/apt/lists/*
+
+ENV NODE_ENV=production
+ENV CC_DOCKER=true
+ENV CC_HOST=0.0.0.0
+ENV CC_PORT=3000
+ENV CC_WORKSPACE_DIR=/workspace/.cc/workspace
+# Keep OpenCode global state (provider connections, sessions, db) on the mounted
+# /workspace volume so it survives container rebuilds.
+ENV CC_OPENCODE_STATE_DIR=/workspace/.cc/opencode
+ENV CC_OPENCODE_STARTUP_TIMEOUT_MS=90000
+
+WORKDIR /workspace
+
+USER node
+
+EXPOSE 3000
+VOLUME ["/workspace"]
+
+CMD ["ccenter", "start", "--cc-env-file", "/workspace/.cc/.env"]
