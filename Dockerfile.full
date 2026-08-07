@@ -1,6 +1,4 @@
-ARG UV_VERSION=0.11.33
-
-FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
+FROM ghcr.io/astral-sh/uv:0.11.33 AS uv
 
 FROM node:24-bookworm-slim
 

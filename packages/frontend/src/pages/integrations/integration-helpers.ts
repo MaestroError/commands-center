@@ -270,7 +270,6 @@ export const SUGGESTED_MCP_SERVERS: SuggestedMcpServer[] = [
       transport: "stdio",
       authMethod: "none",
       commandText: "npx\n-y\nmcp-mermaid",
-      environmentText: "npm_config_ignore_scripts=true",
     },
   },
   {
@@ -379,6 +378,24 @@ export const SUGGESTED_MCP_SERVERS: SuggestedMcpServer[] = [
     },
   },
 ];
+
+export function buildSuggestedMcpForm(
+  suggestion: SuggestedMcpServer,
+  isDocker: boolean,
+): FormState {
+  if (!isDocker || suggestion.id !== "mermaid") {
+    return suggestion.form;
+  }
+
+  return {
+    ...suggestion.form,
+    environmentText: [
+      "npm_config_cache=/workspace/.cc/npm-cache",
+      "npm_config_ignore_scripts=true",
+      "PLAYWRIGHT_BROWSERS_PATH=/ms-playwright",
+    ].join("\n"),
+  };
+}
 
 export function friendlyStatus(status: { status: string }): string {
   switch (status.status) {

@@ -8,6 +8,7 @@ import { useSpecialistMutations, useSpecialistsQuery } from "@/hooks/use-special
 import { useMcpServerMutations, useMcpServersQuery } from "@/hooks/use-mcp-servers-query";
 import { useSecretsQuery } from "@/hooks/use-secrets-query";
 import { useActiveTaskRunsQuery } from "@/hooks/use-tasks-query";
+import { useSystemVersionQuery } from "@/hooks/use-system-version-query";
 
 vi.mock("@/hooks/use-specialists-query", () => ({
   useSpecialistsQuery: vi.fn(),
@@ -25,6 +26,10 @@ vi.mock("@/hooks/use-secrets-query", () => ({
 
 vi.mock("@/hooks/use-tasks-query", () => ({
   useActiveTaskRunsQuery: vi.fn(),
+}));
+
+vi.mock("@/hooks/use-system-version-query", () => ({
+  useSystemVersionQuery: vi.fn(),
 }));
 
 const createMutateAsync = vi.fn();
@@ -119,6 +124,18 @@ beforeEach(() => {
   } as never);
 
   vi.mocked(useActiveTaskRunsQuery).mockReturnValue({ data: [] } as never);
+
+  vi.mocked(useSystemVersionQuery).mockReturnValue({
+    data: {
+      current: "1.0.0",
+      updateAvailable: false,
+      installMode: "docker",
+      autoUpdateEnabled: false,
+      autoUpdateSource: "environment",
+    },
+    isLoading: false,
+    error: null,
+  } as never);
 
   vi.mocked(useSpecialistsQuery).mockReturnValue({
     data: [
@@ -933,7 +950,7 @@ describe("IntegrationsPage", () => {
     );
   });
 
-  it("prefills the Mermaid suggestion without privileged npm lifecycle scripts", () => {
+  it("prefills the validated Mermaid environment in Docker", () => {
     render(<IntegrationsPage />);
 
     fireEvent.change(screen.getByLabelText("Search suggested MCPs"), {
@@ -941,7 +958,33 @@ describe("IntegrationsPage", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Add Mermaid" }));
 
-    expect(screen.getByLabelText("Environment")).toHaveValue("npm_config_ignore_scripts=true");
+    expect(screen.getByLabelText("Environment")).toHaveValue(
+      "npm_config_cache=/workspace/.cc/npm-cache\n" +
+        "npm_config_ignore_scripts=true\n" +
+        "PLAYWRIGHT_BROWSERS_PATH=/ms-playwright",
+    );
+  });
+
+  it("keeps Mermaid lifecycle scripts enabled outside Docker", () => {
+    vi.mocked(useSystemVersionQuery).mockReturnValue({
+      data: {
+        current: "1.0.0",
+        updateAvailable: false,
+        installMode: "npm-global",
+        autoUpdateEnabled: false,
+        autoUpdateSource: "environment",
+      },
+      isLoading: false,
+      error: null,
+    } as never);
+    render(<IntegrationsPage />);
+
+    fireEvent.change(screen.getByLabelText("Search suggested MCPs"), {
+      target: { value: "mermaid" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add Mermaid" }));
+
+    expect(screen.getByLabelText("Environment")).toHaveValue("");
   });
 
   it("hides a suggestion when a server with the same name is already configured", () => {

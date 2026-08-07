@@ -6,10 +6,12 @@ Portainer, CapRover): the app is a single container that listens on port `3000`,
 state under a mounted `/workspace` volume, and must be told its public origin and that Coolify's
 proxy is trusted.
 
-CommandsCenter does not publish a prebuilt Docker image. Choose the lean
-[`Dockerfile`](../Dockerfile), or the recommended opt-in [`Dockerfile.full`](../Dockerfile.full)
-when agents need browser-based or Python MCPs. Both install the published `commandscenter` npm
-package and are self-contained, so a user does **not** need the source repository.
+CommandsCenter does not publish a prebuilt Docker image. This guide recommends
+[`Dockerfile.full`](../Dockerfile.full) for Coolify because container tools must be installed at
+image-build time and MCP users commonly need `uv`/`uvx`, Playwright, and Chromium. The lean
+[`Dockerfile`](../Dockerfile) remains available when smaller images and faster builds matter more
+than browser-based or Python MCP support. Both install the published `commandscenter` npm package
+and are self-contained, so a user does **not** need the source repository.
 
 ## What you get
 
@@ -30,12 +32,19 @@ container.
 
 1. Coolify dashboard → your Project/Environment → **+ Create New Resource**.
 2. Under **Docker Based**, choose **Dockerfile** (deploy without Git).
-3. Choose one image definition and paste its entire contents into the editor:
-   - **Full (recommended for MCP use):** [`Dockerfile.full`](../Dockerfile.full), with `uv`/`uvx`,
-     Playwright, Chromium, and its Debian dependencies.
-   - **Basic:** [`Dockerfile`](../Dockerfile), with the CommandsCenter runtime and base development
-     tools only.
+3. Paste the entire contents of [`Dockerfile.full`](../Dockerfile.full) into the editor. This is
+   the recommended Coolify image and includes `uv`/`uvx`, Playwright, Chromium, and its Debian
+   dependencies.
+   - To prioritize a smaller image and faster builds instead, paste the lean
+     [`Dockerfile`](../Dockerfile). The Basic image does not support the suggested Playwright,
+     Mermaid, or `uvx` MCPs without further customization.
 4. Create the resource.
+
+> **Copy the selected Dockerfile verbatim.** `Dockerfile.full` deliberately hard-pins the uv image
+> in a named build stage and uses `COPY --from=uv`. This avoids both unsupported variable expansion
+> in `COPY --from` and Docker's rule that an `ARG` used by `FROM` must appear before every build
+> stage. Moving an `ARG UV_VERSION` below an earlier `FROM` makes it stage-scoped and produces an
+> empty image tag in Coolify.
 
 > **Why "Dockerfile" and not "Docker Image"?** There is no published CommandsCenter image to
 > pull, so "Docker Image" does not apply. "Docker Compose Empty" also works but is awkward for a
@@ -185,7 +194,7 @@ Both provided Dockerfiles bake this base toolchain into the image:
 - Build tooling: **g++**, **make**
 - `commandscenter` (the `ccenter` CLI) and the bundled OpenCode engine
 
-The opt-in Full image additionally includes:
+The recommended Full image additionally includes:
 
 - **uv** and **uvx** (copied from Astral's official pinned container image)
 - **Playwright** and its pinned **Chromium** browser with Debian runtime dependencies
@@ -197,9 +206,17 @@ Playwright MCP selects it for headless execution. The suggested Mermaid MCP skip
 privileged `postinstall`, because the required browser and libraries are already present. These two
 suggestions are not expected to work in the Basic image.
 
-After upgrading an existing deployment, edit an existing Mermaid MCP and add
-`npm_config_ignore_scripts=true` to its **Environment** field, or remove it and add it again from
-Suggested MCPs. New suggested configurations include this automatically.
+After upgrading an existing deployment, edit an existing Mermaid MCP and set its **Environment**
+field to:
+
+```text
+npm_config_cache=/workspace/.cc/npm-cache
+npm_config_ignore_scripts=true
+PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+```
+
+Alternatively, remove it and add it again from Suggested MCPs. New suggested configurations
+include these values automatically.
 
 > **The container is immutable — tools you install at runtime do not survive.** Anything you add
 > inside a running container with `apt-get`, `pip`, `npm install -g`, `uvx`, etc. lives only in
@@ -224,15 +241,18 @@ Then redeploy so Coolify rebuilds the image with your tools included.
 
 ## Troubleshooting
 
-| Symptom                                   | Cause                                  | Fix                                                                       |
-| ----------------------------------------- | -------------------------------------- | ------------------------------------------------------------------------- |
-| `Request origin is not allowed.` on claim | `CC_PUBLIC_ORIGIN` unset or mismatched | Set it to the exact `https://` origin you browse from, no trailing slash. |
-| OAuth sees HTTP or clients share limits   | `CC_TRUST_PROXY` is unset or `false`   | Set `CC_TRUST_PROXY=true` and redeploy.                                   |
-| Health "degraded" for ~1 min after boot   | OpenCode engine cold start             | Normal; it becomes healthy within ~90s.                                   |
-| Data lost after redeploy                  | No persistent `/workspace` volume      | Add the Volume Mount in [§4](#4-persistent-storage-required).             |
-| `Executable not found in $PATH: "uvx"`    | Deployment uses the Basic image        | Switch to `Dockerfile.full` and force a no-cache rebuild.                 |
-| Mermaid exits with `Connection closed`    | Old preset runs privileged postinstall | Add `npm_config_ignore_scripts=true`, then disable and re-enable it.      |
-| SSL not issued                            | DNS not resolving to the server        | Point the `A` record first, then redeploy.                                |
+| Symptom                                          | Cause                                   | Fix                                                                       |
+| ------------------------------------------------ | --------------------------------------- | ------------------------------------------------------------------------- |
+| `Request origin is not allowed.` on claim        | `CC_PUBLIC_ORIGIN` unset or mismatched  | Set it to the exact `https://` origin you browse from, no trailing slash. |
+| OAuth sees HTTP or clients share limits          | `CC_TRUST_PROXY` is unset or `false`    | Set `CC_TRUST_PROXY=true` and redeploy.                                   |
+| Health "degraded" for ~1 min after boot          | OpenCode engine cold start              | Normal; it becomes healthy within ~90s.                                   |
+| Data lost after redeploy                         | No persistent `/workspace` volume       | Add the Volume Mount in [§4](#4-persistent-storage-required).             |
+| `variable expansion is not supported for --from` | Variable used directly in `COPY --from` | Use `Dockerfile.full` verbatim with its named `uv` build stage.           |
+| `UndefinedArgInFrom` or an empty uv image tag    | Version `ARG` declared after a `FROM`   | Use the hard-pinned uv stage from `Dockerfile.full` verbatim.             |
+| `docker exec` exits 255 during browser download  | Coolify build container stopped         | Retry; if repeated, check the host's available memory and disk space.     |
+| `Executable not found in $PATH: "uvx"`           | Deployment uses the Basic image         | Switch to `Dockerfile.full` and force a no-cache rebuild.                 |
+| Mermaid exits with `Connection closed`           | Existing registration has an old preset | Apply the documented three-variable environment, then re-enable it.       |
+| SSL not issued                                   | DNS not resolving to the server         | Point the `A` record first, then redeploy.                                |
 
 To read logs from an exited container (Coolify's Logs tab only attaches to running containers):
 
