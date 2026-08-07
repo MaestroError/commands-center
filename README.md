@@ -322,11 +322,30 @@ Build the image from the published npm package:
 docker build -t commandscenter:local .
 ```
 
+That default image stays lean and contains the CommandsCenter runtime and base development tools.
+For MCP-heavy installations, the recommended opt-in Full image additionally includes `uv`/`uvx`,
+a pinned Playwright CLI, and Playwright's Chromium build with its Debian runtime dependencies:
+
+```bash
+docker build -f Dockerfile.full -t commandscenter:full .
+```
+
+The Full image lets browser-based MCPs run headlessly as the unprivileged `node` user and Python
+MCPs launch through `uvx` without runtime customization. Its browser runtime makes it substantially
+larger than the Basic image. When using the Compose or `docker run` examples below, set their image
+to `commandscenter:full` if you built this variant.
+
 Pin a specific published version when needed:
 
 ```bash
 docker build --build-arg CCENTER_PACKAGE_SPEC=commandscenter@0.2.6 -t commandscenter:0.2.6 .
 ```
+
+`Dockerfile.full` pins independent `UV_VERSION` and `PLAYWRIGHT_VERSION` build arguments. The latter
+keeps the installed browser aligned with the global Playwright CLI. The Full image also exposes
+that browser as `/usr/local/bin/chromium` so Playwright MCP releases can use it even when their
+bundled Playwright version differs. Override either build argument only with a version you have
+tested.
 
 ```yaml
 services:
@@ -408,6 +427,14 @@ set `CC_TRUST_PROXY=true`. With `CC_DOCKER=true`, npm packages downloaded by
 `npx` are cached under `/workspace/.cc/npm-cache` on the same volume. Override
 that path with `CC_NPM_CACHE_DIR` and the 120-second local MCP timeout with
 `CC_MCP_STDIO_TIMEOUT_MS`, then restart the container to apply either change.
+
+The suggested Playwright and Mermaid MCPs require the Full image in Docker. Playwright explicitly
+selects Chromium and runs headlessly because Docker has no display server; the Full image supplies
+its executable through `PLAYWRIGHT_MCP_EXECUTABLE_PATH`. Mermaid skips its package's runtime
+`postinstall`, because Chromium and its system dependencies are already installed at image-build
+time while the runtime `node` user cannot elevate privileges. Existing Mermaid configurations
+created before this image should add `npm_config_ignore_scripts=true` to their Environment field,
+or be removed and added again from the updated suggestion.
 
 On first container start, `ccenter` creates `/workspace/.cc/.env` on the mounted volume and generates `CC_SECRET_KEY` there.
 
