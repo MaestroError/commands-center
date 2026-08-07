@@ -4,6 +4,7 @@ import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageSt
 import { useMcpServerMutations, useMcpServersQuery } from "@/hooks/use-mcp-servers-query";
 import { useSecretsQuery } from "@/hooks/use-secrets-query";
 import { useSpecialistMutations, useSpecialistsQuery } from "@/hooks/use-specialists-query";
+import { useSystemVersionQuery } from "@/hooks/use-system-version-query";
 import { useActiveTaskRunsQuery } from "@/hooks/use-tasks-query";
 import { McpEngineRestartRequiredError } from "@/lib/api";
 import type { McpServer } from "@cc/shared/schemas";
@@ -21,6 +22,7 @@ import {
   type SuggestedMcpServer,
   buildAssignmentMessage,
   buildDuplicateForm,
+  buildSuggestedMcpForm,
   copyText,
   describeConfig,
   friendlyStatus,
@@ -52,6 +54,7 @@ export function IntegrationsPage() {
   const mcpMutations = useMcpServerMutations();
   const secretsQuery = useSecretsQuery();
   const activeRunsQuery = useActiveTaskRunsQuery();
+  const systemVersionQuery = useSystemVersionQuery();
   const [dialog, setDialog] = useState<DialogState>();
   const [authServer, setAuthServer] = useState<McpServer>();
   const [composioDialogOpen, setComposioDialogOpen] = useState(false);
@@ -212,7 +215,15 @@ export function IntegrationsPage() {
       {!mcpServersQuery.isLoading && !queryError ? (
         <SuggestedMcpServersSection
           configuredNames={customMcpServers.map((server) => server.name)}
-          onSelect={(suggestion) => setDialog({ mode: "create", prefill: suggestion.form })}
+          onSelect={(suggestion) =>
+            setDialog({
+              mode: "create",
+              prefill: buildSuggestedMcpForm(
+                suggestion,
+                systemVersionQuery.data?.installMode === "docker",
+              ),
+            })
+          }
         />
       ) : null}
 

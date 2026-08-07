@@ -29,7 +29,8 @@ running container.
    - Preserve the Basic Dockerfile without browser or uv additions.
    - Add a separate Full Dockerfile with the same CommandsCenter runtime
      contract.
-   - Add pinned build arguments for the Astral uv image and Playwright version.
+   - Hard-pin the Astral uv build-stage image and add a pinned Playwright build
+     argument.
    - Copy `uv` and `uvx` into `/usr/local/bin`.
    - Install Playwright globally and install Chromium with its Debian system
      dependencies during the root-owned image build.
@@ -100,3 +101,62 @@ running container.
 - Regenerate the pnpm lockfile without broad dependency upgrades.
 - Verify the high-severity audit, lint, typecheck, and tests before updating the
   pull request.
+
+## Review follow-up
+
+- Resolve the existing system install mode on the Integrations page.
+- Apply Mermaid's `npm_config_ignore_scripts=true` preset only to Docker
+  installations, where the Full image provides Chromium and its dependencies.
+- Preserve Mermaid's normal package lifecycle scripts for npm-global and
+  npm-local installations.
+- Cover both Docker and non-Docker preset behavior before updating the pull
+  request.
+
+## Coolify follow-up
+
+- Keep the named `uv` build stage in `Dockerfile.full` and hard-pin its image
+  reference so Coolify does not depend on global `ARG` scope or unsupported
+  variable expansion in `COPY --from`.
+- Make the Full image the default Coolify recommendation because immutable
+  deployments cannot persist tools installed in a running container.
+- Present the Basic image as the smaller opt-out for installations that do not
+  need browser-based or Python MCPs.
+- Document the failed-build signature and direct operators to copy
+  `Dockerfile.full` verbatim.
+
+## Coolify ARG-scope follow-up
+
+- Remove `UV_VERSION` expansion from `FROM` so the Full Dockerfile remains
+  valid even when pasted into a builder configuration with an earlier stage.
+- Keep the uv version pinned directly in the named stage and continue copying
+  the binaries through `COPY --from=uv`.
+- Rebuild the exact repository Dockerfile and verify the installed uv,
+  Playwright, and Chromium versions as the runtime `node` user.
+
+Verification: the hard-pinned Dockerfile built successfully, and its runtime
+`node` user executed uv/uvx 0.11.33, Playwright 1.62.0, and Chromium
+151.0.7922.34 from the configured executable path.
+
+## Coolify transient build follow-up
+
+- Inspect the complete Coolify log and confirm that the Dockerfile parsed,
+  installed its dependencies, and reached Chromium's download before the
+  temporary build container exited with code 255 without a Docker or
+  Playwright error.
+- Retain the validated Node 24 Full Dockerfile after the same definition
+  succeeded on a subsequent Coolify build.
+- Document that an abrupt `docker exec` exit 255 during an otherwise healthy
+  browser download is a Coolify host/build-container failure and should first
+  be retried, with host memory and disk checked if it repeats.
+
+## Mermaid Docker environment follow-up
+
+- Update the Docker-specific Mermaid suggestion with the environment that was
+  validated in a deployed Coolify container:
+  `npm_config_cache=/workspace/.cc/npm-cache`,
+  `npm_config_ignore_scripts=true`, and
+  `PLAYWRIGHT_BROWSERS_PATH=/ms-playwright`.
+- Keep the non-Docker Mermaid suggestion unchanged so its normal package
+  lifecycle remains available outside the Full image.
+- Update the existing-registration guidance and focused frontend coverage for
+  the complete Docker preset.

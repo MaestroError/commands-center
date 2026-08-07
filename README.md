@@ -341,11 +341,11 @@ Pin a specific published version when needed:
 docker build --build-arg CCENTER_PACKAGE_SPEC=commandscenter@0.2.6 -t commandscenter:0.2.6 .
 ```
 
-`Dockerfile.full` pins independent `UV_VERSION` and `PLAYWRIGHT_VERSION` build arguments. The latter
+`Dockerfile.full` pins the uv image directly in its named build stage for compatibility with Docker
+builders that do not preserve global build-argument scope. Its `PLAYWRIGHT_VERSION` build argument
 keeps the installed browser aligned with the global Playwright CLI. The Full image also exposes
 that browser as `/usr/local/bin/chromium` so Playwright MCP releases can use it even when their
-bundled Playwright version differs. Override either build argument only with a version you have
-tested.
+bundled Playwright version differs. Change either pinned version only after testing it.
 
 ```yaml
 services:
@@ -433,8 +433,14 @@ selects Chromium and runs headlessly because Docker has no display server; the F
 its executable through `PLAYWRIGHT_MCP_EXECUTABLE_PATH`. Mermaid skips its package's runtime
 `postinstall`, because Chromium and its system dependencies are already installed at image-build
 time while the runtime `node` user cannot elevate privileges. Existing Mermaid configurations
-created before this image should add `npm_config_ignore_scripts=true` to their Environment field,
-or be removed and added again from the updated suggestion.
+created before this image should use the following Environment values, or be removed and added
+again from the updated suggestion:
+
+```text
+npm_config_cache=/workspace/.cc/npm-cache
+npm_config_ignore_scripts=true
+PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+```
 
 On first container start, `ccenter` creates `/workspace/.cc/.env` on the mounted volume and generates `CC_SECRET_KEY` there.
 
