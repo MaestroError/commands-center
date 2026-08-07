@@ -117,3 +117,16 @@ pnpm --filter @cc/frontend test:e2e
 - `pnpm audit --audit-level=high --ignore-registry-errors` exits successfully.
   It reports 26 remaining findings: 6 low, 19 moderate, and the single
   explicitly ignored high-severity ESLint-tooling advisory.
+
+## CI audit follow-up (nanoid)
+
+- Two high-severity advisories reached the tree through
+  `packages/frontend > vite > postcss > nanoid` at `nanoid@3.3.15`:
+  GHSA-28wg-ghj8-5hjv (non-secure generators loop on a negative size) and
+  GHSA-2v37-7h3g-55p8 (custom generators loop when size is zero).
+- Added the `nanoid@<3.3.17: 3.3.17` override and regenerated the lockfile
+  without broad dependency upgrades. `nanoid@5.1.16` is unaffected.
+- `pnpm audit --audit-level=high --ignore-registry-errors` now reports 30
+  findings, 7 low and 23 moderate, with no high severity remaining.
+- Typecheck, frontend build, and the full unit suites pass: shared 222, CLI 45,
+  backend 1,386, frontend 1,498.
