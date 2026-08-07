@@ -389,8 +389,11 @@ export function buildSuggestedMcpForm(
 
   return {
     ...suggestion.form,
-    environmentText:
-      "npm_config_cache=/workspace/.cc/npm-cache\nnpm_config_ignore_scripts=true\nPLAYWRIGHT_BROWSERS_PATH=/ms-playwright",
+    environmentText: [
+      "npm_config_cache=/workspace/.cc/npm-cache",
+      "npm_config_ignore_scripts=true",
+      "PLAYWRIGHT_BROWSERS_PATH=/ms-playwright",
+    ].join("\n"),
   };
 }
 
