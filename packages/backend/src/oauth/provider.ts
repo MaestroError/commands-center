@@ -21,6 +21,8 @@ const CLEANUP_INTERVAL_MS = 60 * 60 * 1_000;
 const OAUTH_SIGNING_KEY = createSigningKey();
 const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1_000;
 const REGISTRATION_RATE_LIMIT = 10;
+/** oidc-provider's default `cookies.names.session`, which we do not override. */
+const SESSION_COOKIE_NAME = "_session";
 
 type OAuthLimitCheck = (request: FastifyRequest) => Promise<boolean>;
 
@@ -95,6 +97,10 @@ export function registerOAuthProvider(server: AppServer, context: RuntimeContext
           return;
         }
 
+        if (route === "authorization") {
+          stripSessionCookie(request);
+        }
+
         request.url = stripOAuthIssuerPath(request.url);
         await providerCallback(request, response);
       })().catch(next);
@@ -165,6 +171,39 @@ function matchProviderRoute(
   }
 
   return undefined;
+}
+
+/**
+ * Every MCP authorization stands on its own: the API token typed on the
+ * interaction screen is the principal, so a browser session left behind by an
+ * earlier connection must not take part. Carrying it over makes oidc-provider
+ * read an approval that uses a different API token as an account switch and
+ * divert the flow to the RP-initiated logout endpoint, which is disabled here —
+ * the client never receives its authorization code. Dropping the cookie on both
+ * the authorization request and its resume also means each connection has to
+ * enter a token again instead of riding a still-live session.
+ */
+function stripSessionCookie(request: IncomingMessage): void {
+  const header = request.headers.cookie;
+
+  if (!header) {
+    return;
+  }
+
+  const kept = header
+    .split(";")
+    .map((part) => part.trim())
+    .filter((part) => {
+      const name = part.split("=")[0];
+      return name !== SESSION_COOKIE_NAME && name !== `${SESSION_COOKIE_NAME}.sig`;
+    });
+
+  if (kept.length === 0) {
+    delete request.headers.cookie;
+    return;
+  }
+
+  request.headers.cookie = kept.join("; ");
 }
 
 function stripOAuthIssuerPath(requestUrl: string | undefined): string {
