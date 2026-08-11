@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { Check } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -165,6 +167,10 @@ export function QuestionDock({ question, onReply, onReject }: QuestionDockProps)
               >
                 {item.question}
               </p>
+
+              {multiSelect && item.options.length > 0 ? (
+                <p className="text-xs text-text-secondary">Select all that apply</p>
+              ) : null}
             </div>
 
             {item.options.length > 0 ? (
@@ -176,24 +182,40 @@ export function QuestionDock({ question, onReply, onReject }: QuestionDockProps)
                       key={opt.label}
                       type="button"
                       className={selected ? "cc-tab cc-tab-active" : "cc-tab"}
-                      aria-pressed={selected}
+                      // Multi-select options are checkboxes, not a one-of
+                      // choice; single-select keeps toggle-button semantics.
+                      {...(multiSelect
+                        ? { role: "checkbox", "aria-checked": selected }
+                        : { "aria-pressed": selected })}
                       onClick={() => toggleOption(step, opt.label, multiSelect)}
                     >
-                      {/* Inner column so the label and its description stack and
-                      stay left-aligned inside the pill's centered flex row. */}
-                      <span className="flex w-full flex-col gap-0.5 text-left">
-                        <span
-                          className={selected ? "font-medium" : "font-medium text-text-primary"}
-                        >
-                          {opt.label}
-                        </span>
-                        {opt.description ? (
+                      {/* Inner row so the box sits beside a label/description
+                      column, left-aligned inside the pill's centered row. */}
+                      <span className="flex w-full items-start gap-2 text-left">
+                        {multiSelect ? (
                           <span
-                            className={`text-xs ${selected ? "opacity-80" : "text-text-secondary"}`}
+                            aria-hidden="true"
+                            className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border ${
+                              selected ? "border-current" : "border-border"
+                            }`}
                           >
-                            {opt.description}
+                            {selected ? <Check className="h-3 w-3" /> : null}
                           </span>
                         ) : null}
+                        <span className="flex flex-col gap-0.5">
+                          <span
+                            className={selected ? "font-medium" : "font-medium text-text-primary"}
+                          >
+                            {opt.label}
+                          </span>
+                          {opt.description ? (
+                            <span
+                              className={`text-xs ${selected ? "opacity-80" : "text-text-secondary"}`}
+                            >
+                              {opt.description}
+                            </span>
+                          ) : null}
+                        </span>
                       </span>
                     </button>
                   );

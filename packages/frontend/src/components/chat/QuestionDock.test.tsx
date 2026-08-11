@@ -32,6 +32,11 @@ function option(label: string) {
   return screen.getByRole("button", { name: new RegExp(`^${label}`) });
 }
 
+// Multi-select options expose checkbox semantics rather than toggle buttons.
+function checkboxOption(label: string) {
+  return screen.getByRole("checkbox", { name: new RegExp(`^${label}`) });
+}
+
 function next() {
   fireEvent.click(screen.getByRole("button", { name: "Next" }));
 }
@@ -134,8 +139,8 @@ describe("QuestionDock", () => {
     render(<QuestionDock question={makeQuestion()} onReply={vi.fn()} onReject={vi.fn()} />);
 
     next();
-    const alpha = option("Alpha");
-    const beta = option("Beta");
+    const alpha = checkboxOption("Alpha");
+    const beta = checkboxOption("Beta");
 
     fireEvent.click(alpha);
     fireEvent.click(beta);
@@ -147,14 +152,33 @@ describe("QuestionDock", () => {
     expect(beta.className).not.toContain("cc-tab-active");
   });
 
+  it("marks multi-select options as checkboxes and single-select as toggles", () => {
+    render(<QuestionDock question={makeQuestion()} onReply={vi.fn()} onReject={vi.fn()} />);
+
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    expect(screen.queryByText("Select all that apply")).not.toBeInTheDocument();
+    expect(option("Option A")).toHaveAttribute("aria-pressed", "false");
+
+    next();
+
+    expect(screen.getByText("Select all that apply")).toBeInTheDocument();
+    expect(screen.getAllByRole("checkbox")).toHaveLength(2);
+
+    const alpha = checkboxOption("Alpha");
+    expect(alpha).toHaveAttribute("aria-checked", "false");
+
+    fireEvent.click(alpha);
+    expect(checkboxOption("Alpha")).toHaveAttribute("aria-checked", "true");
+  });
+
   it("calls onReply with the selected answers shape on submit", () => {
     const onReply = vi.fn();
     render(<QuestionDock question={makeQuestion()} onReply={onReply} onReject={vi.fn()} />);
 
     fireEvent.click(option("Option B"));
     next();
-    fireEvent.click(option("Alpha"));
-    fireEvent.click(option("Beta"));
+    fireEvent.click(checkboxOption("Alpha"));
+    fireEvent.click(checkboxOption("Beta"));
     fireEvent.click(screen.getByRole("button", { name: "Submit" }));
 
     expect(onReply).toHaveBeenCalledWith("question-1", [["Option B"], ["Alpha", "Beta"]]);
@@ -182,7 +206,7 @@ describe("QuestionDock", () => {
 
     fireEvent.click(option("Option A"));
     next();
-    fireEvent.click(option("Alpha"));
+    fireEvent.click(checkboxOption("Alpha"));
 
     fireEvent.change(screen.getByPlaceholderText("Type your own answer (optional)"), {
       target: { value: "Gamma" },
