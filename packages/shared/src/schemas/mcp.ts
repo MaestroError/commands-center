@@ -14,6 +14,19 @@ export const mcpServerNameSchema = z
     "MCP server name may only contain letters, digits, underscores, and hyphens.",
   );
 
+// The name a user-facing label is stored under. Two labels that derive to the
+// same name would produce the same OpenCode tool-id prefix and clobber each
+// other, so this is also the comparison used for uniqueness — it is stricter
+// than OpenCode's own sanitize (it lowercases and collapses runs), which means
+// it cannot miss a collision OpenCode would create.
+export function toMcpServerName(label: string): string {
+  return label
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
 export const mcpTransportSchema = z.enum(["streamable-http", "sse", "stdio"]);
 export const mcpAuthMethodSchema = z.enum(["none", "oauth", "headers"]);
 

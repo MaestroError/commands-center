@@ -19,6 +19,7 @@ import {
   mcpServerConfigSchema,
   mcpServerListSchema,
   mcpServerSchema,
+  toMcpServerName,
   updateMcpServerInputSchema,
   type ActivateMcpServerInput,
   type CreateMcpServerInput,
@@ -492,14 +493,17 @@ export function createMcpServerService(options: {
     return server;
   }
 
+  // Uniqueness is checked on the derived name, not the stored one: OpenCode
+  // gives two servers whose names sanitize alike the same tool-id prefix, so a
+  // legacy 'My Server' must still block a new 'my_server'.
   async function assertNameAvailable(name: string, excludeId?: string): Promise<void> {
-    const existing = await options.db.query.mcp_servers.findFirst({
-      where:
-        excludeId === undefined
-          ? (table, operators) => operators.eq(table.name, name)
-          : (table, operators) =>
-              operators.and(operators.eq(table.name, name), operators.ne(table.id, excludeId)),
-    });
+    const rows = await options.db
+      .select({ id: mcp_servers.id, name: mcp_servers.name })
+      .from(mcp_servers);
+    const derived = toMcpServerName(name);
+    const existing = rows.find(
+      (row) => row.id !== excludeId && toMcpServerName(row.name) === derived,
+    );
 
     if (existing) {
       throw new ConflictError(`MCP server '${name}' already exists.`);

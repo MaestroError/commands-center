@@ -1,13 +1,16 @@
 // Split out of IntegrationsPage.tsx (issue #99).
 
 import { getMcpServerSelection, setMcpServerEnabled } from "@/lib/specialist-capabilities";
-import type {
-  McpServer,
-  Specialist,
-  SpecialistCapabilitySelection,
-  UpdateSpecialistInput,
+import {
+  type McpServer,
+  type Specialist,
+  type SpecialistCapabilitySelection,
+  type UpdateSpecialistInput,
+  toMcpServerName,
 } from "@cc/shared/schemas";
 import { type Dispatch, type SetStateAction, useEffect, useState } from "react";
+
+export { toMcpServerName };
 
 export type DialogState =
   | { mode: "create"; prefill?: FormState }
@@ -501,17 +504,6 @@ export function suggestUniqueName(base: string, existingNames: string[]): string
   return candidate;
 }
 
-// The name a label is stored under. OpenCode derives MCP tool ids by replacing
-// every character outside [A-Za-z0-9_-] in the server name, so CC saves the
-// derived form and never a label OpenCode would rewrite behind its back.
-export function toMcpServerName(label: string): string {
-  return label
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]+/g, "_")
-    .replace(/^_+|_+$/g, "");
-}
-
 export function isComposioServer(server: McpServer): boolean {
   return server.config.transport !== "stdio" && server.config.url === COMPOSIO_SERVER_URL;
 }
@@ -612,7 +604,9 @@ function validateServerName(label: string, reservedNames: string[]): string | un
     return "Name must contain at least one letter or digit.";
   }
 
-  return reservedNames.some((reserved) => reserved.toLowerCase() === name)
+  // Compare derived names: a legacy server stored as "My Server" occupies the
+  // same OpenCode tool-id prefix as a new "my_server".
+  return reservedNames.some((reserved) => toMcpServerName(reserved) === name)
     ? `An MCP server named '${name}' already exists.`
     : undefined;
 }

@@ -7,6 +7,7 @@ import { createSpecialistService } from "../../src/services/specialist-service";
 import { createMcpServerService, mcpServerReconciler } from "../../src/services/mcp-server-service";
 import { createSecretService } from "../../src/services/secret-service";
 import { ConflictError, NotFoundError } from "../../src/lib/api-error";
+import { mcp_servers } from "../../src/db/schema/index";
 import type { OpenCodeService } from "../../src/services/opencode-service";
 import { createTestDatabase } from "../helpers/db";
 
@@ -261,6 +262,92 @@ describe("mcp-server-service", () => {
           },
         }),
       ).rejects.toBeInstanceOf(ConflictError);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  // A server registered before names were constrained can still hold a name
+  // OpenCode sanitizes. Both names derive to the same tool-id prefix, so the
+  // new one has to be rejected even though the stored strings differ.
+  it("rejects a name colliding with a legacy name after sanitization", async () => {
+    const testDb = await createTestDatabase();
+    const service = createMcpServerService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService(),
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+    });
+
+    try {
+      await testDb.client.db.insert(mcp_servers).values({
+        id: "legacy-1",
+        name: "My Server",
+        transport: "streamable-http",
+        enabled: true,
+        config_json: JSON.stringify({
+          url: "https://example.com/mcp",
+          transport: "streamable-http",
+          authMethod: "none",
+          headers: [],
+        }),
+        created_at: new Date(),
+        updated_at: new Date(),
+      });
+
+      await expect(
+        service.create({
+          name: "my_server",
+          enabled: true,
+          config: {
+            url: "https://example.com/other-mcp",
+            transport: "streamable-http",
+            authMethod: "none",
+            headers: [],
+          },
+        }),
+      ).rejects.toBeInstanceOf(ConflictError);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("lets a legacy server be renamed to its own sanitized name", async () => {
+    const testDb = await createTestDatabase();
+    const service = createMcpServerService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService(),
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+    });
+
+    try {
+      await testDb.client.db.insert(mcp_servers).values({
+        id: "legacy-2",
+        name: "My Server",
+        transport: "streamable-http",
+        enabled: true,
+        config_json: JSON.stringify({
+          url: "https://example.com/mcp",
+          transport: "streamable-http",
+          authMethod: "none",
+          headers: [],
+        }),
+        created_at: new Date(),
+        updated_at: new Date(),
+      });
+
+      const updated = await service.update("legacy-2", {
+        name: "my_server",
+        config: {
+          url: "https://example.com/mcp",
+          transport: "streamable-http",
+          authMethod: "none",
+          headers: [],
+        },
+      });
+
+      expect(updated.name).toBe("my_server");
     } finally {
       await testDb.cleanup();
     }

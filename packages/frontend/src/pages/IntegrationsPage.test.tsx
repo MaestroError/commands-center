@@ -357,6 +357,65 @@ describe("IntegrationsPage", () => {
     ).not.toBeInTheDocument();
   });
 
+  // A legacy server stored as "My Server" already owns the my_server tool-id
+  // prefix, so a new label deriving to it has to be rejected.
+  it("blocks a custom MCP server whose derived name collides with a legacy name", () => {
+    vi.mocked(useMcpServersQuery).mockReturnValue({
+      data: [
+        {
+          id: "mcp-legacy",
+          name: "My Server",
+          enabled: true,
+          config: {
+            url: "https://example.com/mcp",
+            transport: "streamable-http",
+            authMethod: "none",
+            headers: [],
+          },
+          missingSecrets: [],
+          requiresEngineRestart: false,
+          runtimeStatus: { status: "connected" },
+          tools: [],
+          createdAt: "2026-04-22T10:00:00.000Z",
+          updatedAt: "2026-04-22T10:00:00.000Z",
+        },
+      ],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    } as never);
+
+    render(<IntegrationsPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add custom MCP server" }));
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "my server" } });
+    fireEvent.change(screen.getByLabelText("URL"), {
+      target: { value: "https://example.com/other" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add server" }));
+
+    expect(screen.getByText("An MCP server named 'my_server' already exists.")).toBeInTheDocument();
+    expect(createMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("blocks a Composio connection whose derived name collides with a legacy name", () => {
+    mockComposioConnections(["Composio Work"]);
+
+    render(<IntegrationsPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add Composio connection" }));
+    fireEvent.change(screen.getByLabelText("Composio name"), {
+      target: { value: "Composio work" },
+    });
+    fireEvent.change(screen.getByLabelText("Composio API key"), { target: { value: "key" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Composio" }));
+
+    expect(
+      screen.getByText("An MCP server named 'composio_work' already exists."),
+    ).toBeInTheDocument();
+    expect(createMutateAsync).not.toHaveBeenCalled();
+  });
+
   it("renders one card per Composio connection", () => {
     mockComposioConnections(["composio", "composio-work"]);
 

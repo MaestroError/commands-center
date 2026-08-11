@@ -31,7 +31,7 @@ export function ComposioDialog(props: {
   onSubmit: (input: { name: string; secretKey: string; apiKey: string }) => Promise<void>;
 }) {
   const initialName = props.existingNames.some(
-    (existing) => existing.toLowerCase() === DEFAULT_COMPOSIO_NAME,
+    (existing) => toMcpServerName(existing) === DEFAULT_COMPOSIO_NAME,
   )
     ? suggestUniqueName(DEFAULT_COMPOSIO_NAME, props.existingNames)
     : DEFAULT_COMPOSIO_NAME;
@@ -144,7 +144,7 @@ export function ComposioDialog(props: {
       return;
     }
 
-    if (props.existingNames.some((existing) => existing.toLowerCase() === serverName)) {
+    if (props.existingNames.some((existing) => toMcpServerName(existing) === serverName)) {
       setSubmitError(`An MCP server named '${serverName}' already exists.`);
       return;
     }

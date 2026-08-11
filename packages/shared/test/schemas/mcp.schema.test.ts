@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { createMcpServerInputSchema, updateMcpServerInputSchema } from "../../src/schemas/mcp";
+import {
+  createMcpServerInputSchema,
+  toMcpServerName,
+  updateMcpServerInputSchema,
+} from "../../src/schemas/mcp";
 
 const config = {
   transport: "streamable-http" as const,
@@ -36,6 +40,29 @@ describe("createMcpServerInputSchema", () => {
     expect(result.error?.issues[0]?.message).toBe(
       "MCP server name may only contain letters, digits, underscores, and hyphens.",
     );
+  });
+});
+
+describe("toMcpServerName", () => {
+  it("replaces a run of unsupported characters with one underscore", () => {
+    expect(toMcpServerName("Knowledge  base!")).toBe("knowledge_base");
+  });
+
+  it("trims leading and trailing underscores", () => {
+    expect(toMcpServerName(" .staging. ")).toBe("staging");
+  });
+
+  it("keeps hyphens, which OpenCode does not rewrite", () => {
+    expect(toMcpServerName("staging-cc")).toBe("staging-cc");
+  });
+
+  // Two labels that derive alike would share one OpenCode tool-id prefix.
+  it("derives the same name for a legacy label and its sanitized form", () => {
+    expect(toMcpServerName("My Server")).toBe(toMcpServerName("my_server"));
+  });
+
+  it("returns an empty string when nothing usable remains", () => {
+    expect(toMcpServerName("!!!")).toBe("");
   });
 });
 
