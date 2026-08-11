@@ -12,9 +12,11 @@ import {
   parseEnvironment,
   parseHeaders,
   readError,
+  toMcpServerName,
   validateForm,
 } from "./integration-helpers";
 import { ChevronIcon, CloseIcon } from "./integration-icons";
+import { DerivedNameNote } from "./integration-parts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -138,6 +140,7 @@ export function McpServerDialog(props: {
                 onChange={(event) => updateField("name", event.target.value)}
                 value={form.name}
               />
+              <DerivedNameNote label={form.name} />
             </Field>
 
             <div className="grid gap-4 md:grid-cols-2">
@@ -342,7 +345,7 @@ export function McpServerDialog(props: {
 
     try {
       const input = {
-        name: form.name.trim(),
+        name: toMcpServerName(form.name),
         ...(props.mode === "create" ? { enabled: true } : {}),
         agentIds: selectedAgentIds,
         config:

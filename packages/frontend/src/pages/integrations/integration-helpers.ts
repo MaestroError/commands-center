@@ -1,13 +1,16 @@
 // Split out of IntegrationsPage.tsx (issue #99).
 
 import { getMcpServerSelection, setMcpServerEnabled } from "@/lib/specialist-capabilities";
-import type {
-  McpServer,
-  Specialist,
-  SpecialistCapabilitySelection,
-  UpdateSpecialistInput,
+import {
+  type McpServer,
+  type Specialist,
+  type SpecialistCapabilitySelection,
+  type UpdateSpecialistInput,
+  toMcpServerName,
 } from "@cc/shared/schemas";
 import { type Dispatch, type SetStateAction, useEffect, useState } from "react";
+
+export { toMcpServerName };
 
 export type DialogState =
   | { mode: "create"; prefill?: FormState }
@@ -27,6 +30,19 @@ export type FormState = {
 };
 
 export type FormErrors = Partial<Record<keyof FormState, string>>;
+
+export type CcInstanceFormState = {
+  name: string;
+  url: string;
+  secretKey: string;
+  secretValue: string;
+};
+
+export type CcInstanceFormErrors = Partial<Record<keyof CcInstanceFormState, string>>;
+
+// Mirrors the `{env:KEY}` grammar the backend scans for. A key outside it would
+// be persisted as a literal header value instead of a secret reference.
+const SECRET_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 export type SuggestedMcpServer = {
   id: string;
@@ -49,6 +65,14 @@ export const CONFIGURED_SECTION_STORAGE_KEY = "cc-integrations-configured-expand
 export const SUGGESTED_SECTION_STORAGE_KEY = "cc-integrations-suggested-expanded";
 
 export const SUGGESTED_SHOW_ALL_STORAGE_KEY = "cc-integrations-suggested-show-all";
+
+export const CC_INSTANCE_SECTION_STORAGE_KEY = "cc-integrations-instances-expanded";
+
+export const COMPOSIO_SECTION_STORAGE_KEY = "cc-integrations-composio-expanded";
+
+export const CC_INSTANCE_MCP_PATH = "/api/public/mcp";
+
+export const CC_INSTANCE_AUTH_HEADER = "Authorization";
 
 export const COMPOSIO_SERVER_URL = "https://connect.composio.dev/mcp";
 
@@ -464,7 +488,7 @@ export function buildDuplicateForm(server: McpServer, existingNames: string[]): 
 // Suggests a non-colliding copy name like `github` -> `github-2` -> `github-3`,
 // reusing an existing numeric suffix instead of stacking them (`github-2-2`).
 
-function suggestUniqueName(base: string, existingNames: string[]): string {
+export function suggestUniqueName(base: string, existingNames: string[]): string {
   const taken = new Set(existingNames.map((name) => name.trim().toLowerCase()));
   const trimmed = base.trim();
   const suffixMatch = /^(.*?)-(\d+)$/.exec(trimmed);
@@ -484,18 +508,112 @@ export function isComposioServer(server: McpServer): boolean {
   return server.config.transport !== "stdio" && server.config.url === COMPOSIO_SERVER_URL;
 }
 
-export function validateForm(form: FormState, reservedNames: string[] = []): FormErrors {
-  const trimmedName = form.name.trim();
-  const nameTaken =
-    trimmedName.length > 0 &&
-    reservedNames.some((name) => name.toLowerCase() === trimmedName.toLowerCase());
+export function isCcInstanceServer(server: McpServer): boolean {
+  if (server.config.transport === "stdio") {
+    return false;
+  }
 
+  try {
+    return stripTrailingSlashes(new URL(server.config.url).pathname).endsWith(CC_INSTANCE_MCP_PATH);
+  } catch {
+    return false;
+  }
+}
+
+// Accepts a bare host, an origin with or without a trailing slash, a
+// reverse-proxy sub-path, or an already complete endpoint, and resolves all of
+// them to the single public MCP endpoint the other instance exposes.
+export function resolveCcInstanceMcpUrl(input: string): string | undefined {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+
+  let url: URL;
+  try {
+    url = new URL(withScheme);
+  } catch {
+    return undefined;
+  }
+
+  if (!url.hostname) {
+    return undefined;
+  }
+
+  const path = stripTrailingSlashes(url.pathname);
+  url.pathname = path.endsWith(CC_INSTANCE_MCP_PATH) ? path : `${path}${CC_INSTANCE_MCP_PATH}`;
+  url.search = "";
+  url.hash = "";
+
+  return url.toString();
+}
+
+export function suggestSecretKey(prefix: string, label: string, suffix: string): string {
+  const sanitized = label
+    .trim()
+    .replace(/[^A-Za-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .toUpperCase();
+
+  return sanitized ? `${prefix}_${sanitized}_${suffix}` : `${prefix}_${suffix}`;
+}
+
+export function buildSecretReference(secretKey: string): string {
+  return `{env:${secretKey}}`;
+}
+
+export function buildCcInstanceAuthHeaderValue(secretKey: string): string {
+  return `Bearer ${buildSecretReference(secretKey)}`;
+}
+
+export function validateSecretKeyName(value: string): string | undefined {
+  if (!value.trim()) {
+    return "Secret name is required.";
+  }
+
+  return SECRET_KEY_PATTERN.test(value.trim())
+    ? undefined
+    : "Secret name must start with a letter or underscore and use only letters, digits, and underscores.";
+}
+
+export function validateCcInstanceForm(
+  form: CcInstanceFormState,
+  reservedNames: string[] = [],
+): CcInstanceFormErrors {
   return {
-    name: !trimmedName
-      ? "Name is required."
-      : nameTaken
-        ? `An MCP server named '${trimmedName}' already exists.`
-        : undefined,
+    name: validateServerName(form.name, reservedNames),
+    url: resolveCcInstanceMcpUrl(form.url) ? undefined : "A valid instance URL is required.",
+    secretKey: validateSecretKeyName(form.secretKey),
+    secretValue: form.secretValue.trim() ? undefined : "API token is required.",
+  };
+}
+
+function stripTrailingSlashes(value: string): string {
+  return value.replace(/\/+$/, "");
+}
+
+function validateServerName(label: string, reservedNames: string[]): string | undefined {
+  if (!label.trim()) {
+    return "Name is required.";
+  }
+
+  const name = toMcpServerName(label);
+  if (!name) {
+    return "Name must contain at least one letter or digit.";
+  }
+
+  // Compare derived names: a legacy server stored as "My Server" occupies the
+  // same OpenCode tool-id prefix as a new "my_server".
+  return reservedNames.some((reserved) => toMcpServerName(reserved) === name)
+    ? `An MCP server named '${name}' already exists.`
+    : undefined;
+}
+
+export function validateForm(form: FormState, reservedNames: string[] = []): FormErrors {
+  return {
+    name: validateServerName(form.name, reservedNames),
     url:
       form.transport === "stdio"
         ? undefined

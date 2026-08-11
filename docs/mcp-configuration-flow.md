@@ -237,7 +237,7 @@ The rendering logic:
 Composio-provided MCP servers follow the same model:
 
 1. **Global auth** — CC connects to Composio globally using API keys or OAuth (managed via provider connections, same as existing provider connection flow).
-2. **Composio MCP definition** — Registered once in the global `opencode.jsonc` or `mcp_servers` DB table with the Composio MCP endpoint and credentials.
+2. **Composio MCP definition** — Registered in the global `opencode.jsonc` or `mcp_servers` DB table with the Composio MCP endpoint and credentials. Integrations → Composio accepts one connection per Composio account; each is a separate MCP server with its own name, API key secret, and `<name>_*` tool prefix.
 3. **Per-specialist tool selection** — The Specialist editor lists available Composio tools (discovered via the MCP `tools/list` call) and the user selects which tools this specialist can use. The backend writes the appropriate `permission` rules to the workspace `opencode.jsonc`.
 
 The Specialist editor UI should:
