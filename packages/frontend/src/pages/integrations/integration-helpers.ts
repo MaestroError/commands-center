@@ -28,6 +28,19 @@ export type FormState = {
 
 export type FormErrors = Partial<Record<keyof FormState, string>>;
 
+export type CcInstanceFormState = {
+  name: string;
+  url: string;
+  secretKey: string;
+  secretValue: string;
+};
+
+export type CcInstanceFormErrors = Partial<Record<keyof CcInstanceFormState, string>>;
+
+// Mirrors the `{env:KEY}` grammar the backend scans for. A key outside it would
+// be persisted as a literal header value instead of a secret reference.
+const SECRET_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
 export type SuggestedMcpServer = {
   id: string;
   name: string;
@@ -49,6 +62,12 @@ export const CONFIGURED_SECTION_STORAGE_KEY = "cc-integrations-configured-expand
 export const SUGGESTED_SECTION_STORAGE_KEY = "cc-integrations-suggested-expanded";
 
 export const SUGGESTED_SHOW_ALL_STORAGE_KEY = "cc-integrations-suggested-show-all";
+
+export const CC_INSTANCE_SECTION_STORAGE_KEY = "cc-integrations-instances-expanded";
+
+export const CC_INSTANCE_MCP_PATH = "/api/public/mcp";
+
+export const CC_INSTANCE_AUTH_HEADER = "Authorization";
 
 export const COMPOSIO_SERVER_URL = "https://connect.composio.dev/mcp";
 
@@ -480,22 +499,115 @@ function suggestUniqueName(base: string, existingNames: string[]): string {
   return candidate;
 }
 
+// The name a label is stored under. OpenCode derives MCP tool ids by replacing
+// every character outside [A-Za-z0-9_-] in the server name, so CC saves the
+// derived form and never a label OpenCode would rewrite behind its back.
+export function toMcpServerName(label: string): string {
+  return label
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
 export function isComposioServer(server: McpServer): boolean {
   return server.config.transport !== "stdio" && server.config.url === COMPOSIO_SERVER_URL;
 }
 
-export function validateForm(form: FormState, reservedNames: string[] = []): FormErrors {
-  const trimmedName = form.name.trim();
-  const nameTaken =
-    trimmedName.length > 0 &&
-    reservedNames.some((name) => name.toLowerCase() === trimmedName.toLowerCase());
+export function isCcInstanceServer(server: McpServer): boolean {
+  if (server.config.transport === "stdio") {
+    return false;
+  }
 
+  try {
+    return stripTrailingSlashes(new URL(server.config.url).pathname).endsWith(CC_INSTANCE_MCP_PATH);
+  } catch {
+    return false;
+  }
+}
+
+// Accepts a bare host, an origin with or without a trailing slash, a
+// reverse-proxy sub-path, or an already complete endpoint, and resolves all of
+// them to the single public MCP endpoint the other instance exposes.
+export function resolveCcInstanceMcpUrl(input: string): string | undefined {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+
+  let url: URL;
+  try {
+    url = new URL(withScheme);
+  } catch {
+    return undefined;
+  }
+
+  if (!url.hostname) {
+    return undefined;
+  }
+
+  const path = stripTrailingSlashes(url.pathname);
+  url.pathname = path.endsWith(CC_INSTANCE_MCP_PATH) ? path : `${path}${CC_INSTANCE_MCP_PATH}`;
+  url.search = "";
+  url.hash = "";
+
+  return url.toString();
+}
+
+export function suggestCcInstanceSecretKey(instanceName: string): string {
+  const sanitized = instanceName
+    .trim()
+    .replace(/[^A-Za-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .toUpperCase();
+
+  return sanitized ? `CC_INSTANCE_${sanitized}_TOKEN` : "CC_INSTANCE_TOKEN";
+}
+
+export function buildCcInstanceAuthHeaderValue(secretKey: string): string {
+  return `Bearer {env:${secretKey}}`;
+}
+
+export function validateCcInstanceForm(
+  form: CcInstanceFormState,
+  reservedNames: string[] = [],
+): CcInstanceFormErrors {
   return {
-    name: !trimmedName
-      ? "Name is required."
-      : nameTaken
-        ? `An MCP server named '${trimmedName}' already exists.`
-        : undefined,
+    name: validateServerName(form.name, reservedNames),
+    url: resolveCcInstanceMcpUrl(form.url) ? undefined : "A valid instance URL is required.",
+    secretKey: !form.secretKey.trim()
+      ? "Secret name is required."
+      : SECRET_KEY_PATTERN.test(form.secretKey.trim())
+        ? undefined
+        : "Secret name must start with a letter or underscore and use only letters, digits, and underscores.",
+    secretValue: form.secretValue.trim() ? undefined : "API token is required.",
+  };
+}
+
+function stripTrailingSlashes(value: string): string {
+  return value.replace(/\/+$/, "");
+}
+
+function validateServerName(label: string, reservedNames: string[]): string | undefined {
+  if (!label.trim()) {
+    return "Name is required.";
+  }
+
+  const name = toMcpServerName(label);
+  if (!name) {
+    return "Name must contain at least one letter or digit.";
+  }
+
+  return reservedNames.some((reserved) => reserved.toLowerCase() === name)
+    ? `An MCP server named '${name}' already exists.`
+    : undefined;
+}
+
+export function validateForm(form: FormState, reservedNames: string[] = []): FormErrors {
+  return {
+    name: validateServerName(form.name, reservedNames),
     url:
       form.transport === "stdio"
         ? undefined

@@ -1,5 +1,19 @@
 import { z } from "zod";
 
+// OpenCode derives every MCP tool id as `sanitize(serverName)_sanitize(toolName)`,
+// replacing anything outside this character set with "_". A name CC accepts but
+// OpenCode rewrites would silently break permission patterns, which are matched
+// against the derived tool id. Reject those names instead of compensating for
+// them at each rendering site.
+export const mcpServerNameSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .regex(
+    /^[A-Za-z0-9_-]+$/,
+    "MCP server name may only contain letters, digits, underscores, and hyphens.",
+  );
+
 export const mcpTransportSchema = z.enum(["streamable-http", "sse", "stdio"]);
 export const mcpAuthMethodSchema = z.enum(["none", "oauth", "headers"]);
 
@@ -72,13 +86,13 @@ export const mcpServerSchema = z.object({
 export const mcpServerListSchema = z.array(mcpServerSchema);
 
 export const createMcpServerInputSchema = z.object({
-  name: z.string().trim().min(1),
+  name: mcpServerNameSchema,
   enabled: z.boolean().default(true),
   config: mcpServerConfigSchema,
 });
 
 export const updateMcpServerInputSchema = z.object({
-  name: z.string().trim().min(1),
+  name: mcpServerNameSchema,
   config: mcpServerConfigSchema,
 });
 

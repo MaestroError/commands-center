@@ -2,15 +2,21 @@ import { PageHeader } from "@/components/common/PageHeader";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
 import { useMcpServerMutations, useMcpServersQuery } from "@/hooks/use-mcp-servers-query";
-import { useSecretsQuery } from "@/hooks/use-secrets-query";
+import { useSecretMutations, useSecretsQuery } from "@/hooks/use-secrets-query";
 import { useSpecialistMutations, useSpecialistsQuery } from "@/hooks/use-specialists-query";
 import { useSystemVersionQuery } from "@/hooks/use-system-version-query";
 import { useActiveTaskRunsQuery } from "@/hooks/use-tasks-query";
 import { McpEngineRestartRequiredError } from "@/lib/api";
 import type { McpServer } from "@cc/shared/schemas";
 import { useState } from "react";
-import { ComposioDialog, McpAuthDialog } from "./integrations/integration-dialogs";
+import { CcInstancesSection } from "./integrations/cc-instances-section";
 import {
+  CcInstanceDialog,
+  ComposioDialog,
+  McpAuthDialog,
+} from "./integrations/integration-dialogs";
+import {
+  CC_INSTANCE_AUTH_HEADER,
   COMPOSIO_API_KEY_HEADER,
   COMPOSIO_SERVER_URL,
   CONFIGURED_SECTION_STORAGE_KEY,
@@ -21,11 +27,12 @@ import {
   SUGGESTED_SHOW_ALL_STORAGE_KEY,
   type SuggestedMcpServer,
   buildAssignmentMessage,
+  buildCcInstanceAuthHeaderValue,
   buildDuplicateForm,
   buildSuggestedMcpForm,
-  copyText,
   describeConfig,
   friendlyStatus,
+  isCcInstanceServer,
   isComposioServer,
   readError,
   statusBadgeVariant,
@@ -35,13 +42,8 @@ import {
   usePersistentBooleanState,
   useResponsiveSuggestionCount,
 } from "./integrations/integration-helpers";
-import {
-  CheckIcon,
-  ChevronIcon,
-  CloseIcon,
-  CopyIcon,
-  OpenInNewIcon,
-} from "./integrations/integration-icons";
+import { CloseIcon, OpenInNewIcon } from "./integrations/integration-icons";
+import { SecretKeyPill, SectionToggleButton } from "./integrations/integration-parts";
 import { McpServerDialog } from "./integrations/mcp-server-dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -53,13 +55,15 @@ export function IntegrationsPage() {
   const mcpServersQuery = useMcpServersQuery();
   const mcpMutations = useMcpServerMutations();
   const secretsQuery = useSecretsQuery();
+  const secretMutations = useSecretMutations();
   const activeRunsQuery = useActiveTaskRunsQuery();
   const systemVersionQuery = useSystemVersionQuery();
   const [dialog, setDialog] = useState<DialogState>();
   const [authServer, setAuthServer] = useState<McpServer>();
   const [composioDialogOpen, setComposioDialogOpen] = useState(false);
-  const [confirmingComposioRestart, setConfirmingComposioRestart] = useState(false);
-  const [composioActivationError, setComposioActivationError] = useState<string>();
+  const [ccInstanceDialogOpen, setCcInstanceDialogOpen] = useState(false);
+  const [restartConsent, setRestartConsent] = useState<{ server: McpServer; label: string }>();
+  const [activationError, setActivationError] = useState<{ serverId: string; message: string }>();
   const [successMessage, setSuccessMessage] = useState<string>();
   const [configuredExpanded, setConfiguredExpanded] = usePersistentBooleanState(
     CONFIGURED_SECTION_STORAGE_KEY,
@@ -68,7 +72,10 @@ export function IntegrationsPage() {
   const queryError = mcpServersQuery.error ? readError(mcpServersQuery.error) : undefined;
   const mcpServers = mcpServersQuery.data ?? [];
   const composioServer = mcpServers.find(isComposioServer);
-  const customMcpServers = mcpServers.filter((server) => !isComposioServer(server));
+  const ccInstanceServers = mcpServers.filter(isCcInstanceServer);
+  const customMcpServers = mcpServers.filter(
+    (server) => !isComposioServer(server) && !isCcInstanceServer(server),
+  );
   const agents = agentsQuery.data ?? [];
   const secretMeta = secretsQuery.data ?? [];
   const secretKeys = secretMeta.map((secret) => secret.key);
@@ -78,24 +85,36 @@ export function IntegrationsPage() {
   const activeRunCount =
     activeRunsQuery.data?.filter((run) => run.status === "running").length ?? 0;
 
-  async function activateComposio(restartEngine: boolean): Promise<void> {
-    if (!composioServer) {
-      return;
-    }
-
-    setComposioActivationError(undefined);
+  async function activateServer(
+    server: McpServer,
+    label: string,
+    restartEngine: boolean,
+  ): Promise<void> {
+    setActivationError(undefined);
 
     try {
-      await mcpMutations.activate.mutateAsync({ id: composioServer.id, restartEngine });
-      setSuccessMessage("Composio activated.");
+      await mcpMutations.activate.mutateAsync({ id: server.id, restartEngine });
+      setSuccessMessage(`${label} activated.`);
     } catch (error) {
       if (!restartEngine && error instanceof McpEngineRestartRequiredError) {
-        setConfirmingComposioRestart(true);
+        setRestartConsent({ server, label });
         return;
       }
 
-      setComposioActivationError(readError(error));
+      setActivationError({ serverId: server.id, message: readError(error) });
     }
+  }
+
+  function requestActivation(server: McpServer, label: string): void {
+    setSuccessMessage(undefined);
+    setActivationError(undefined);
+
+    if (server.requiresEngineRestart) {
+      setRestartConsent({ server, label });
+      return;
+    }
+
+    void activateServer(server, label, false);
   }
 
   return (
@@ -189,7 +208,7 @@ export function IntegrationsPage() {
             }
 
             setSuccessMessage(undefined);
-            setComposioActivationError(undefined);
+            setActivationError(undefined);
 
             if (composioServer.enabled) {
               await mcpMutations.setEnabled.mutateAsync({
@@ -200,15 +219,44 @@ export function IntegrationsPage() {
               return;
             }
 
-            if (composioServer.requiresEngineRestart) {
-              setConfirmingComposioRestart(true);
+            requestActivation(composioServer, "Composio");
+          }}
+          activationError={
+            activationError && activationError.serverId === composioServer?.id
+              ? activationError.message
+              : undefined
+          }
+          server={composioServer}
+        />
+      ) : null}
+
+      {!mcpServersQuery.isLoading && !queryError ? (
+        <CcInstancesSection
+          activationError={activationError}
+          busy={
+            mcpMutations.setEnabled.isPending ||
+            mcpMutations.activate.isPending ||
+            mcpMutations.remove.isPending
+          }
+          onActivate={(server) => requestActivation(server, server.name)}
+          onAdd={() => setCcInstanceDialogOpen(true)}
+          onDisable={async (server) => {
+            setSuccessMessage(undefined);
+            setActivationError(undefined);
+            await mcpMutations.setEnabled.mutateAsync({ id: server.id, enabled: false });
+            setSuccessMessage(`${server.name} disabled.`);
+          }}
+          onEdit={(server) => setDialog({ mode: "edit", server })}
+          onRemove={async (server) => {
+            if (!window.confirm(`Remove CC instance '${server.name}'?`)) {
               return;
             }
 
-            await activateComposio(false);
+            setSuccessMessage(undefined);
+            await mcpMutations.remove.mutateAsync({ id: server.id });
+            setSuccessMessage(`${server.name} removed.`);
           }}
-          activationError={composioActivationError}
-          server={composioServer}
+          servers={ccInstanceServers}
         />
       ) : null}
 
@@ -406,15 +454,53 @@ export function IntegrationsPage() {
         />
       ) : null}
 
-      {confirmingComposioRestart ? (
+      {ccInstanceDialogOpen ? (
+        <CcInstanceDialog
+          busy={mcpMutations.create.isPending || secretMutations.set.isPending}
+          existingNames={mcpServers.map((server) => server.name)}
+          existingSecretKeys={secretKeys}
+          onClose={() => setCcInstanceDialogOpen(false)}
+          onSubmit={async (input) => {
+            setSuccessMessage(undefined);
+
+            const created = await mcpMutations.create.mutateAsync({
+              enabled: false,
+              name: input.name,
+              config: {
+                transport: "streamable-http",
+                url: input.url,
+                authMethod: "headers",
+                headers: [
+                  {
+                    key: CC_INSTANCE_AUTH_HEADER,
+                    value: buildCcInstanceAuthHeaderValue(input.secretKey),
+                  },
+                ],
+              },
+            });
+            await secretMutations.set.mutateAsync({
+              key: input.secretKey,
+              value: input.secretValue,
+              restart: false,
+            });
+
+            setSuccessMessage(
+              `${created.name} saved. Activate it when you are ready to restart the AI engine.`,
+            );
+            setCcInstanceDialogOpen(false);
+          }}
+        />
+      ) : null}
+
+      {restartConsent ? (
         <ConfirmDialog
           confirmDisabled={mcpMutations.activate.isPending}
           confirmLabel={mcpMutations.activate.isPending ? "Restarting…" : "Restart and activate"}
           description={
             <div className="grid gap-3">
               <p>
-                The saved Composio API key is not loaded by the current AI engine. Restarting
-                reloads the key and briefly interrupts active specialist sessions.
+                The saved credentials for {restartConsent.label} are not loaded by the current AI
+                engine. Restarting reloads them and briefly interrupts active specialist sessions.
               </p>
               {activeRunCount > 0 ? (
                 <p className="text-warning-foreground">
@@ -425,12 +511,12 @@ export function IntegrationsPage() {
               ) : null}
             </div>
           }
-          onCancel={() => setConfirmingComposioRestart(false)}
+          onCancel={() => setRestartConsent(undefined)}
           onConfirm={() => {
-            setConfirmingComposioRestart(false);
-            void activateComposio(true);
+            setRestartConsent(undefined);
+            void activateServer(restartConsent.server, restartConsent.label, true);
           }}
-          title="Restart the AI engine to activate Composio?"
+          title={`Restart the AI engine to activate ${restartConsent.label}?`}
         />
       ) : null}
 
@@ -722,39 +808,6 @@ function ComposioSection(props: {
   );
 }
 
-function SecretKeyPill(props: { secret: string }) {
-  const [copied, setCopied] = useState(false);
-
-  return (
-    <div className="inline-flex items-center gap-1 rounded-md border border-warning-border bg-warning-surface px-2 py-1 font-mono text-[11px]">
-      <button
-        className="transition hover:text-warning"
-        onClick={() => void handleCopy()}
-        title={`Copy ${props.secret}`}
-        type="button"
-      >
-        {props.secret}
-      </button>
-      <button
-        aria-label={`Copy ${props.secret}`}
-        className="rounded-sm p-0.5 transition hover:bg-warning/10 hover:text-warning"
-        onClick={() => void handleCopy()}
-        type="button"
-      >
-        {copied ? <CheckIcon /> : <CopyIcon />}
-      </button>
-    </div>
-  );
-
-  async function handleCopy() {
-    await copyText(props.secret);
-    setCopied(true);
-    window.setTimeout(() => {
-      setCopied(false);
-    }, 1200);
-  }
-}
-
 function SuggestedMcpServersSection(props: {
   configuredNames: string[];
   onSelect: (suggestion: SuggestedMcpServer) => void;
@@ -900,20 +953,5 @@ function SuggestedMcpServersSection(props: {
         </>
       ) : null}
     </section>
-  );
-}
-
-function SectionToggleButton(props: { expanded: boolean; label: string; onClick: () => void }) {
-  return (
-    <button
-      aria-expanded={props.expanded}
-      aria-label={`${props.expanded ? "Collapse" : "Expand"} ${props.label}`}
-      className="inline-flex items-center gap-1 rounded-full border border-border bg-surface px-2.5 py-1 text-xs font-medium text-text-secondary transition hover:border-accent hover:text-text-primary"
-      onClick={props.onClick}
-      type="button"
-    >
-      {props.expanded ? "Collapse" : "Expand"}
-      <ChevronIcon expanded={props.expanded} />
-    </button>
   );
 }

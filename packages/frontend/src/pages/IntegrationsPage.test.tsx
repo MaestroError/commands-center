@@ -6,9 +6,10 @@ import { IntegrationsPage } from "./IntegrationsPage";
 
 import { useSpecialistMutations, useSpecialistsQuery } from "@/hooks/use-specialists-query";
 import { useMcpServerMutations, useMcpServersQuery } from "@/hooks/use-mcp-servers-query";
-import { useSecretsQuery } from "@/hooks/use-secrets-query";
+import { useSecretMutations, useSecretsQuery } from "@/hooks/use-secrets-query";
 import { useActiveTaskRunsQuery } from "@/hooks/use-tasks-query";
 import { useSystemVersionQuery } from "@/hooks/use-system-version-query";
+import { McpEngineRestartRequiredError } from "@/lib/api";
 
 vi.mock("@/hooks/use-specialists-query", () => ({
   useSpecialistsQuery: vi.fn(),
@@ -22,6 +23,7 @@ vi.mock("@/hooks/use-mcp-servers-query", () => ({
 
 vi.mock("@/hooks/use-secrets-query", () => ({
   useSecretsQuery: vi.fn(),
+  useSecretMutations: vi.fn(),
 }));
 
 vi.mock("@/hooks/use-tasks-query", () => ({
@@ -41,6 +43,7 @@ const startAuthMutateAsync = vi.fn();
 const completeAuthMutateAsync = vi.fn();
 const authenticateMutateAsync = vi.fn();
 const removeAuthMutateAsync = vi.fn();
+const setSecretMutateAsync = vi.fn();
 const updateSpecialistMutateAsync = vi.fn();
 const confirmSpy = vi.spyOn(window, "confirm");
 const writeClipboardSpy = vi.fn(() => Promise.resolve());
@@ -85,6 +88,7 @@ beforeEach(() => {
   completeAuthMutateAsync.mockReset();
   authenticateMutateAsync.mockReset();
   removeAuthMutateAsync.mockReset();
+  setSecretMutateAsync.mockReset();
   updateSpecialistMutateAsync.mockReset();
   confirmSpy.mockReset();
   confirmSpy.mockReturnValue(true);
@@ -121,6 +125,11 @@ beforeEach(() => {
     data: [],
     isLoading: false,
     error: null,
+  } as never);
+
+  vi.mocked(useSecretMutations).mockReturnValue({
+    set: { mutateAsync: setSecretMutateAsync, isPending: false },
+    remove: { mutateAsync: vi.fn(), isPending: false },
   } as never);
 
   vi.mocked(useActiveTaskRunsQuery).mockReturnValue({ data: [] } as never);
@@ -296,6 +305,371 @@ describe("IntegrationsPage", () => {
     expect(
       screen.queryByRole("heading", { name: "Restart the AI engine to activate Composio?" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("previews the technical name derived from a CC instance label", () => {
+    render(<IntegrationsPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    fireEvent.change(screen.getByLabelText("CC instance name"), {
+      target: { value: "Knowledge base" },
+    });
+
+    expect(screen.getByText("knowledge_base")).toBeInTheDocument();
+  });
+
+  it("hides the derived-name note when the label is already a technical name", () => {
+    render(<IntegrationsPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    fireEvent.change(screen.getByLabelText("CC instance name"), {
+      target: { value: "knowledge_base" },
+    });
+
+    expect(screen.queryByText(/^Saved as/)).not.toBeInTheDocument();
+  });
+
+  it("saves a CC instance under the derived technical name", async () => {
+    createMutateAsync.mockResolvedValue({ name: "knowledge_base" });
+
+    render(<IntegrationsPage />);
+    openCcInstanceDialog({ name: "Knowledge base", url: "cc.example.com", token: "cc-token" });
+
+    await waitFor(() => {
+      expect(createMutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "knowledge_base" }),
+      );
+    });
+  });
+
+  it("saves a custom MCP server under the derived technical name", async () => {
+    createMutateAsync.mockResolvedValue({ name: "my_server", config: { transport: "stdio" } });
+
+    render(<IntegrationsPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add custom MCP server" }));
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "My Server" } });
+    fireEvent.change(screen.getByLabelText("URL"), {
+      target: { value: "https://example.com/mcp" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add server" }));
+
+    await waitFor(() => {
+      expect(createMutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "my_server" }),
+      );
+    });
+  });
+
+  it("saves Composio under the derived technical name", async () => {
+    createMutateAsync.mockResolvedValue({ name: "my_composio", config: { transport: "stdio" } });
+
+    render(<IntegrationsPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Connect Composio" }));
+    fireEvent.change(screen.getByLabelText("Composio name"), { target: { value: "My Composio" } });
+    fireEvent.change(screen.getByLabelText("Composio API key"), { target: { value: "key" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Composio" }));
+
+    await waitFor(() => {
+      expect(createMutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "my_composio" }),
+      );
+    });
+  });
+
+  it("blocks a CC instance label that derives to an empty name", () => {
+    render(<IntegrationsPage />);
+    openCcInstanceDialog({ name: "!!!", url: "cc.example.com", token: "cc-token" });
+
+    expect(screen.getByText("Name must contain at least one letter or digit.")).toBeInTheDocument();
+    expect(createMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("renders the connected CC instances section before suggested MCPs", () => {
+    render(<IntegrationsPage />);
+
+    const instances = screen.getByRole("heading", { name: "Connected CC instances" });
+    const suggested = screen.getByRole("heading", { name: "Suggested MCPs" });
+
+    expect(instances.compareDocumentPosition(suggested) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+  });
+
+  it("saves a CC instance disabled with a bearer secret reference", async () => {
+    createMutateAsync.mockResolvedValue({ name: "staging-cc" });
+
+    render(<IntegrationsPage />);
+    openCcInstanceDialog({ name: "staging-cc", url: "cc.example.com", token: "cc-token" });
+
+    await waitFor(() => {
+      expect(createMutateAsync).toHaveBeenCalledWith({
+        enabled: false,
+        name: "staging-cc",
+        config: {
+          url: "https://cc.example.com/api/public/mcp",
+          transport: "streamable-http",
+          authMethod: "headers",
+          headers: [{ key: "Authorization", value: "Bearer {env:CC_INSTANCE_STAGING_CC_TOKEN}" }],
+        },
+      });
+    });
+  });
+
+  it("stores the CC instance token without restarting the engine", async () => {
+    createMutateAsync.mockResolvedValue({ name: "staging-cc" });
+
+    render(<IntegrationsPage />);
+    openCcInstanceDialog({ name: "staging-cc", url: "cc.example.com", token: "cc-token" });
+
+    await waitFor(() => {
+      expect(setSecretMutateAsync).toHaveBeenCalledWith({
+        key: "CC_INSTANCE_STAGING_CC_TOKEN",
+        value: "cc-token",
+        restart: false,
+      });
+    });
+  });
+
+  it("keeps a reverse-proxy sub-path when appending the public MCP path", async () => {
+    createMutateAsync.mockResolvedValue({ name: "staging-cc" });
+
+    render(<IntegrationsPage />);
+    openCcInstanceDialog({ name: "staging-cc", url: "https://host.example.com/cc/", token: "t" });
+
+    await waitFor(() => {
+      expect(createMutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          config: expect.objectContaining({
+            url: "https://host.example.com/cc/api/public/mcp",
+          }),
+        }),
+      );
+    });
+  });
+
+  it("does not append the public MCP path twice", async () => {
+    createMutateAsync.mockResolvedValue({ name: "staging-cc" });
+
+    render(<IntegrationsPage />);
+    openCcInstanceDialog({
+      name: "staging-cc",
+      url: "https://cc.example.com/api/public/mcp",
+      token: "t",
+    });
+
+    await waitFor(() => {
+      expect(createMutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          config: expect.objectContaining({ url: "https://cc.example.com/api/public/mcp" }),
+        }),
+      );
+    });
+  });
+
+  it("blocks saving a CC instance with an unusable URL", () => {
+    render(<IntegrationsPage />);
+    openCcInstanceDialog({ name: "staging-cc", url: "http://", token: "t" });
+
+    expect(screen.getByText("A valid instance URL is required.")).toBeInTheDocument();
+    expect(createMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("blocks saving a CC instance with a secret name that cannot be referenced", () => {
+    render(<IntegrationsPage />);
+    openCcInstanceDialog({
+      name: "staging-cc",
+      url: "cc.example.com",
+      secretKey: "staging-token",
+      token: "t",
+    });
+
+    expect(
+      screen.getByText(
+        "Secret name must start with a letter or underscore and use only letters, digits, and underscores.",
+      ),
+    ).toBeInTheDocument();
+    expect(createMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("prefills the CC instance secret name from the instance name", () => {
+    render(<IntegrationsPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    fireEvent.change(screen.getByLabelText("CC instance name"), {
+      target: { value: "staging cc" },
+    });
+
+    expect(screen.getByLabelText("CC instance secret name")).toHaveValue(
+      "CC_INSTANCE_STAGING_CC_TOKEN",
+    );
+  });
+
+  it("stops deriving the secret name once it is edited by hand", () => {
+    render(<IntegrationsPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    fireEvent.change(screen.getByLabelText("CC instance secret name"), {
+      target: { value: "MY_TOKEN" },
+    });
+    fireEvent.change(screen.getByLabelText("CC instance name"), {
+      target: { value: "staging-cc" },
+    });
+
+    expect(screen.getByLabelText("CC instance secret name")).toHaveValue("MY_TOKEN");
+  });
+
+  it("keeps a connected CC instance out of the configured MCP servers list", () => {
+    mockCcInstance({ enabled: true });
+
+    render(<IntegrationsPage />);
+
+    const section = screen
+      .getByRole("heading", { name: "Connected CC instances" })
+      .closest("section");
+    expect(within(section as HTMLElement).getByText("staging-cc")).toBeInTheDocument();
+    expect(screen.getByText("No MCP servers configured yet")).toBeInTheDocument();
+  });
+
+  it("asks for restart consent before activating a CC instance", async () => {
+    mockCcInstance({ requiresEngineRestart: true });
+
+    const user = userEvent.setup();
+    render(<IntegrationsPage />);
+
+    await user.click(screen.getByRole("button", { name: "Activate" }));
+
+    expect(
+      screen.getByRole("heading", { name: "Restart the AI engine to activate staging-cc?" }),
+    ).toBeInTheDocument();
+  });
+
+  it("makes no activation request when the CC instance restart is cancelled", async () => {
+    mockCcInstance({ requiresEngineRestart: true });
+
+    const user = userEvent.setup();
+    render(<IntegrationsPage />);
+
+    await user.click(screen.getByRole("button", { name: "Activate" }));
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(activateMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("activates a CC instance with restart consent", async () => {
+    mockCcInstance({ requiresEngineRestart: true });
+    activateMutateAsync.mockResolvedValue({ name: "staging-cc" });
+
+    const user = userEvent.setup();
+    render(<IntegrationsPage />);
+
+    await user.click(screen.getByRole("button", { name: "Activate" }));
+    await user.click(screen.getByRole("button", { name: "Restart and activate" }));
+
+    await waitFor(() => {
+      expect(activateMutateAsync).toHaveBeenCalledWith({
+        id: "mcp-instance",
+        restartEngine: true,
+      });
+    });
+  });
+
+  it("activates a CC instance without prompting when its token is already loaded", async () => {
+    mockCcInstance({ requiresEngineRestart: false });
+    activateMutateAsync.mockResolvedValue({ name: "staging-cc" });
+
+    const user = userEvent.setup();
+    render(<IntegrationsPage />);
+
+    await user.click(screen.getByRole("button", { name: "Activate" }));
+
+    await waitFor(() => {
+      expect(activateMutateAsync).toHaveBeenCalledWith({
+        id: "mcp-instance",
+        restartEngine: false,
+      });
+    });
+    expect(
+      screen.queryByRole("heading", { name: "Restart the AI engine to activate staging-cc?" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("asks for restart consent when the backend reports stale CC instance state", async () => {
+    mockCcInstance({ requiresEngineRestart: false });
+    activateMutateAsync.mockRejectedValue(new McpEngineRestartRequiredError("Restart required."));
+
+    const user = userEvent.setup();
+    render(<IntegrationsPage />);
+
+    await user.click(screen.getByRole("button", { name: "Activate" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "Restart the AI engine to activate staging-cc?" }),
+    ).toBeInTheDocument();
+  });
+
+  it("reports a failed CC instance activation on its card", async () => {
+    mockCcInstance({ requiresEngineRestart: false });
+    activateMutateAsync.mockRejectedValue(new Error("Engine restart failed."));
+
+    const user = userEvent.setup();
+    render(<IntegrationsPage />);
+
+    await user.click(screen.getByRole("button", { name: "Activate" }));
+
+    expect(await screen.findByText("Engine restart failed.")).toBeInTheDocument();
+  });
+
+  it("renders missing secret values for a CC instance", () => {
+    mockCcInstance({ missingSecrets: ["CC_INSTANCE_STAGING_CC_TOKEN"] });
+
+    render(<IntegrationsPage />);
+
+    expect(screen.getByText("Missing secret values")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Copy CC_INSTANCE_STAGING_CC_TOKEN" }),
+    ).toBeInTheDocument();
+  });
+
+  it("disables an enabled CC instance", async () => {
+    mockCcInstance({ enabled: true });
+    setEnabledMutateAsync.mockResolvedValue(undefined);
+
+    const user = userEvent.setup();
+    render(<IntegrationsPage />);
+
+    await user.click(screen.getByRole("button", { name: "Disable" }));
+
+    await waitFor(() => {
+      expect(setEnabledMutateAsync).toHaveBeenCalledWith({ id: "mcp-instance", enabled: false });
+    });
+  });
+
+  it("removes a CC instance after confirmation", async () => {
+    mockCcInstance({ enabled: true });
+    removeMutateAsync.mockResolvedValue(undefined);
+
+    const user = userEvent.setup();
+    render(<IntegrationsPage />);
+
+    await user.click(screen.getByRole("button", { name: "Remove" }));
+
+    await waitFor(() => {
+      expect(removeMutateAsync).toHaveBeenCalledWith({ id: "mcp-instance" });
+    });
+  });
+
+  it("keeps a CC instance when its removal is not confirmed", async () => {
+    mockCcInstance({ enabled: true });
+    confirmSpy.mockReturnValue(false);
+
+    const user = userEvent.setup();
+    render(<IntegrationsPage />);
+
+    await user.click(screen.getByRole("button", { name: "Remove" }));
+
+    expect(removeMutateAsync).not.toHaveBeenCalled();
   });
 
   it("renders MCP server cards and toggles enabled state", async () => {
@@ -1084,7 +1458,7 @@ describe("IntegrationsPage", () => {
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "GitHub" } });
     fireEvent.click(screen.getByRole("button", { name: "Add server" }));
 
-    expect(screen.getByText("An MCP server named 'GitHub' already exists.")).toBeInTheDocument();
+    expect(screen.getByText("An MCP server named 'github' already exists.")).toBeInTheDocument();
     expect(createMutateAsync).not.toHaveBeenCalled();
   });
 
@@ -1134,7 +1508,7 @@ describe("IntegrationsPage", () => {
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "GitHub" } });
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
-    expect(screen.getByText("An MCP server named 'GitHub' already exists.")).toBeInTheDocument();
+    expect(screen.getByText("An MCP server named 'github' already exists.")).toBeInTheDocument();
     expect(updateMutateAsync).not.toHaveBeenCalled();
   });
 
@@ -1265,6 +1639,59 @@ describe("IntegrationsPage", () => {
     await waitFor(() => expect(removeMutateAsync).toHaveBeenCalledWith({ id: "composio-1" }));
   });
 });
+
+function openCcInstanceDialog(values: {
+  name: string;
+  url: string;
+  token: string;
+  secretKey?: string;
+}): void {
+  fireEvent.click(screen.getByRole("button", { name: "Add" }));
+  fireEvent.change(screen.getByLabelText("CC instance name"), { target: { value: values.name } });
+  fireEvent.change(screen.getByLabelText("CC instance URL"), { target: { value: values.url } });
+
+  if (values.secretKey !== undefined) {
+    fireEvent.change(screen.getByLabelText("CC instance secret name"), {
+      target: { value: values.secretKey },
+    });
+  }
+
+  fireEvent.change(screen.getByLabelText("CC instance API token"), {
+    target: { value: values.token },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Save instance" }));
+}
+
+function mockCcInstance(options: {
+  enabled?: boolean;
+  requiresEngineRestart?: boolean;
+  missingSecrets?: string[];
+}): void {
+  vi.mocked(useMcpServersQuery).mockReturnValue({
+    data: [
+      {
+        id: "mcp-instance",
+        name: "staging-cc",
+        enabled: options.enabled ?? false,
+        config: {
+          url: "https://cc.example.com/api/public/mcp",
+          transport: "streamable-http",
+          authMethod: "headers",
+          headers: [{ key: "Authorization", value: "Bearer {env:CC_INSTANCE_STAGING_CC_TOKEN}" }],
+        },
+        missingSecrets: options.missingSecrets ?? [],
+        requiresEngineRestart: options.requiresEngineRestart ?? false,
+        runtimeStatus: { status: options.enabled ? "connected" : "disabled" },
+        tools: [],
+        createdAt: "2026-04-22T10:00:00.000Z",
+        updatedAt: "2026-04-22T10:00:00.000Z",
+      },
+    ],
+    isLoading: false,
+    error: null,
+    refetch: vi.fn(),
+  } as never);
+}
 
 function mockConfiguredComposio(options: {
   enabled: boolean;

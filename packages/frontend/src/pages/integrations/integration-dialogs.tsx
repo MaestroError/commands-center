@@ -3,8 +3,20 @@
 import { PasswordInput } from "@/components/common/PasswordInput";
 import type { McpServer } from "@cc/shared/schemas";
 import { useEffect, useRef, useState } from "react";
-import { COMPOSIO_API_KEY_HEADER, DEFAULT_COMPOSIO_NAME, readError } from "./integration-helpers";
+import {
+  CC_INSTANCE_MCP_PATH,
+  COMPOSIO_API_KEY_HEADER,
+  type CcInstanceFormErrors,
+  type CcInstanceFormState,
+  DEFAULT_COMPOSIO_NAME,
+  readError,
+  resolveCcInstanceMcpUrl,
+  suggestCcInstanceSecretKey,
+  toMcpServerName,
+  validateCcInstanceForm,
+} from "./integration-helpers";
 import { CloseIcon } from "./integration-icons";
+import { DerivedNameNote } from "./integration-parts";
 import { Field } from "./mcp-server-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -54,6 +66,7 @@ export function ComposioDialog(props: {
               }}
               value={name}
             />
+            <DerivedNameNote label={name} />
           </Field>
 
           <Field label="API key" required>
@@ -90,8 +103,9 @@ export function ComposioDialog(props: {
     event.preventDefault();
     setSubmitError(undefined);
 
-    if (!name.trim()) {
-      setSubmitError("Name is required.");
+    const serverName = toMcpServerName(name);
+    if (!serverName) {
+      setSubmitError("Name must contain at least one letter or digit.");
       return;
     }
 
@@ -102,8 +116,168 @@ export function ComposioDialog(props: {
 
     try {
       await props.onSubmit({
-        name: name.trim(),
+        name: serverName,
         apiKey: apiKey.trim(),
+      });
+    } catch (error) {
+      setSubmitError(readError(error));
+    }
+  }
+}
+
+export function CcInstanceDialog(props: {
+  busy: boolean;
+  existingNames: string[];
+  existingSecretKeys: string[];
+  onClose: () => void;
+  onSubmit: (input: {
+    name: string;
+    url: string;
+    secretKey: string;
+    secretValue: string;
+  }) => Promise<void>;
+}) {
+  const [form, setForm] = useState<CcInstanceFormState>({
+    name: "",
+    url: "",
+    secretKey: "",
+    secretValue: "",
+  });
+  const [secretKeyEdited, setSecretKeyEdited] = useState(false);
+  const [errors, setErrors] = useState<CcInstanceFormErrors>({});
+  const [submitError, setSubmitError] = useState<string>();
+  const resolvedUrl = resolveCcInstanceMcpUrl(form.url);
+  const secretKeyExists = props.existingSecretKeys.includes(form.secretKey.trim());
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-app-bg/60 p-4 backdrop-blur-sm"
+      onClick={props.onClose}
+    >
+      <div
+        className="cc-panel flex min-h-0 max-h-[calc(100vh-8rem)] w-full max-w-xl flex-col overflow-hidden p-6"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold text-text-primary">Connect CC instance</h2>
+            <p className="mt-1 text-sm text-text-secondary">
+              Use another CommandsCenter instance as an MCP server. CC appends{" "}
+              <code>{CC_INSTANCE_MCP_PATH}</code> and sends the API token as a bearer header.
+            </p>
+          </div>
+          <button
+            className="rounded-md p-2 text-text-secondary transition hover:bg-surface-elevated hover:text-text-primary"
+            onClick={props.onClose}
+            type="button"
+          >
+            <CloseIcon />
+          </button>
+        </div>
+
+        <form
+          className="mt-6 grid min-h-0 flex-1 gap-4 overflow-y-auto"
+          onSubmit={(event) => void handleSubmit(event)}
+        >
+          <Field error={errors.name} label="Name" required>
+            <Input
+              aria-label="CC instance name"
+              onChange={(event) => updateForm({ name: event.target.value })}
+              placeholder="staging-cc"
+              value={form.name}
+            />
+            <DerivedNameNote label={form.name} />
+          </Field>
+
+          <Field error={errors.url} label="Instance URL" required>
+            <Input
+              aria-label="CC instance URL"
+              onChange={(event) => updateForm({ url: event.target.value })}
+              placeholder="cc.example.com"
+              value={form.url}
+            />
+            {resolvedUrl ? (
+              <p className="mt-2 break-all text-xs text-text-secondary">
+                Endpoint: <code>{resolvedUrl}</code>
+              </p>
+            ) : null}
+          </Field>
+
+          <Field error={errors.secretKey} label="Secret name" required>
+            <Input
+              aria-label="CC instance secret name"
+              onChange={(event) => {
+                setSecretKeyEdited(true);
+                updateForm({ secretKey: event.target.value });
+              }}
+              placeholder="CC_INSTANCE_STAGING_CC_TOKEN"
+              value={form.secretKey}
+            />
+            {secretKeyExists ? (
+              <p className="mt-2 text-xs text-warning-foreground">
+                This secret already exists and its value will be replaced.
+              </p>
+            ) : null}
+          </Field>
+
+          <Field error={errors.secretValue} label="API token" required>
+            <PasswordInput
+              aria-label="CC instance API token"
+              onChange={(event) => updateForm({ secretValue: event.target.value })}
+              value={form.secretValue}
+            />
+            <p className="mt-2 text-xs text-text-secondary">
+              Create this on the other instance under API → Tokens, granting only the capabilities
+              it should expose. CC stores it encrypted under the secret name above.
+            </p>
+          </Field>
+
+          {submitError ? <p className="text-sm text-danger">{submitError}</p> : null}
+
+          <div className="mt-2 flex flex-wrap justify-end gap-2 border-t border-border pt-4">
+            <Button variant="secondary" onClick={props.onClose} type="button">
+              Cancel
+            </Button>
+            <Button disabled={props.busy} type="submit">
+              {props.busy ? "Saving..." : "Save instance"}
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+
+  function updateForm(patch: Partial<CcInstanceFormState>): void {
+    setSubmitError(undefined);
+    setForm((current) => {
+      const next = { ...current, ...patch };
+
+      if (patch.name !== undefined && !secretKeyEdited) {
+        next.secretKey = suggestCcInstanceSecretKey(patch.name);
+      }
+
+      return next;
+    });
+  }
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    setSubmitError(undefined);
+
+    const nextErrors = validateCcInstanceForm(form, props.existingNames);
+    setErrors(nextErrors);
+
+    const endpoint = resolveCcInstanceMcpUrl(form.url);
+    if (Object.values(nextErrors).some(Boolean) || !endpoint) {
+      return;
+    }
+
+    try {
+      await props.onSubmit({
+        name: toMcpServerName(form.name),
+        url: endpoint,
+        secretKey: form.secretKey.trim(),
+        secretValue: form.secretValue.trim(),
       });
     } catch (error) {
       setSubmitError(readError(error));
