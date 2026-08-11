@@ -204,7 +204,7 @@ describe("IntegrationsPage", () => {
     render(<IntegrationsPage />);
 
     expect(screen.getByRole("heading", { name: "Composio" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Connect Composio" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add Composio connection" })).toBeInTheDocument();
     expect(screen.queryByText("Built-in MCP")).not.toBeInTheDocument();
   });
 
@@ -227,7 +227,7 @@ describe("IntegrationsPage", () => {
 
     render(<IntegrationsPage />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Connect Composio" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add Composio connection" }));
     // No auth-method choice anymore — Composio is API-key only.
     expect(screen.queryByLabelText("OAuth")).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Composio name"), {
@@ -269,7 +269,7 @@ describe("IntegrationsPage", () => {
 
     await user.click(screen.getByRole("button", { name: "Activate" }));
     expect(
-      screen.getByRole("heading", { name: "Restart the AI engine to activate Composio?" }),
+      screen.getByRole("heading", { name: "Restart the AI engine to activate composio?" }),
     ).toBeInTheDocument();
     expect(screen.getByText(/2 task runs are currently active/)).toBeInTheDocument();
 
@@ -303,14 +303,79 @@ describe("IntegrationsPage", () => {
       });
     });
     expect(
-      screen.queryByRole("heading", { name: "Restart the AI engine to activate Composio?" }),
+      screen.queryByRole("heading", { name: "Restart the AI engine to activate composio?" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("renders one card per Composio connection", () => {
+    mockComposioConnections(["composio", "composio-work"]);
+
+    render(<IntegrationsPage />);
+
+    const section = composioSection();
+    expect(within(section).getByText("composio")).toBeInTheDocument();
+    expect(within(section).getByText("composio-work")).toBeInTheDocument();
+  });
+
+  it("suggests a free name when a Composio connection already exists", () => {
+    mockComposioConnections(["composio"]);
+
+    render(<IntegrationsPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add Composio connection" }));
+
+    expect(screen.getByLabelText("Composio name")).toHaveValue("composio-2");
+  });
+
+  it("blocks a second Composio connection reusing an existing name", () => {
+    mockComposioConnections(["composio"]);
+
+    render(<IntegrationsPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add Composio connection" }));
+    fireEvent.change(screen.getByLabelText("Composio name"), { target: { value: "composio" } });
+    fireEvent.change(screen.getByLabelText("Composio API key"), { target: { value: "key" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Composio" }));
+
+    expect(screen.getByText("An MCP server named 'composio' already exists.")).toBeInTheDocument();
+    expect(createMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("activates only the Composio connection whose card was used", async () => {
+    mockComposioConnections(["composio", "composio-work"], { enabled: false });
+    activateMutateAsync.mockResolvedValue({ name: "composio-work" });
+
+    const user = userEvent.setup();
+    render(<IntegrationsPage />);
+
+    const cards = within(composioSection()).getAllByRole("button", { name: "Activate" });
+    await user.click(cards[1]!);
+
+    await waitFor(() => {
+      expect(activateMutateAsync).toHaveBeenCalledWith({
+        id: "mcp-composio-work",
+        restartEngine: false,
+      });
+    });
+  });
+
+  it("names the Composio connection in its restart-consent dialog", async () => {
+    mockComposioConnections(["composio-work"], { enabled: false, requiresEngineRestart: true });
+
+    const user = userEvent.setup();
+    render(<IntegrationsPage />);
+
+    await user.click(within(composioSection()).getByRole("button", { name: "Activate" }));
+
+    expect(
+      screen.getByRole("heading", { name: "Restart the AI engine to activate composio-work?" }),
+    ).toBeInTheDocument();
   });
 
   it("previews the technical name derived from a CC instance label", () => {
     render(<IntegrationsPage />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add CC instance" }));
     fireEvent.change(screen.getByLabelText("CC instance name"), {
       target: { value: "Knowledge base" },
     });
@@ -321,7 +386,7 @@ describe("IntegrationsPage", () => {
   it("hides the derived-name note when the label is already a technical name", () => {
     render(<IntegrationsPage />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add CC instance" }));
     fireEvent.change(screen.getByLabelText("CC instance name"), {
       target: { value: "knowledge_base" },
     });
@@ -366,7 +431,7 @@ describe("IntegrationsPage", () => {
 
     render(<IntegrationsPage />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Connect Composio" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add Composio connection" }));
     fireEvent.change(screen.getByLabelText("Composio name"), { target: { value: "My Composio" } });
     fireEvent.change(screen.getByLabelText("Composio API key"), { target: { value: "key" } });
     fireEvent.click(screen.getByRole("button", { name: "Save Composio" }));
@@ -496,7 +561,7 @@ describe("IntegrationsPage", () => {
   it("prefills the CC instance secret name from the instance name", () => {
     render(<IntegrationsPage />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add CC instance" }));
     fireEvent.change(screen.getByLabelText("CC instance name"), {
       target: { value: "staging cc" },
     });
@@ -509,7 +574,7 @@ describe("IntegrationsPage", () => {
   it("stops deriving the secret name once it is edited by hand", () => {
     render(<IntegrationsPage />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add CC instance" }));
     fireEvent.change(screen.getByLabelText("CC instance secret name"), {
       target: { value: "MY_TOKEN" },
     });
@@ -1296,7 +1361,7 @@ describe("IntegrationsPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Remove" }));
 
     await waitFor(() => {
-      expect(confirmSpy).toHaveBeenCalledWith("Remove Composio integration 'composio'?");
+      expect(confirmSpy).toHaveBeenCalledWith("Remove Composio connection 'composio'?");
       expect(removeMutateAsync).toHaveBeenCalledWith({ id: "mcp-composio" });
     });
   });
@@ -1646,7 +1711,7 @@ function openCcInstanceDialog(values: {
   token: string;
   secretKey?: string;
 }): void {
-  fireEvent.click(screen.getByRole("button", { name: "Add" }));
+  fireEvent.click(screen.getByRole("button", { name: "Add CC instance" }));
   fireEvent.change(screen.getByLabelText("CC instance name"), { target: { value: values.name } });
   fireEvent.change(screen.getByLabelText("CC instance URL"), { target: { value: values.url } });
 
@@ -1687,6 +1752,40 @@ function mockCcInstance(options: {
         updatedAt: "2026-04-22T10:00:00.000Z",
       },
     ],
+    isLoading: false,
+    error: null,
+    refetch: vi.fn(),
+  } as never);
+}
+
+function composioSection(): HTMLElement {
+  return screen.getByRole("heading", { name: "Composio" }).closest("section") as HTMLElement;
+}
+
+function mockComposioConnections(
+  names: string[],
+  options: { enabled?: boolean; requiresEngineRestart?: boolean } = {},
+): void {
+  const enabled = options.enabled ?? true;
+
+  vi.mocked(useMcpServersQuery).mockReturnValue({
+    data: names.map((name) => ({
+      id: `mcp-${name}`,
+      name,
+      enabled,
+      config: {
+        url: "https://connect.composio.dev/mcp",
+        transport: "streamable-http",
+        authMethod: "headers",
+        headers: [{ key: "x-consumer-api-key", value: `{env:CC_MCP_${name}_KEY}` }],
+      },
+      missingSecrets: [],
+      requiresEngineRestart: options.requiresEngineRestart ?? false,
+      runtimeStatus: { status: enabled ? "connected" : "disabled" },
+      tools: [],
+      createdAt: "2026-04-22T10:00:00.000Z",
+      updatedAt: "2026-04-22T10:00:00.000Z",
+    })),
     isLoading: false,
     error: null,
     refetch: vi.fn(),

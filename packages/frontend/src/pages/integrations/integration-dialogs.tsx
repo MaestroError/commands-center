@@ -12,6 +12,7 @@ import {
   readError,
   resolveCcInstanceMcpUrl,
   suggestCcInstanceSecretKey,
+  suggestUniqueName,
   toMcpServerName,
   validateCcInstanceForm,
 } from "./integration-helpers";
@@ -23,10 +24,15 @@ import { Input } from "@/components/ui/input";
 
 export function ComposioDialog(props: {
   busy: boolean;
+  existingNames: string[];
   onClose: () => void;
   onSubmit: (input: { name: string; apiKey: string }) => Promise<void>;
 }) {
-  const [name, setName] = useState(DEFAULT_COMPOSIO_NAME);
+  const [name, setName] = useState(() =>
+    props.existingNames.some((existing) => existing.toLowerCase() === DEFAULT_COMPOSIO_NAME)
+      ? suggestUniqueName(DEFAULT_COMPOSIO_NAME, props.existingNames)
+      : DEFAULT_COMPOSIO_NAME,
+  );
   const [apiKey, setApiKey] = useState("");
   const [submitError, setSubmitError] = useState<string>();
 
@@ -106,6 +112,11 @@ export function ComposioDialog(props: {
     const serverName = toMcpServerName(name);
     if (!serverName) {
       setSubmitError("Name must contain at least one letter or digit.");
+      return;
+    }
+
+    if (props.existingNames.some((existing) => existing.toLowerCase() === serverName)) {
+      setSubmitError(`An MCP server named '${serverName}' already exists.`);
       return;
     }
 

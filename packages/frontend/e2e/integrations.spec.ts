@@ -26,7 +26,7 @@ test("connects another CC instance and activates it with restart consent", async
   await page.goto("/integrations");
 
   await expect(page.getByRole("heading", { name: "Connected CC instances" })).toBeVisible();
-  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await page.getByRole("button", { name: "Add CC instance" }).click();
 
   // A friendly label is saved under the technical name OpenCode derives, so the
   // rendered permission pattern matches the tool ids it generates.

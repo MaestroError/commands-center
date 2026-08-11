@@ -65,6 +65,8 @@ export const SUGGESTED_SHOW_ALL_STORAGE_KEY = "cc-integrations-suggested-show-al
 
 export const CC_INSTANCE_SECTION_STORAGE_KEY = "cc-integrations-instances-expanded";
 
+export const COMPOSIO_SECTION_STORAGE_KEY = "cc-integrations-composio-expanded";
+
 export const CC_INSTANCE_MCP_PATH = "/api/public/mcp";
 
 export const CC_INSTANCE_AUTH_HEADER = "Authorization";
@@ -483,7 +485,7 @@ export function buildDuplicateForm(server: McpServer, existingNames: string[]): 
 // Suggests a non-colliding copy name like `github` -> `github-2` -> `github-3`,
 // reusing an existing numeric suffix instead of stacking them (`github-2-2`).
 
-function suggestUniqueName(base: string, existingNames: string[]): string {
+export function suggestUniqueName(base: string, existingNames: string[]): string {
   const taken = new Set(existingNames.map((name) => name.trim().toLowerCase()));
   const trimmed = base.trim();
   const suffixMatch = /^(.*?)-(\d+)$/.exec(trimmed);
