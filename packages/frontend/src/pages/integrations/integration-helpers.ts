@@ -558,18 +558,32 @@ export function resolveCcInstanceMcpUrl(input: string): string | undefined {
   return url.toString();
 }
 
-export function suggestCcInstanceSecretKey(instanceName: string): string {
-  const sanitized = instanceName
+export function suggestSecretKey(prefix: string, label: string, suffix: string): string {
+  const sanitized = label
     .trim()
     .replace(/[^A-Za-z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "")
     .toUpperCase();
 
-  return sanitized ? `CC_INSTANCE_${sanitized}_TOKEN` : "CC_INSTANCE_TOKEN";
+  return sanitized ? `${prefix}_${sanitized}_${suffix}` : `${prefix}_${suffix}`;
+}
+
+export function buildSecretReference(secretKey: string): string {
+  return `{env:${secretKey}}`;
 }
 
 export function buildCcInstanceAuthHeaderValue(secretKey: string): string {
-  return `Bearer {env:${secretKey}}`;
+  return `Bearer ${buildSecretReference(secretKey)}`;
+}
+
+export function validateSecretKeyName(value: string): string | undefined {
+  if (!value.trim()) {
+    return "Secret name is required.";
+  }
+
+  return SECRET_KEY_PATTERN.test(value.trim())
+    ? undefined
+    : "Secret name must start with a letter or underscore and use only letters, digits, and underscores.";
 }
 
 export function validateCcInstanceForm(
@@ -579,11 +593,7 @@ export function validateCcInstanceForm(
   return {
     name: validateServerName(form.name, reservedNames),
     url: resolveCcInstanceMcpUrl(form.url) ? undefined : "A valid instance URL is required.",
-    secretKey: !form.secretKey.trim()
-      ? "Secret name is required."
-      : SECRET_KEY_PATTERN.test(form.secretKey.trim())
-        ? undefined
-        : "Secret name must start with a letter or underscore and use only letters, digits, and underscores.",
+    secretKey: validateSecretKeyName(form.secretKey),
     secretValue: form.secretValue.trim() ? undefined : "API token is required.",
   };
 }

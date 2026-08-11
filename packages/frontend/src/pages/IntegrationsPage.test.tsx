@@ -246,7 +246,7 @@ describe("IntegrationsPage", () => {
           url: "https://connect.composio.dev/mcp",
           transport: "streamable-http",
           authMethod: "headers",
-          headers: [{ key: "x-consumer-api-key", value: "secret-key" }],
+          headers: [{ key: "x-consumer-api-key", value: "{env:CC_COMPOSIO_MY_COMPOSIO_API_KEY}" }],
         },
       });
     });
@@ -255,6 +255,56 @@ describe("IntegrationsPage", () => {
         "Composio API key saved. Activate Composio when you are ready to restart the AI engine.",
       ),
     ).toBeInTheDocument();
+  });
+
+  it("stores the Composio API key under the named secret without restarting", async () => {
+    createMutateAsync.mockResolvedValue({ name: "my-composio" });
+
+    render(<IntegrationsPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add Composio connection" }));
+    fireEvent.change(screen.getByLabelText("Composio name"), { target: { value: "my-composio" } });
+    fireEvent.change(screen.getByLabelText("Composio API key"), {
+      target: { value: "secret-key" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save Composio" }));
+
+    await waitFor(() => {
+      expect(setSecretMutateAsync).toHaveBeenCalledWith({
+        key: "CC_COMPOSIO_MY_COMPOSIO_API_KEY",
+        value: "secret-key",
+        restart: false,
+      });
+    });
+  });
+
+  it("prefills the Composio secret name from the connection name", () => {
+    render(<IntegrationsPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add Composio connection" }));
+    fireEvent.change(screen.getByLabelText("Composio name"), { target: { value: "work" } });
+
+    expect(screen.getByLabelText("Composio secret name")).toHaveValue("CC_COMPOSIO_WORK_API_KEY");
+  });
+
+  it("blocks a Composio secret name that cannot be referenced", () => {
+    render(<IntegrationsPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add Composio connection" }));
+    fireEvent.change(screen.getByLabelText("Composio secret name"), {
+      target: { value: "composio-key" },
+    });
+    fireEvent.change(screen.getByLabelText("Composio API key"), {
+      target: { value: "secret-key" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save Composio" }));
+
+    expect(
+      screen.getByText(
+        "Secret name must start with a letter or underscore and use only letters, digits, and underscores.",
+      ),
+    ).toBeInTheDocument();
+    expect(createMutateAsync).not.toHaveBeenCalled();
   });
 
   it("lets the user cancel a Composio restart and activate later", async () => {

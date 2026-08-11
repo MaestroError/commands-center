@@ -11,10 +11,11 @@ import {
   DEFAULT_COMPOSIO_NAME,
   readError,
   resolveCcInstanceMcpUrl,
-  suggestCcInstanceSecretKey,
+  suggestSecretKey,
   suggestUniqueName,
   toMcpServerName,
   validateCcInstanceForm,
+  validateSecretKeyName,
 } from "./integration-helpers";
 import { CloseIcon } from "./integration-icons";
 import { DerivedNameNote } from "./integration-parts";
@@ -25,16 +26,23 @@ import { Input } from "@/components/ui/input";
 export function ComposioDialog(props: {
   busy: boolean;
   existingNames: string[];
+  existingSecretKeys: string[];
   onClose: () => void;
-  onSubmit: (input: { name: string; apiKey: string }) => Promise<void>;
+  onSubmit: (input: { name: string; secretKey: string; apiKey: string }) => Promise<void>;
 }) {
-  const [name, setName] = useState(() =>
-    props.existingNames.some((existing) => existing.toLowerCase() === DEFAULT_COMPOSIO_NAME)
-      ? suggestUniqueName(DEFAULT_COMPOSIO_NAME, props.existingNames)
-      : DEFAULT_COMPOSIO_NAME,
+  const initialName = props.existingNames.some(
+    (existing) => existing.toLowerCase() === DEFAULT_COMPOSIO_NAME,
+  )
+    ? suggestUniqueName(DEFAULT_COMPOSIO_NAME, props.existingNames)
+    : DEFAULT_COMPOSIO_NAME;
+  const [name, setName] = useState(initialName);
+  const [secretKey, setSecretKey] = useState(() =>
+    suggestSecretKey("CC_COMPOSIO", initialName, "API_KEY"),
   );
+  const [secretKeyEdited, setSecretKeyEdited] = useState(false);
   const [apiKey, setApiKey] = useState("");
   const [submitError, setSubmitError] = useState<string>();
+  const secretKeyExists = props.existingSecretKeys.includes(secretKey.trim());
 
   return (
     <div
@@ -69,10 +77,31 @@ export function ComposioDialog(props: {
               onChange={(event) => {
                 setName(event.target.value);
                 setSubmitError(undefined);
+
+                if (!secretKeyEdited) {
+                  setSecretKey(suggestSecretKey("CC_COMPOSIO", event.target.value, "API_KEY"));
+                }
               }}
               value={name}
             />
             <DerivedNameNote label={name} />
+          </Field>
+
+          <Field label="Secret name" required>
+            <Input
+              aria-label="Composio secret name"
+              onChange={(event) => {
+                setSecretKeyEdited(true);
+                setSecretKey(event.target.value);
+                setSubmitError(undefined);
+              }}
+              value={secretKey}
+            />
+            {secretKeyExists ? (
+              <p className="mt-2 text-xs text-warning-foreground">
+                This secret already exists and its value will be replaced.
+              </p>
+            ) : null}
           </Field>
 
           <Field label="API key" required>
@@ -120,6 +149,12 @@ export function ComposioDialog(props: {
       return;
     }
 
+    const secretKeyError = validateSecretKeyName(secretKey);
+    if (secretKeyError) {
+      setSubmitError(secretKeyError);
+      return;
+    }
+
     if (!apiKey.trim()) {
       setSubmitError("API key is required.");
       return;
@@ -128,6 +163,7 @@ export function ComposioDialog(props: {
     try {
       await props.onSubmit({
         name: serverName,
+        secretKey: secretKey.trim(),
         apiKey: apiKey.trim(),
       });
     } catch (error) {
@@ -264,7 +300,7 @@ export function CcInstanceDialog(props: {
       const next = { ...current, ...patch };
 
       if (patch.name !== undefined && !secretKeyEdited) {
-        next.secretKey = suggestCcInstanceSecretKey(patch.name);
+        next.secretKey = suggestSecretKey("CC_INSTANCE", patch.name, "TOKEN");
       }
 
       return next;

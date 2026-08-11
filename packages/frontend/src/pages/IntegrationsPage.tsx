@@ -30,6 +30,7 @@ import {
   buildAssignmentMessage,
   buildCcInstanceAuthHeaderValue,
   buildDuplicateForm,
+  buildSecretReference,
   buildSuggestedMcpForm,
   describeConfig,
   friendlyStatus,
@@ -401,6 +402,7 @@ export function IntegrationsPage() {
         <ComposioDialog
           busy={mcpMutations.create.isPending}
           existingNames={mcpServers.map((server) => server.name)}
+          existingSecretKeys={secretKeys}
           onClose={() => setComposioDialogOpen(false)}
           onSubmit={async (input) => {
             setSuccessMessage(undefined);
@@ -412,8 +414,15 @@ export function IntegrationsPage() {
                 transport: "streamable-http",
                 url: COMPOSIO_SERVER_URL,
                 authMethod: "headers",
-                headers: [{ key: COMPOSIO_API_KEY_HEADER, value: input.apiKey }],
+                headers: [
+                  { key: COMPOSIO_API_KEY_HEADER, value: buildSecretReference(input.secretKey) },
+                ],
               },
+            });
+            await secretMutations.set.mutateAsync({
+              key: input.secretKey,
+              value: input.apiKey,
+              restart: false,
             });
 
             setSuccessMessage(

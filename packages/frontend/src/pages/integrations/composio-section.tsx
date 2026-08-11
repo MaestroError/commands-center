@@ -85,7 +85,7 @@ export function ComposioSection(props: {
                 : undefined
             }
             busy={props.busy}
-            details={`via ${oauth ? "OAuth" : "API key"} · ${COMPOSIO_SERVER_URL}`}
+            details={COMPOSIO_SERVER_URL}
             extraActions={
               oauth ? (
                 <>
