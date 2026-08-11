@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -29,6 +29,27 @@ type QuestionDockProps = {
 export function QuestionDock({ question, onReply, onReject }: QuestionDockProps) {
   const [answers, setAnswers] = useState<string[][]>(() => question.questions.map(() => []));
   const [customText, setCustomText] = useState<string[]>(() => question.questions.map(() => ""));
+  // Only one question is on screen at a time; answers stay indexed by the real
+  // question index so navigating back and forth never reshuffles them.
+  const [step, setStep] = useState(0);
+
+  const questionRef = useRef<HTMLParagraphElement>(null);
+  const mountedRef = useRef(false);
+
+  const total = question.questions.length;
+  const isFirstStep = step === 0;
+  const isLastStep = step >= total - 1;
+
+  useEffect(() => {
+    // Land keyboard and screen-reader users on the new question instead of
+    // leaving focus on a button that may have just disappeared. Skipped on
+    // mount so an arriving question does not steal focus from the composer.
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      return;
+    }
+    questionRef.current?.focus();
+  }, [step]);
 
   function toggleOption(questionIndex: number, label: string, multiSelect: boolean) {
     setAnswers((prev) => {
@@ -87,54 +108,131 @@ export function QuestionDock({ question, onReply, onReject }: QuestionDockProps)
     onReject(question.id);
   }
 
+  function goPrev() {
+    setStep((current) => Math.max(0, current - 1));
+  }
+
+  function goNext() {
+    setStep((current) => Math.min(total - 1, current + 1));
+  }
+
+  const item = question.questions[step];
+  if (!item) {
+    return null;
+  }
+
+  const multiSelect = item.multiSelect ?? false;
+  const showStepper = total > 1;
+
   return (
-    <div className="border border-border rounded-lg p-4 bg-surface space-y-4">
-      {question.questions.map((item, qIndex) => {
-        const multiSelect = item.multiSelect ?? false;
-        return (
-          <div key={qIndex}>
+    <div className="flex max-h-[60vh] flex-col rounded-lg border border-border bg-surface">
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
+        <div className="space-y-2" aria-live="polite">
+          <div className="flex items-baseline justify-between gap-3">
             {item.header ? (
-              <p className="text-xs font-semibold text-text-secondary uppercase tracking-wide mb-1">
+              <p className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
                 {item.header}
               </p>
+            ) : (
+              <span />
+            )}
+            {showStepper ? (
+              <p className="shrink-0 text-xs text-text-secondary">
+                Question {step + 1} of {total}
+              </p>
             ) : null}
-            <p className="text-sm font-medium text-text-primary mb-2">{item.question}</p>
-            {item.options.length > 0 ? (
-              <div className="flex flex-wrap gap-2 mb-2">
-                {item.options.map((opt) => {
-                  const selected = (answers[qIndex] ?? []).includes(opt.label);
-                  return (
-                    <button
-                      key={opt.label}
-                      type="button"
-                      className={selected ? "cc-tab cc-tab-active" : "cc-tab"}
-                      title={opt.description}
-                      onClick={() => toggleOption(qIndex, opt.label, multiSelect)}
-                    >
-                      {opt.label}
-                    </button>
-                  );
-                })}
-              </div>
-            ) : null}
-            <Textarea
-              aria-label={item.question}
-              className="min-h-[2.5rem] w-full resize-y"
-              rows={2}
-              placeholder={
-                item.options.length > 0 ? "Type your own answer (optional)" : "Type your answer"
-              }
-              value={customText[qIndex] ?? ""}
-              onChange={(e) => changeCustom(qIndex, e.target.value, multiSelect)}
-            />
           </div>
-        );
-      })}
 
-      <div className="flex items-center gap-2 pt-1">
-        <Button type="button" onClick={handleSubmit}>
-          Submit
-        </Button>
+          {showStepper ? (
+            <div className="flex gap-1" aria-hidden="true">
+              {question.questions.map((_, i) => (
+                <span
+                  key={i}
+                  className={`h-1 flex-1 rounded-full ${i <= step ? "bg-accent" : "bg-border"}`}
+                />
+              ))}
+            </div>
+          ) : null}
+
+          <p
+            ref={questionRef}
+            tabIndex={-1}
+            className="text-sm font-medium text-text-primary outline-none"
+          >
+            {item.question}
+          </p>
+        </div>
+
+        {item.options.length > 0 ? (
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+            {item.options.map((opt) => {
+              const selected = (answers[step] ?? []).includes(opt.label);
+              return (
+                <button
+                  key={opt.label}
+                  type="button"
+                  className={selected ? "cc-tab cc-tab-active" : "cc-tab"}
+                  aria-pressed={selected}
+                  onClick={() => toggleOption(step, opt.label, multiSelect)}
+                >
+                  {/* Inner column so the label and its description stack and
+                      stay left-aligned inside the pill's centered flex row. */}
+                  <span className="flex w-full flex-col gap-0.5 text-left">
+                    <span className={selected ? "font-medium" : "font-medium text-text-primary"}>
+                      {opt.label}
+                    </span>
+                    {opt.description ? (
+                      <span
+                        className={`text-xs ${selected ? "opacity-80" : "text-text-secondary"}`}
+                      >
+                        {opt.description}
+                      </span>
+                    ) : null}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
+
+        <Textarea
+          aria-label={item.question}
+          className="min-h-[2.5rem] w-full resize-y"
+          rows={2}
+          placeholder={
+            item.options.length > 0 ? "Type your own answer (optional)" : "Type your answer"
+          }
+          value={customText[step] ?? ""}
+          onChange={(e) => changeCustom(step, e.target.value, multiSelect)}
+          onKeyDown={(e) => {
+            // Plain Enter stays a newline; Cmd/Ctrl+Enter advances or submits.
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+              e.preventDefault();
+              if (isLastStep) {
+                handleSubmit();
+              } else {
+                goNext();
+              }
+            }
+          }}
+        />
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 border-t border-border p-3">
+        {showStepper ? (
+          <Button type="button" variant="secondary" disabled={isFirstStep} onClick={goPrev}>
+            Prev
+          </Button>
+        ) : null}
+        {isLastStep ? (
+          <Button type="button" onClick={handleSubmit}>
+            Submit
+          </Button>
+        ) : (
+          <Button type="button" onClick={goNext}>
+            Next
+          </Button>
+        )}
         <Button type="button" onClick={handleDismiss} variant="secondary">
           Dismiss
         </Button>

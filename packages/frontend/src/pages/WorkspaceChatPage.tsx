@@ -426,6 +426,7 @@ export function WorkspaceChatPage() {
                     />
                   ) : conv.pendingQuestion ? (
                     <QuestionDock
+                      key={conv.pendingQuestion.id}
                       question={conv.pendingQuestion}
                       onReply={conv.replyQuestion}
                       onReject={conv.rejectQuestion}
