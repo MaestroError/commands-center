@@ -13,7 +13,8 @@ type QuestionItem = {
   question: string;
   header?: string;
   options: QuestionOption[];
-  multiSelect?: boolean;
+  /** OpenCode's field name for "allow selecting multiple choices". */
+  multiple?: boolean;
 };
 
 type Question = {
@@ -21,6 +22,9 @@ type Question = {
   sessionID: string;
   questions: QuestionItem[];
 };
+
+/** Sent for questions left unanswered when the user skips the request. */
+const SKIPPED_ANSWER = "user skipped";
 
 type QuestionDockProps = {
   question: Question;
@@ -106,6 +110,15 @@ export function QuestionDock({ question, onReply, onReject }: QuestionDockProps)
     onReply(question.id, buildAnswers());
   }
 
+  function handleSkip() {
+    // Skip still replies, so the tool call completes and the agent keeps going.
+    // Anything already answered is kept; the rest are marked as skipped.
+    onReply(
+      question.id,
+      buildAnswers().map((answer) => (answer.length > 0 ? answer : [SKIPPED_ANSWER])),
+    );
+  }
+
   function handleDismiss() {
     onReject(question.id);
   }
@@ -123,7 +136,7 @@ export function QuestionDock({ question, onReply, onReject }: QuestionDockProps)
   // the composer while a request is pending, and rendering nothing would leave
   // the chat with no way to reply or dismiss.
   const item = question.questions[step];
-  const multiSelect = item?.multiSelect ?? false;
+  const multiSelect = item?.multiple ?? false;
   const showStepper = total > 1;
 
   return (
@@ -263,7 +276,12 @@ export function QuestionDock({ question, onReply, onReject }: QuestionDockProps)
             Next
           </Button>
         )}
-        <Button type="button" onClick={handleDismiss} variant="secondary">
+        <Button type="button" onClick={handleSkip} variant="secondary">
+          Skip
+        </Button>
+        {/* Dismiss rejects the tool call, which ends the agent's turn — Skip
+            answers it so the agent can continue. Hence the danger variant. */}
+        <Button type="button" onClick={handleDismiss} variant="danger">
           Dismiss
         </Button>
       </div>

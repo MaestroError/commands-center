@@ -18,7 +18,7 @@ function makeQuestion() {
       {
         question: "Choose many options",
         header: "Advanced",
-        multiSelect: true,
+        multiple: true,
         options: [
           { label: "Alpha", description: "alpha" },
           { label: "Beta", description: "beta" },
@@ -251,6 +251,28 @@ describe("QuestionDock", () => {
     });
 
     expect(onReply).toHaveBeenCalledWith("question-1", [[], []]);
+  });
+
+  it("skips by replying with a marker for every unanswered question", () => {
+    const onReply = vi.fn();
+    render(<QuestionDock question={makeQuestion()} onReply={onReply} onReject={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Skip" }));
+
+    expect(onReply).toHaveBeenCalledWith("question-1", [["user skipped"], ["user skipped"]]);
+  });
+
+  it("keeps answers already given when skipping the rest", () => {
+    const onReply = vi.fn();
+    render(<QuestionDock question={makeQuestion()} onReply={onReply} onReject={vi.fn()} />);
+
+    fireEvent.click(option("Option B"));
+    fireEvent.change(screen.getByPlaceholderText("Type your own answer (optional)"), {
+      target: { value: "or this" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Skip" }));
+
+    expect(onReply).toHaveBeenCalledWith("question-1", [["or this"], ["user skipped"]]);
   });
 
   it("calls onReject with the request id on dismiss", () => {

@@ -56,7 +56,8 @@ export type QuestionRequest = {
     question: string;
     header?: string;
     options: Array<{ label: string; description?: string }>;
-    multiSelect?: boolean;
+    /** OpenCode's field name for "allow selecting multiple choices". */
+    multiple?: boolean;
   }>;
   tool?: ToolLink;
 };
