@@ -18,7 +18,7 @@ function makeQuestion() {
       {
         question: "Choose many options",
         header: "Advanced",
-        multiSelect: true,
+        multiple: true,
         options: [
           { label: "Alpha", description: "alpha" },
           { label: "Beta", description: "beta" },
@@ -28,19 +28,104 @@ function makeQuestion() {
   };
 }
 
+function option(label: string) {
+  return screen.getByRole("button", { name: new RegExp(`^${label}`) });
+}
+
+// Multi-select options expose checkbox semantics rather than toggle buttons.
+function checkboxOption(label: string) {
+  return screen.getByRole("checkbox", { name: new RegExp(`^${label}`) });
+}
+
+function next() {
+  fireEvent.click(screen.getByRole("button", { name: "Next" }));
+}
+
 describe("QuestionDock", () => {
-  it("renders all question texts", () => {
+  it("renders one question at a time", () => {
     render(<QuestionDock question={makeQuestion()} onReply={vi.fn()} onReject={vi.fn()} />);
 
     expect(screen.getByText("Choose one option")).toBeInTheDocument();
+    expect(screen.queryByText("Choose many options")).not.toBeInTheDocument();
+
+    next();
+
+    expect(screen.queryByText("Choose one option")).not.toBeInTheDocument();
     expect(screen.getByText("Choose many options")).toBeInTheDocument();
+  });
+
+  it("shows the step counter and only offers Submit on the last step", () => {
+    render(<QuestionDock question={makeQuestion()} onReply={vi.fn()} onReject={vi.fn()} />);
+
+    expect(screen.getByText("Question 1 of 2")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Submit" })).not.toBeInTheDocument();
+
+    next();
+
+    expect(screen.getByText("Question 2 of 2")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Submit" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Next" })).not.toBeInTheDocument();
+  });
+
+  it("keeps selections when navigating back to an earlier step", () => {
+    render(<QuestionDock question={makeQuestion()} onReply={vi.fn()} onReject={vi.fn()} />);
+
+    fireEvent.click(option("Option B"));
+    next();
+    fireEvent.click(screen.getByRole("button", { name: "Prev" }));
+
+    expect(option("Option B").className).toContain("cc-tab-active");
+    expect(option("Option A").className).not.toContain("cc-tab-active");
+  });
+
+  it("disables Prev on the first step", () => {
+    render(<QuestionDock question={makeQuestion()} onReply={vi.fn()} onReject={vi.fn()} />);
+
+    expect(screen.getByRole("button", { name: "Prev" })).toBeDisabled();
+
+    next();
+
+    expect(screen.getByRole("button", { name: "Prev" })).toBeEnabled();
+  });
+
+  it("renders no stepper controls for a single question", () => {
+    const question = {
+      id: "question-3",
+      sessionID: "session-1",
+      questions: [{ question: "Only one", options: [{ label: "Yes" }] }],
+    };
+    render(<QuestionDock question={question} onReply={vi.fn()} onReject={vi.fn()} />);
+
+    expect(screen.queryByRole("button", { name: "Next" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Prev" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Question 1 of 1")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Submit" })).toBeInTheDocument();
+  });
+
+  it("stays answerable when the request carries no questions", () => {
+    // The shared schema allows an empty questions array, and the dock replaces
+    // the composer while a request is pending — rendering nothing would leave
+    // the chat with no way out.
+    const onReply = vi.fn();
+    const onReject = vi.fn();
+    const question = { id: "question-4", sessionID: "session-1", questions: [] };
+    render(<QuestionDock question={question} onReply={onReply} onReject={onReject} />);
+
+    expect(screen.getByText("This request has no questions to answer.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Next" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+    expect(onReply).toHaveBeenCalledWith("question-4", []);
+
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(onReject).toHaveBeenCalledWith("question-4");
   });
 
   it("replaces the previous answer in single-select mode", () => {
     render(<QuestionDock question={makeQuestion()} onReply={vi.fn()} onReject={vi.fn()} />);
 
-    const optionA = screen.getByRole("button", { name: "Option A" });
-    const optionB = screen.getByRole("button", { name: "Option B" });
+    const optionA = option("Option A");
+    const optionB = option("Option B");
 
     fireEvent.click(optionA);
     expect(optionA.className).toContain("cc-tab-active");
@@ -53,8 +138,9 @@ describe("QuestionDock", () => {
   it("accumulates and removes selections in multi-select mode", () => {
     render(<QuestionDock question={makeQuestion()} onReply={vi.fn()} onReject={vi.fn()} />);
 
-    const alpha = screen.getByRole("button", { name: "Alpha" });
-    const beta = screen.getByRole("button", { name: "Beta" });
+    next();
+    const alpha = checkboxOption("Alpha");
+    const beta = checkboxOption("Beta");
 
     fireEvent.click(alpha);
     fireEvent.click(beta);
@@ -66,13 +152,33 @@ describe("QuestionDock", () => {
     expect(beta.className).not.toContain("cc-tab-active");
   });
 
+  it("marks multi-select options as checkboxes and single-select as toggles", () => {
+    render(<QuestionDock question={makeQuestion()} onReply={vi.fn()} onReject={vi.fn()} />);
+
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    expect(screen.queryByText("Select all that apply")).not.toBeInTheDocument();
+    expect(option("Option A")).toHaveAttribute("aria-pressed", "false");
+
+    next();
+
+    expect(screen.getByText("Select all that apply")).toBeInTheDocument();
+    expect(screen.getAllByRole("checkbox")).toHaveLength(2);
+
+    const alpha = checkboxOption("Alpha");
+    expect(alpha).toHaveAttribute("aria-checked", "false");
+
+    fireEvent.click(alpha);
+    expect(checkboxOption("Alpha")).toHaveAttribute("aria-checked", "true");
+  });
+
   it("calls onReply with the selected answers shape on submit", () => {
     const onReply = vi.fn();
     render(<QuestionDock question={makeQuestion()} onReply={onReply} onReject={vi.fn()} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Option B" }));
-    fireEvent.click(screen.getByRole("button", { name: "Alpha" }));
-    fireEvent.click(screen.getByRole("button", { name: "Beta" }));
+    fireEvent.click(option("Option B"));
+    next();
+    fireEvent.click(checkboxOption("Alpha"));
+    fireEvent.click(checkboxOption("Beta"));
     fireEvent.click(screen.getByRole("button", { name: "Submit" }));
 
     expect(onReply).toHaveBeenCalledWith("question-1", [["Option B"], ["Alpha", "Beta"]]);
@@ -98,11 +204,13 @@ describe("QuestionDock", () => {
     const onReply = vi.fn();
     render(<QuestionDock question={makeQuestion()} onReply={onReply} onReject={vi.fn()} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Option A" }));
-    fireEvent.click(screen.getByRole("button", { name: "Alpha" }));
+    fireEvent.click(option("Option A"));
+    next();
+    fireEvent.click(checkboxOption("Alpha"));
 
-    const inputs = screen.getAllByPlaceholderText("Type your own answer (optional)");
-    fireEvent.change(inputs[1]!, { target: { value: "Gamma" } });
+    fireEvent.change(screen.getByPlaceholderText("Type your own answer (optional)"), {
+      target: { value: "Gamma" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Submit" }));
 
     expect(onReply).toHaveBeenCalledWith("question-1", [["Option A"], ["Alpha", "Gamma"]]);
@@ -112,16 +220,59 @@ describe("QuestionDock", () => {
     const onReply = vi.fn();
     render(<QuestionDock question={makeQuestion()} onReply={onReply} onReject={vi.fn()} />);
 
-    const optionA = screen.getByRole("button", { name: "Option A" });
+    const optionA = option("Option A");
     fireEvent.click(optionA);
 
-    const inputs = screen.getAllByPlaceholderText("Type your own answer (optional)");
-    fireEvent.change(inputs[0]!, { target: { value: "Something else" } });
+    fireEvent.change(screen.getByPlaceholderText("Type your own answer (optional)"), {
+      target: { value: "Something else" },
+    });
 
     expect(optionA.className).not.toContain("cc-tab-active");
 
+    next();
     fireEvent.click(screen.getByRole("button", { name: "Submit" }));
     expect(onReply).toHaveBeenCalledWith("question-1", [["Something else"], []]);
+  });
+
+  it("advances with Cmd+Enter and submits from the last step", () => {
+    const onReply = vi.fn();
+    render(<QuestionDock question={makeQuestion()} onReply={onReply} onReject={vi.fn()} />);
+
+    fireEvent.keyDown(screen.getByPlaceholderText("Type your own answer (optional)"), {
+      key: "Enter",
+      metaKey: true,
+    });
+
+    expect(screen.getByText("Choose many options")).toBeInTheDocument();
+
+    fireEvent.keyDown(screen.getByPlaceholderText("Type your own answer (optional)"), {
+      key: "Enter",
+      metaKey: true,
+    });
+
+    expect(onReply).toHaveBeenCalledWith("question-1", [[], []]);
+  });
+
+  it("skips by replying with a marker for every unanswered question", () => {
+    const onReply = vi.fn();
+    render(<QuestionDock question={makeQuestion()} onReply={onReply} onReject={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Skip" }));
+
+    expect(onReply).toHaveBeenCalledWith("question-1", [["user skipped"], ["user skipped"]]);
+  });
+
+  it("keeps answers already given when skipping the rest", () => {
+    const onReply = vi.fn();
+    render(<QuestionDock question={makeQuestion()} onReply={onReply} onReject={vi.fn()} />);
+
+    fireEvent.click(option("Option B"));
+    fireEvent.change(screen.getByPlaceholderText("Type your own answer (optional)"), {
+      target: { value: "or this" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Skip" }));
+
+    expect(onReply).toHaveBeenCalledWith("question-1", [["or this"], ["user skipped"]]);
   });
 
   it("calls onReject with the request id on dismiss", () => {
@@ -136,6 +287,15 @@ describe("QuestionDock", () => {
   it("renders the optional header when present", () => {
     render(<QuestionDock question={makeQuestion()} onReply={vi.fn()} onReject={vi.fn()} />);
 
+    next();
+
     expect(screen.getByText("Advanced")).toBeInTheDocument();
+  });
+
+  it("renders option descriptions as visible text", () => {
+    render(<QuestionDock question={makeQuestion()} onReply={vi.fn()} onReject={vi.fn()} />);
+
+    expect(screen.getByText("first option")).toBeInTheDocument();
+    expect(screen.getByText("second option")).toBeInTheDocument();
   });
 });

@@ -233,11 +233,15 @@ describe("createTaskExecutionService", () => {
       await expectRunStatus(taskService, defaultRun.id, "running");
 
       // Prompts are sent asynchronously after the run flips to "running"; wait for
-      // all three to land before asserting their models.
+      // all three to land before asserting their models. Arrival order is not
+      // guaranteed — each trigger awaits its own status flip, not its prompt — so
+      // match prompts by task title instead of by index.
       await expect.poll(() => prompts.length).toBe(3);
-      expect(prompts[0]?.model).toEqual({ providerID: "anthropic", modelID: "claude-haiku" });
-      expect(prompts[1]?.model).toEqual({ providerID: "openai", modelID: "gpt-4.1" });
-      expect(prompts[2]?.model).toEqual({ providerID: "openai", modelID: "gpt-4.1" });
+      const modelFor = (title: string) =>
+        prompts.find((prompt) => prompt.text.includes(`<Title>\n${title}\n</Title>`))?.model;
+      expect(modelFor("Override")).toEqual({ providerID: "anthropic", modelID: "claude-haiku" });
+      expect(modelFor("Unavailable")).toEqual({ providerID: "openai", modelID: "gpt-4.1" });
+      expect(modelFor("Default")).toEqual({ providerID: "openai", modelID: "gpt-4.1" });
       expect((await taskService.getRunById(overrideRun.id))?.model).toBe("anthropic/claude-haiku");
       expect(
         (await taskService.getRunById(unavailableRun.id))?.triggerMetadata?.["opencodeMonitor"],

@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Check } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -11,7 +13,8 @@ type QuestionItem = {
   question: string;
   header?: string;
   options: QuestionOption[];
-  multiSelect?: boolean;
+  /** OpenCode's field name for "allow selecting multiple choices". */
+  multiple?: boolean;
 };
 
 type Question = {
@@ -19,6 +22,9 @@ type Question = {
   sessionID: string;
   questions: QuestionItem[];
 };
+
+/** Sent for questions left unanswered when the user skips the request. */
+const SKIPPED_ANSWER = "user skipped";
 
 type QuestionDockProps = {
   question: Question;
@@ -29,6 +35,27 @@ type QuestionDockProps = {
 export function QuestionDock({ question, onReply, onReject }: QuestionDockProps) {
   const [answers, setAnswers] = useState<string[][]>(() => question.questions.map(() => []));
   const [customText, setCustomText] = useState<string[]>(() => question.questions.map(() => ""));
+  // Only one question is on screen at a time; answers stay indexed by the real
+  // question index so navigating back and forth never reshuffles them.
+  const [step, setStep] = useState(0);
+
+  const questionRef = useRef<HTMLParagraphElement>(null);
+  const mountedRef = useRef(false);
+
+  const total = question.questions.length;
+  const isFirstStep = step === 0;
+  const isLastStep = step >= total - 1;
+
+  useEffect(() => {
+    // Land keyboard and screen-reader users on the new question instead of
+    // leaving focus on a button that may have just disappeared. Skipped on
+    // mount so an arriving question does not steal focus from the composer.
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      return;
+    }
+    questionRef.current?.focus();
+  }, [step]);
 
   function toggleOption(questionIndex: number, label: string, multiSelect: boolean) {
     setAnswers((prev) => {
@@ -83,40 +110,132 @@ export function QuestionDock({ question, onReply, onReject }: QuestionDockProps)
     onReply(question.id, buildAnswers());
   }
 
+  function handleSkip() {
+    // Skip still replies, so the tool call completes and the agent keeps going.
+    // Anything already answered is kept; the rest are marked as skipped.
+    onReply(
+      question.id,
+      buildAnswers().map((answer) => (answer.length > 0 ? answer : [SKIPPED_ANSWER])),
+    );
+  }
+
   function handleDismiss() {
     onReject(question.id);
   }
 
+  function goPrev() {
+    setStep((current) => Math.max(0, current - 1));
+  }
+
+  function goNext() {
+    setStep((current) => Math.min(total - 1, current + 1));
+  }
+
+  // The shared schema does not require a non-empty questions array, so the
+  // dock has to stay answerable even when there is nothing to ask: it replaces
+  // the composer while a request is pending, and rendering nothing would leave
+  // the chat with no way to reply or dismiss.
+  const item = question.questions[step];
+  const multiSelect = item?.multiple ?? false;
+  const showStepper = total > 1;
+
   return (
-    <div className="border border-border rounded-lg p-4 bg-surface space-y-4">
-      {question.questions.map((item, qIndex) => {
-        const multiSelect = item.multiSelect ?? false;
-        return (
-          <div key={qIndex}>
-            {item.header ? (
-              <p className="text-xs font-semibold text-text-secondary uppercase tracking-wide mb-1">
-                {item.header}
+    <div className="flex max-h-[60vh] flex-col rounded-lg border border-border bg-surface">
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
+        {!item ? (
+          <p className="text-sm text-text-secondary">This request has no questions to answer.</p>
+        ) : (
+          <>
+            <div className="space-y-2" aria-live="polite">
+              <div className="flex items-baseline justify-between gap-3">
+                {item.header ? (
+                  <p className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
+                    {item.header}
+                  </p>
+                ) : (
+                  <span />
+                )}
+                {showStepper ? (
+                  <p className="shrink-0 text-xs text-text-secondary">
+                    Question {step + 1} of {total}
+                  </p>
+                ) : null}
+              </div>
+
+              {showStepper ? (
+                <div className="flex gap-1" aria-hidden="true">
+                  {question.questions.map((_, i) => (
+                    <span
+                      key={i}
+                      className={`h-1 flex-1 rounded-full ${i <= step ? "bg-accent" : "bg-border"}`}
+                    />
+                  ))}
+                </div>
+              ) : null}
+
+              <p
+                ref={questionRef}
+                tabIndex={-1}
+                className="text-sm font-medium text-text-primary outline-none"
+              >
+                {item.question}
               </p>
-            ) : null}
-            <p className="text-sm font-medium text-text-primary mb-2">{item.question}</p>
+
+              {multiSelect && item.options.length > 0 ? (
+                <p className="text-xs text-text-secondary">Select all that apply</p>
+              ) : null}
+            </div>
+
             {item.options.length > 0 ? (
-              <div className="flex flex-wrap gap-2 mb-2">
+              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                 {item.options.map((opt) => {
-                  const selected = (answers[qIndex] ?? []).includes(opt.label);
+                  const selected = (answers[step] ?? []).includes(opt.label);
                   return (
                     <button
                       key={opt.label}
                       type="button"
                       className={selected ? "cc-tab cc-tab-active" : "cc-tab"}
-                      title={opt.description}
-                      onClick={() => toggleOption(qIndex, opt.label, multiSelect)}
+                      // Multi-select options are checkboxes, not a one-of
+                      // choice; single-select keeps toggle-button semantics.
+                      {...(multiSelect
+                        ? { role: "checkbox", "aria-checked": selected }
+                        : { "aria-pressed": selected })}
+                      onClick={() => toggleOption(step, opt.label, multiSelect)}
                     >
-                      {opt.label}
+                      {/* Inner row so the box sits beside a label/description
+                      column, left-aligned inside the pill's centered row. */}
+                      <span className="flex w-full items-start gap-2 text-left">
+                        {multiSelect ? (
+                          <span
+                            aria-hidden="true"
+                            className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border ${
+                              selected ? "border-current" : "border-border"
+                            }`}
+                          >
+                            {selected ? <Check className="h-3 w-3" /> : null}
+                          </span>
+                        ) : null}
+                        <span className="flex flex-col gap-0.5">
+                          <span
+                            className={selected ? "font-medium" : "font-medium text-text-primary"}
+                          >
+                            {opt.label}
+                          </span>
+                          {opt.description ? (
+                            <span
+                              className={`text-xs ${selected ? "opacity-80" : "text-text-secondary"}`}
+                            >
+                              {opt.description}
+                            </span>
+                          ) : null}
+                        </span>
+                      </span>
                     </button>
                   );
                 })}
               </div>
             ) : null}
+
             <Textarea
               aria-label={item.question}
               className="min-h-[2.5rem] w-full resize-y"
@@ -124,18 +243,45 @@ export function QuestionDock({ question, onReply, onReject }: QuestionDockProps)
               placeholder={
                 item.options.length > 0 ? "Type your own answer (optional)" : "Type your answer"
               }
-              value={customText[qIndex] ?? ""}
-              onChange={(e) => changeCustom(qIndex, e.target.value, multiSelect)}
+              value={customText[step] ?? ""}
+              onChange={(e) => changeCustom(step, e.target.value, multiSelect)}
+              onKeyDown={(e) => {
+                // Plain Enter stays a newline; Cmd/Ctrl+Enter advances or submits.
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                  e.preventDefault();
+                  if (isLastStep) {
+                    handleSubmit();
+                  } else {
+                    goNext();
+                  }
+                }
+              }}
             />
-          </div>
-        );
-      })}
+          </>
+        )}
+      </div>
 
-      <div className="flex items-center gap-2 pt-1">
-        <Button type="button" onClick={handleSubmit}>
-          Submit
+      <div className="flex flex-wrap items-center gap-2 border-t border-border p-3">
+        {showStepper ? (
+          <Button type="button" variant="secondary" disabled={isFirstStep} onClick={goPrev}>
+            Prev
+          </Button>
+        ) : null}
+        {isLastStep ? (
+          <Button type="button" onClick={handleSubmit}>
+            Submit
+          </Button>
+        ) : (
+          <Button type="button" onClick={goNext}>
+            Next
+          </Button>
+        )}
+        <Button type="button" onClick={handleSkip} variant="secondary">
+          Skip
         </Button>
-        <Button type="button" onClick={handleDismiss} variant="secondary">
+        {/* Dismiss rejects the tool call, which ends the agent's turn — Skip
+            answers it so the agent can continue. Hence the danger variant. */}
+        <Button type="button" onClick={handleDismiss} variant="danger">
           Dismiss
         </Button>
       </div>

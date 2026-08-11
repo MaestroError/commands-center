@@ -150,7 +150,10 @@ const questionItemSchema = z.object({
   question: z.string(),
   header: z.string().optional(),
   options: z.array(questionOptionSchema),
-  multiSelect: z.boolean().optional(),
+  // OpenCode's question tool names this `multiple` ("Allow selecting multiple
+  // choices"). It was previously read as `multiSelect`, a key no producer ever
+  // sends, so every question rendered as single-select.
+  multiple: z.boolean().optional(),
 });
 
 const permissionAskedEventSchema = z.object({
