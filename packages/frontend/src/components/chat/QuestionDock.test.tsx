@@ -97,6 +97,25 @@ describe("QuestionDock", () => {
     expect(screen.getByRole("button", { name: "Submit" })).toBeInTheDocument();
   });
 
+  it("stays answerable when the request carries no questions", () => {
+    // The shared schema allows an empty questions array, and the dock replaces
+    // the composer while a request is pending — rendering nothing would leave
+    // the chat with no way out.
+    const onReply = vi.fn();
+    const onReject = vi.fn();
+    const question = { id: "question-4", sessionID: "session-1", questions: [] };
+    render(<QuestionDock question={question} onReply={onReply} onReject={onReject} />);
+
+    expect(screen.getByText("This request has no questions to answer.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Next" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+    expect(onReply).toHaveBeenCalledWith("question-4", []);
+
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(onReject).toHaveBeenCalledWith("question-4");
+  });
+
   it("replaces the previous answer in single-select mode", () => {
     render(<QuestionDock question={makeQuestion()} onReply={vi.fn()} onReject={vi.fn()} />);
 

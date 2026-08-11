@@ -116,106 +116,114 @@ export function QuestionDock({ question, onReply, onReject }: QuestionDockProps)
     setStep((current) => Math.min(total - 1, current + 1));
   }
 
+  // The shared schema does not require a non-empty questions array, so the
+  // dock has to stay answerable even when there is nothing to ask: it replaces
+  // the composer while a request is pending, and rendering nothing would leave
+  // the chat with no way to reply or dismiss.
   const item = question.questions[step];
-  if (!item) {
-    return null;
-  }
-
-  const multiSelect = item.multiSelect ?? false;
+  const multiSelect = item?.multiSelect ?? false;
   const showStepper = total > 1;
 
   return (
     <div className="flex max-h-[60vh] flex-col rounded-lg border border-border bg-surface">
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
-        <div className="space-y-2" aria-live="polite">
-          <div className="flex items-baseline justify-between gap-3">
-            {item.header ? (
-              <p className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
-                {item.header}
-              </p>
-            ) : (
-              <span />
-            )}
-            {showStepper ? (
-              <p className="shrink-0 text-xs text-text-secondary">
-                Question {step + 1} of {total}
-              </p>
-            ) : null}
-          </div>
+        {!item ? (
+          <p className="text-sm text-text-secondary">This request has no questions to answer.</p>
+        ) : (
+          <>
+            <div className="space-y-2" aria-live="polite">
+              <div className="flex items-baseline justify-between gap-3">
+                {item.header ? (
+                  <p className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
+                    {item.header}
+                  </p>
+                ) : (
+                  <span />
+                )}
+                {showStepper ? (
+                  <p className="shrink-0 text-xs text-text-secondary">
+                    Question {step + 1} of {total}
+                  </p>
+                ) : null}
+              </div>
 
-          {showStepper ? (
-            <div className="flex gap-1" aria-hidden="true">
-              {question.questions.map((_, i) => (
-                <span
-                  key={i}
-                  className={`h-1 flex-1 rounded-full ${i <= step ? "bg-accent" : "bg-border"}`}
-                />
-              ))}
+              {showStepper ? (
+                <div className="flex gap-1" aria-hidden="true">
+                  {question.questions.map((_, i) => (
+                    <span
+                      key={i}
+                      className={`h-1 flex-1 rounded-full ${i <= step ? "bg-accent" : "bg-border"}`}
+                    />
+                  ))}
+                </div>
+              ) : null}
+
+              <p
+                ref={questionRef}
+                tabIndex={-1}
+                className="text-sm font-medium text-text-primary outline-none"
+              >
+                {item.question}
+              </p>
             </div>
-          ) : null}
 
-          <p
-            ref={questionRef}
-            tabIndex={-1}
-            className="text-sm font-medium text-text-primary outline-none"
-          >
-            {item.question}
-          </p>
-        </div>
-
-        {item.options.length > 0 ? (
-          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-            {item.options.map((opt) => {
-              const selected = (answers[step] ?? []).includes(opt.label);
-              return (
-                <button
-                  key={opt.label}
-                  type="button"
-                  className={selected ? "cc-tab cc-tab-active" : "cc-tab"}
-                  aria-pressed={selected}
-                  onClick={() => toggleOption(step, opt.label, multiSelect)}
-                >
-                  {/* Inner column so the label and its description stack and
+            {item.options.length > 0 ? (
+              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                {item.options.map((opt) => {
+                  const selected = (answers[step] ?? []).includes(opt.label);
+                  return (
+                    <button
+                      key={opt.label}
+                      type="button"
+                      className={selected ? "cc-tab cc-tab-active" : "cc-tab"}
+                      aria-pressed={selected}
+                      onClick={() => toggleOption(step, opt.label, multiSelect)}
+                    >
+                      {/* Inner column so the label and its description stack and
                       stay left-aligned inside the pill's centered flex row. */}
-                  <span className="flex w-full flex-col gap-0.5 text-left">
-                    <span className={selected ? "font-medium" : "font-medium text-text-primary"}>
-                      {opt.label}
-                    </span>
-                    {opt.description ? (
-                      <span
-                        className={`text-xs ${selected ? "opacity-80" : "text-text-secondary"}`}
-                      >
-                        {opt.description}
+                      <span className="flex w-full flex-col gap-0.5 text-left">
+                        <span
+                          className={selected ? "font-medium" : "font-medium text-text-primary"}
+                        >
+                          {opt.label}
+                        </span>
+                        {opt.description ? (
+                          <span
+                            className={`text-xs ${selected ? "opacity-80" : "text-text-secondary"}`}
+                          >
+                            {opt.description}
+                          </span>
+                        ) : null}
                       </span>
-                    ) : null}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        ) : null}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
 
-        <Textarea
-          aria-label={item.question}
-          className="min-h-[2.5rem] w-full resize-y"
-          rows={2}
-          placeholder={
-            item.options.length > 0 ? "Type your own answer (optional)" : "Type your answer"
-          }
-          value={customText[step] ?? ""}
-          onChange={(e) => changeCustom(step, e.target.value, multiSelect)}
-          onKeyDown={(e) => {
-            // Plain Enter stays a newline; Cmd/Ctrl+Enter advances or submits.
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-              e.preventDefault();
-              if (isLastStep) {
-                handleSubmit();
-              } else {
-                goNext();
+            <Textarea
+              aria-label={item.question}
+              className="min-h-[2.5rem] w-full resize-y"
+              rows={2}
+              placeholder={
+                item.options.length > 0 ? "Type your own answer (optional)" : "Type your answer"
               }
-            }
-          }}
-        />
+              value={customText[step] ?? ""}
+              onChange={(e) => changeCustom(step, e.target.value, multiSelect)}
+              onKeyDown={(e) => {
+                // Plain Enter stays a newline; Cmd/Ctrl+Enter advances or submits.
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                  e.preventDefault();
+                  if (isLastStep) {
+                    handleSubmit();
+                  } else {
+                    goNext();
+                  }
+                }
+              }}
+            />
+          </>
+        )}
       </div>
 
       <div className="flex flex-wrap items-center gap-2 border-t border-border p-3">
