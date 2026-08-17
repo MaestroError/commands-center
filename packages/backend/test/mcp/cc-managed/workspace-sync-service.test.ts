@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
@@ -123,5 +123,68 @@ describe("syncCcManagedMcpSpecialistWorkspaces", () => {
     expect(rewritten.mcp["cc_default_interactive"]?.timeout).toBe(
       CC_DEFAULT_INTERACTIVE_TOOL_CALL_TIMEOUT_MS,
     );
+  });
+
+  it("preserves specialist-local skills when startup synchronization rewrites config", async () => {
+    const testDb = await createTestDatabase();
+    disposers.push(() => testDb.cleanup());
+    await insertAgent(testDb.client.db, "sync-local-skill");
+
+    await syncCcManagedMcpSpecialistWorkspaces({
+      db: testDb.client.db,
+      config: testDb.config,
+      logger,
+    });
+    const workspacePath = resolveSpecialistWorkspacePath({
+      config: testDb.config,
+      slug: "sync-local-skill",
+      status: "active",
+    });
+    const localSkillPath = join(workspacePath, ".opencode", "skills", "designer-local");
+    const localSkillContents =
+      "---\nname: designer-local\ndescription: Private designer workflow\n---\n\n# Designer\n";
+
+    await mkdir(localSkillPath, { recursive: true });
+    await writeFile(join(localSkillPath, "SKILL.md"), localSkillContents, "utf8");
+    await writeFile(join(workspacePath, "opencode.jsonc"), "{}", "utf8");
+
+    await syncCcManagedMcpSpecialistWorkspaces({
+      db: testDb.client.db,
+      config: testDb.config,
+      logger,
+    });
+
+    await expect(readFile(join(localSkillPath, "SKILL.md"), "utf8")).resolves.toBe(
+      localSkillContents,
+    );
+  });
+
+  it("adopts skill ownership when config is current but the manifest is missing", async () => {
+    const testDb = await createTestDatabase();
+    disposers.push(() => testDb.cleanup());
+    await insertAgent(testDb.client.db, "sync-manifest-adoption");
+
+    await syncCcManagedMcpSpecialistWorkspaces({
+      db: testDb.client.db,
+      config: testDb.config,
+      logger,
+    });
+    const workspacePath = resolveSpecialistWorkspacePath({
+      config: testDb.config,
+      slug: "sync-manifest-adoption",
+      status: "active",
+    });
+    const manifestPath = join(workspacePath, ".opencode", "skills", ".cc-managed.json");
+
+    await rm(manifestPath);
+
+    const updatedCount = await syncCcManagedMcpSpecialistWorkspaces({
+      db: testDb.client.db,
+      config: testDb.config,
+      logger,
+    });
+
+    expect(updatedCount).toBe(1);
+    await expect(readFile(manifestPath, "utf8")).resolves.toContain('"version": 1');
   });
 });

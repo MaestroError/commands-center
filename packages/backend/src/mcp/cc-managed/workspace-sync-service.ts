@@ -17,7 +17,10 @@ import { createCcManagedMcpAuthTokenService } from "./auth-token-service.js";
 import { createCcManagedMcpServerRegistry } from "./server-registry.js";
 import { createCcManagedMcpToolAccessService } from "./tool-access-service.js";
 import { createCcManagedMcpWorkspaceEntryService } from "./workspace-entry-service.js";
-import { writeOpenCodeWorkspace } from "../../opencode/workspace-contract.js";
+import {
+  isManagedSkillsManifestCurrent,
+  writeOpenCodeWorkspace,
+} from "../../opencode/workspace-contract.js";
 
 export async function syncCcManagedMcpSpecialistWorkspaces(options: {
   db: AppDb;
@@ -56,22 +59,26 @@ export async function syncCcManagedMcpSpecialistWorkspaces(options: {
       slug: row.slug,
       capabilities: nextCapabilities,
     });
-    const currentConfig = await readWorkspaceConfig(workspacePath);
+    const workspaceInput = {
+      name: row.name,
+      role: row.role,
+      instructions: row.instructions,
+      defaultModel: row.default_model,
+      capabilities: nextCapabilities,
+      appMcpEntries: nextEntries,
+    };
+    const [currentConfig, skillsManifestCurrent] = await Promise.all([
+      readWorkspaceConfig(workspacePath),
+      isManagedSkillsManifestCurrent({ workspacePath, input: workspaceInput }),
+    ]);
 
-    if (currentConfig && isConfigUpToDate(currentConfig, nextEntries)) {
+    if (currentConfig && isConfigUpToDate(currentConfig, nextEntries) && skillsManifestCurrent) {
       continue;
     }
 
     await writeOpenCodeWorkspace({
       workspacePath,
-      input: {
-        name: row.name,
-        role: row.role,
-        instructions: row.instructions,
-        defaultModel: row.default_model,
-        capabilities: nextCapabilities,
-        appMcpEntries: nextEntries,
-      },
+      input: workspaceInput,
       skillRoot: getBuiltInSkillRoot(options.config),
       workspaceSkillRoot: getWorkspaceSkillRoot(options.config),
     });

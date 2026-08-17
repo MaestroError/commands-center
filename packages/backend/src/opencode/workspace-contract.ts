@@ -1,4 +1,5 @@
-import { cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { cp, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 
 import { z } from "zod";
@@ -8,6 +9,9 @@ import { normalizeBuiltInSkillSlug } from "../lib/builtin-skill-aliases.js";
 
 const OPENCODE_CONFIG_SCHEMA_URL = "https://opencode.ai/config.json";
 const SKILL_NAME_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+const MANAGED_SKILLS_MANIFEST_FILE = ".cc-managed.json";
+const MANAGED_SKILL_STAGING_PREFIX = ".cc-staging-";
+const MANAGED_SKILL_BACKUP_PREFIX = ".cc-backup-";
 const TASK_RUN_TOOL_PERMISSION_DENIES = {
   cc_default_set_task_result: "deny",
   cc_default_add_task_artifact: "deny",
@@ -35,6 +39,23 @@ const skillFrontmatterSchema = z
     license: z.string().min(1).optional(),
     compatibility: z.string().min(1).optional(),
     metadata: z.record(z.string(), z.string()).optional(),
+  })
+  .strict();
+
+const managedSkillSourceSchema = z.enum(["built-in", "workspace"]);
+const managedSkillsManifestSchema = z
+  .object({
+    version: z.literal(1),
+    skills: z
+      .array(
+        z
+          .object({
+            slug: z.string().regex(SKILL_NAME_PATTERN),
+            source: managedSkillSourceSchema,
+          })
+          .strict(),
+      )
+      .default([]),
   })
   .strict();
 
@@ -85,7 +106,8 @@ export const OPENCODE_WORKSPACE_CONTRACT = {
     },
     skills: {
       relativePath: ".opencode/skills",
-      description: "Project-local skill directory discovered by OpenCode.",
+      description:
+        "Project-local skill directory containing CC-managed copies and durable specialist-local skills discovered by OpenCode.",
       docs: ["https://opencode.ai/docs/skills/"],
     },
   },
@@ -99,6 +121,14 @@ export type OpenCodeWorkspaceInput = {
   capabilities: SpecialistCapabilitySelection;
   appMcpEntries?: Record<string, z.infer<typeof workspaceRemoteMcpSchema>>;
 };
+
+type ManagedSkillSource = z.infer<typeof managedSkillSourceSchema>;
+type ManagedSkillsManifest = z.infer<typeof managedSkillsManifestSchema>;
+type ManagedSkillManifestEntry = z.infer<typeof managedSkillsManifestSchema>["skills"][number];
+type DesiredManagedSkillSelection = ManagedSkillManifestEntry & {
+  requestedSlug: string;
+};
+type DesiredManagedSkill = DesiredManagedSkillSelection & { root: string };
 
 export function getOpenCodeWorkspacePaths(root: string): {
   root: string;
@@ -133,6 +163,28 @@ export async function listBuiltInSkills(root: string): Promise<BuiltInSkill[]> {
   }
 }
 
+export async function isManagedSkillsManifestCurrent(options: {
+  workspacePath: string;
+  input: OpenCodeWorkspaceInput;
+}): Promise<boolean> {
+  const manifest = await readManagedSkillsManifest(
+    getOpenCodeWorkspacePaths(options.workspacePath).skillsDir,
+  );
+
+  if (!manifest) {
+    return false;
+  }
+
+  const desiredSkills = resolveDesiredManagedSkillSelections(options.input);
+
+  return (
+    desiredSkills.every((skill, index) => {
+      const current = manifest.skills[index];
+      return current?.slug === skill.slug && current.source === skill.source;
+    }) && manifest.skills.length === desiredSkills.length
+  );
+}
+
 export async function writeOpenCodeWorkspace(options: {
   workspacePath: string;
   input: OpenCodeWorkspaceInput;
@@ -150,29 +202,16 @@ export async function writeOpenCodeWorkspace(options: {
 
   validateOpenCodeWorkspace(rendered);
 
+  const desiredSkills = resolveDesiredManagedSkills({
+    input: options.input,
+    skillRoot: options.skillRoot,
+    workspaceSkillRoot: options.workspaceSkillRoot,
+  });
+  await validateManagedSkillSources(desiredSkills);
+
   await mkdir(paths.root, { recursive: true });
-  await rm(paths.skillsDir, { recursive: true, force: true });
   await mkdir(paths.skillsDir, { recursive: true });
-
-  for (const skill of options.input.capabilities.builtInSkills ?? []) {
-    await copySkill({
-      root: options.skillRoot,
-      targetRoot: paths.skillsDir,
-      slug: normalizeBuiltInSkillSlug(skill),
-      requestedSlug: skill,
-      kind: "built-in",
-    });
-  }
-
-  for (const skill of options.input.capabilities.workspaceSkills ?? []) {
-    await copySkill({
-      root: options.workspaceSkillRoot,
-      targetRoot: paths.skillsDir,
-      slug: skill,
-      requestedSlug: skill,
-      kind: "workspace",
-    });
-  }
+  await reconcileManagedSkills(paths.skillsDir, desiredSkills);
 
   if (options.writeRules !== false) {
     await writeFile(paths.rulesFile, rendered.rulesMarkdown, "utf8");
@@ -358,30 +397,179 @@ async function listSkillFiles(root: string, baseRoot = root): Promise<string[]> 
   return files.flat().sort((left, right) => left.localeCompare(right));
 }
 
-async function copySkill(options: {
-  root: string;
-  targetRoot: string;
-  slug: string;
-  requestedSlug: string;
-  kind: "built-in" | "workspace";
-}): Promise<void> {
-  const { root, targetRoot, slug, requestedSlug, kind } = options;
-  const source = join(root, slug);
+function resolveDesiredManagedSkills(options: {
+  input: OpenCodeWorkspaceInput;
+  skillRoot: string;
+  workspaceSkillRoot: string;
+}): DesiredManagedSkill[] {
+  return resolveDesiredManagedSkillSelections(options.input).map((skill) => ({
+    ...skill,
+    root: skill.source === "built-in" ? options.skillRoot : options.workspaceSkillRoot,
+  }));
+}
+
+function resolveDesiredManagedSkillSelections(
+  input: OpenCodeWorkspaceInput,
+): DesiredManagedSkillSelection[] {
+  const desiredSkills: DesiredManagedSkillSelection[] = [
+    ...(input.capabilities.builtInSkills ?? []).map((requestedSlug) => ({
+      slug: normalizeBuiltInSkillSlug(requestedSlug),
+      requestedSlug,
+      source: "built-in" as const,
+    })),
+    ...(input.capabilities.workspaceSkills ?? []).map((slug) => ({
+      slug,
+      requestedSlug: slug,
+      source: "workspace" as const,
+    })),
+  ].sort((left, right) => left.slug.localeCompare(right.slug));
+  const seen = new Map<string, ManagedSkillSource>();
+
+  for (const skill of desiredSkills) {
+    const existingSource = seen.get(skill.slug);
+
+    if (existingSource) {
+      throw new Error(
+        `Managed skill slug '${skill.slug}' is selected more than once from '${existingSource}' and '${skill.source}' sources. Remove the duplicate specialist capability.`,
+      );
+    }
+
+    seen.set(skill.slug, skill.source);
+  }
+
+  return desiredSkills;
+}
+
+async function validateManagedSkillSources(skills: DesiredManagedSkill[]): Promise<void> {
+  for (const skill of skills) {
+    try {
+      await validateSkillDirectory(join(skill.root, skill.slug), skill.slug);
+    } catch (error) {
+      if (isMissingError(error)) {
+        const aliasNote = skill.requestedSlug === skill.slug ? "" : ` It maps to '${skill.slug}'.`;
+
+        throw new Error(
+          `${capitalize(skill.source)} skill '${skill.requestedSlug}' was not found.${aliasNote} Update this specialist's skill capabilities or restore the missing skill directory.`,
+        );
+      }
+
+      throw error;
+    }
+  }
+}
+
+async function reconcileManagedSkills(
+  skillsDir: string,
+  desiredSkills: DesiredManagedSkill[],
+): Promise<void> {
+  const previousSkills = (await readManagedSkillsManifest(skillsDir))?.skills ?? [];
+  const desiredSlugs = new Set(desiredSkills.map((skill) => skill.slug));
+
+  await stageManagedSkills(skillsDir, desiredSkills);
 
   try {
-    await validateSkillDirectory(source, slug);
-    await cp(source, join(targetRoot, slug), { recursive: true });
-  } catch (error) {
-    if (isMissingError(error)) {
-      const aliasNote = requestedSlug === slug ? "" : ` It maps to '${slug}'.`;
+    for (const skill of desiredSkills) {
+      await replaceManagedSkill(skillsDir, skill.slug);
+    }
 
-      throw new Error(
-        `${capitalize(kind)} skill '${requestedSlug}' was not found.${aliasNote} Update this specialist's skill capabilities or restore the missing skill directory.`,
-      );
+    for (const skill of previousSkills) {
+      if (!desiredSlugs.has(skill.slug)) {
+        await rm(join(skillsDir, skill.slug), { recursive: true, force: true });
+      }
+    }
+  } finally {
+    await Promise.all(
+      desiredSkills.map((skill) =>
+        rm(getManagedSkillStagingPath(skillsDir, skill.slug), { recursive: true, force: true }),
+      ),
+    );
+  }
+
+  await writeManagedSkillsManifest(
+    skillsDir,
+    desiredSkills.map(({ slug, source }) => ({ slug, source })),
+  );
+}
+
+async function replaceManagedSkill(skillsDir: string, slug: string): Promise<void> {
+  const target = join(skillsDir, slug);
+  const staging = getManagedSkillStagingPath(skillsDir, slug);
+  const backup = join(skillsDir, `${MANAGED_SKILL_BACKUP_PREFIX}${slug}-${randomUUID()}`);
+  let hasBackup = false;
+
+  try {
+    await rename(target, backup);
+    hasBackup = true;
+  } catch (error) {
+    if (!isMissingError(error)) {
+      throw error;
+    }
+  }
+
+  try {
+    await rename(staging, target);
+  } catch (error) {
+    if (hasBackup) {
+      await rename(backup, target);
     }
 
     throw error;
   }
+
+  if (hasBackup) {
+    await rm(backup, { recursive: true, force: true });
+  }
+}
+
+async function stageManagedSkills(
+  skillsDir: string,
+  desiredSkills: DesiredManagedSkill[],
+): Promise<void> {
+  const stagedPaths: string[] = [];
+
+  try {
+    for (const skill of desiredSkills) {
+      const staging = getManagedSkillStagingPath(skillsDir, skill.slug);
+
+      await rm(staging, { recursive: true, force: true });
+      stagedPaths.push(staging);
+      await cp(join(skill.root, skill.slug), staging, { recursive: true });
+    }
+  } catch (error) {
+    await Promise.all(stagedPaths.map((staging) => rm(staging, { recursive: true, force: true })));
+    throw error;
+  }
+}
+
+async function readManagedSkillsManifest(skillsDir: string): Promise<ManagedSkillsManifest | null> {
+  try {
+    const contents = await readFile(join(skillsDir, MANAGED_SKILLS_MANIFEST_FILE), "utf8");
+    const parsed = managedSkillsManifestSchema.safeParse(JSON.parse(contents));
+
+    return parsed.success ? parsed.data : null;
+  } catch (error) {
+    if (isMissingError(error) || error instanceof SyntaxError) {
+      return null;
+    }
+
+    throw error;
+  }
+}
+
+async function writeManagedSkillsManifest(
+  skillsDir: string,
+  skills: ManagedSkillManifestEntry[],
+): Promise<void> {
+  const manifestPath = join(skillsDir, MANAGED_SKILLS_MANIFEST_FILE);
+  const temporaryPath = `${manifestPath}.tmp`;
+  const manifest = managedSkillsManifestSchema.parse({ version: 1, skills });
+
+  await writeFile(temporaryPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+  await rename(temporaryPath, manifestPath);
+}
+
+function getManagedSkillStagingPath(skillsDir: string, slug: string): string {
+  return join(skillsDir, `${MANAGED_SKILL_STAGING_PREFIX}${slug}`);
 }
 
 function isMissingError(error: unknown): error is NodeJS.ErrnoException {
