@@ -1,7 +1,23 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import * as fsPromises from "node:fs/promises";
+import { basename, join } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+const fsMocks = vi.hoisted(() => ({
+  actualRename: null as ((oldPath: string, newPath: string) => Promise<void>) | null,
+  rename: vi.fn<(oldPath: string, newPath: string) => Promise<void>>(),
+}));
+
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof fsPromises>();
+  const actualRename = async (oldPath: string, newPath: string): Promise<void> =>
+    actual.rename(oldPath, newPath);
+
+  fsMocks.actualRename = actualRename;
+  fsMocks.rename.mockImplementation(actualRename);
+
+  return { ...actual, rename: fsMocks.rename };
+});
 
 import { resolveBuiltInSkillsRoot } from "../../src/lib/builtin-skills";
 import {
@@ -16,6 +32,8 @@ import {
   writeOpenCodeWorkspace,
 } from "../../src/opencode/workspace-contract";
 import { createTestDatabase } from "../helpers/db";
+
+const { mkdir, readFile, readdir, writeFile } = fsPromises;
 
 describe("OPENCODE_WORKSPACE_CONTRACT", () => {
   it("documents the canonical workspace file layout in one place", () => {
@@ -400,6 +418,66 @@ describe("OPENCODE_WORKSPACE_CONTRACT", () => {
         "Writing helper version two",
       );
     } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("restores a managed skill when staged promotion fails", async () => {
+    const testDb = await createTestDatabase();
+    const skillRoot = join(testDb.cwd, "builtin-skills");
+    const workspacePath = join(testDb.config.paths.subdirectories.specialists, "writer-agent");
+    const skillsDir = getOpenCodeWorkspacePaths(workspacePath).skillsDir;
+    const actualRename = fsMocks.actualRename;
+
+    if (!actualRename) {
+      throw new Error("Filesystem rename mock was not initialized.");
+    }
+
+    try {
+      await writeTestSkill(skillRoot, "writer", "Writing helper version one");
+      await writeTestWorkspace({
+        workspacePath,
+        skillRoot,
+        workspaceSkillRoot: testDb.config.paths.subdirectories.skills,
+        builtInSkills: ["writer"],
+      });
+      const previousManifest = await readManagedManifest(skillsDir);
+      await writeTestSkill(skillRoot, "writer", "Writing helper version two");
+      let promotionFailed = false;
+
+      fsMocks.rename.mockImplementation(async (oldPath, newPath) => {
+        if (
+          !promotionFailed &&
+          basename(oldPath) === ".cc-staging-writer" &&
+          basename(newPath) === "writer"
+        ) {
+          promotionFailed = true;
+          throw new Error("Simulated staged promotion failure");
+        }
+
+        await actualRename(oldPath, newPath);
+      });
+
+      await expect(
+        writeTestWorkspace({
+          workspacePath,
+          skillRoot,
+          workspaceSkillRoot: testDb.config.paths.subdirectories.skills,
+          builtInSkills: ["writer"],
+        }),
+      ).rejects.toThrow("Simulated staged promotion failure");
+      await expect(readFile(join(skillsDir, "writer", "SKILL.md"), "utf8")).resolves.toContain(
+        "Writing helper version one",
+      );
+      await expect(readManagedManifest(skillsDir)).resolves.toEqual(previousManifest);
+      await expect(readdir(skillsDir)).resolves.not.toEqual(
+        expect.arrayContaining([
+          expect.stringMatching(/^\.cc-staging-/),
+          expect.stringMatching(/^\.cc-backup-/),
+        ]),
+      );
+    } finally {
+      fsMocks.rename.mockImplementation(actualRename);
       await testDb.cleanup();
     }
   });

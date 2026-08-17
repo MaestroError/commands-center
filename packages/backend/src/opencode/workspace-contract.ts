@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { cp, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 
@@ -10,6 +11,7 @@ const OPENCODE_CONFIG_SCHEMA_URL = "https://opencode.ai/config.json";
 const SKILL_NAME_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const MANAGED_SKILLS_MANIFEST_FILE = ".cc-managed.json";
 const MANAGED_SKILL_STAGING_PREFIX = ".cc-staging-";
+const MANAGED_SKILL_BACKUP_PREFIX = ".cc-backup-";
 const TASK_RUN_TOOL_PERMISSION_DENIES = {
   cc_default_set_task_result: "deny",
   cc_default_add_task_artifact: "deny",
@@ -465,24 +467,58 @@ async function reconcileManagedSkills(
 
   await stageManagedSkills(skillsDir, desiredSkills);
 
-  for (const skill of previousSkills) {
-    if (!desiredSlugs.has(skill.slug)) {
-      await rm(join(skillsDir, skill.slug), { recursive: true, force: true });
+  try {
+    for (const skill of desiredSkills) {
+      await replaceManagedSkill(skillsDir, skill.slug);
     }
-  }
 
-  for (const skill of desiredSkills) {
-    const target = join(skillsDir, skill.slug);
-    const staging = getManagedSkillStagingPath(skillsDir, skill.slug);
-
-    await rm(target, { recursive: true, force: true });
-    await rename(staging, target);
+    for (const skill of previousSkills) {
+      if (!desiredSlugs.has(skill.slug)) {
+        await rm(join(skillsDir, skill.slug), { recursive: true, force: true });
+      }
+    }
+  } finally {
+    await Promise.all(
+      desiredSkills.map((skill) =>
+        rm(getManagedSkillStagingPath(skillsDir, skill.slug), { recursive: true, force: true }),
+      ),
+    );
   }
 
   await writeManagedSkillsManifest(
     skillsDir,
     desiredSkills.map(({ slug, source }) => ({ slug, source })),
   );
+}
+
+async function replaceManagedSkill(skillsDir: string, slug: string): Promise<void> {
+  const target = join(skillsDir, slug);
+  const staging = getManagedSkillStagingPath(skillsDir, slug);
+  const backup = join(skillsDir, `${MANAGED_SKILL_BACKUP_PREFIX}${slug}-${randomUUID()}`);
+  let hasBackup = false;
+
+  try {
+    await rename(target, backup);
+    hasBackup = true;
+  } catch (error) {
+    if (!isMissingError(error)) {
+      throw error;
+    }
+  }
+
+  try {
+    await rename(staging, target);
+  } catch (error) {
+    if (hasBackup) {
+      await rename(backup, target);
+    }
+
+    throw error;
+  }
+
+  if (hasBackup) {
+    await rm(backup, { recursive: true, force: true });
+  }
 }
 
 async function stageManagedSkills(
