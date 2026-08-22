@@ -1,0 +1,42 @@
+name: Trigger Content Brief on Minor Release
+
+on:
+  release:
+    types:
+      - published
+
+permissions: {}
+
+jobs:
+  trigger-task:
+    if: github.repository == 'MaestroError/commands-center' && github.event.release.draft == false && github.event.release.prerelease == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Validate minor release tag
+        id: release
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          if [[ "$RELEASE_TAG" =~ ^v?0\.[0-9]+\.0$ ]]; then
+            echo "eligible=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Trigger content brief task template
+        if: steps.release.outputs.eligible == 'true'
+        env:
+          CC_PRSHARE_API_TOKEN: ${{ secrets.CC_PRSHARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          : "${CC_PRSHARE_API_TOKEN:?Set the CC_PRSHARE_API_TOKEN repository secret.}"
+          payload="$(jq -cn --rawfile event "$GITHUB_EVENT_PATH" '{context: {text: $event}}')"
+          curl --fail-with-body --silent --show-error \
+            --connect-timeout 10 \
+            --max-time 30 \
+            --request POST 'https://cc.maestroerror.com/api/public/v1/task-templates/01M0KX73FSH590VCPN5GPQ89RR/trigger' \
+            --header "Authorization: Bearer $CC_PRSHARE_API_TOKEN" \
+            --header 'Content-Type: application/json' \
+            --data "$payload"
