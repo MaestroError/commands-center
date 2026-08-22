@@ -101,6 +101,8 @@ export const mcpServerListSchema = z.array(mcpServerSchema);
 export const createMcpServerInputSchema = z.object({
   name: mcpServerNameSchema,
   enabled: z.boolean().default(true),
+  enableForAll: z.boolean().default(false),
+  specialistIds: z.array(z.string().trim().min(1)).default([]),
   config: mcpServerConfigSchema,
 });
 
@@ -113,7 +115,14 @@ export const setMcpServerEnabledInputSchema = z.object({
   enabled: z.boolean(),
 });
 
-export type CreateMcpServerInput = z.infer<typeof createMcpServerInputSchema>;
+export type CreateMcpServerInput = Omit<
+  z.input<typeof createMcpServerInputSchema>,
+  "enabled" | "enableForAll" | "specialistIds"
+> & {
+  enabled?: boolean;
+  enableForAll?: boolean;
+  specialistIds?: string[];
+};
 export type ActivateMcpServerInput = z.infer<typeof activateMcpServerInputSchema>;
 export type McpAuthRemoveResult = z.infer<typeof mcpAuthRemoveResultSchema>;
 export type McpAuthStartResult = z.infer<typeof mcpAuthStartResultSchema>;
