@@ -18,6 +18,12 @@ type McpServerRecord = {
   updatedAt: string;
 };
 
+type McpServerCreateRequest = Pick<McpServerRecord, "name" | "config"> & {
+  enabled: boolean;
+  enableForAll: boolean;
+  specialistIds: string[];
+};
+
 test("connects another CC instance and activates it with restart consent", async ({ page }) => {
   const servers: McpServerRecord[] = [];
   const savedSecrets: Array<{ key: string; restart: boolean }> = [];
@@ -125,9 +131,7 @@ async function mockIntegrationsApi(
       return;
     }
 
-    const body = route.request().postDataJSON() as Pick<McpServerRecord, "name" | "config"> & {
-      enabled: boolean;
-    };
+    const body = route.request().postDataJSON() as McpServerCreateRequest;
     createdRequests.push(body);
     const created: McpServerRecord = {
       id: "mcp-instance",

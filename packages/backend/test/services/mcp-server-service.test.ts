@@ -145,9 +145,12 @@ describe("mcp-server-service", () => {
         { name: "github", enabled: false, action: "deny" },
       ]);
       expect((await specialistService.get(archived.id))?.capabilities.mcpServers).toEqual([]);
-      expect(await readFile(join(unselected.workspacePath, "opencode.jsonc"), "utf8")).toContain(
-        '"github": {\n      "enabled": false',
-      );
+      const config = JSON.parse(
+        await readFile(join(unselected.workspacePath, "opencode.jsonc"), "utf8"),
+      ) as {
+        mcp: Record<string, { enabled: boolean }>;
+      };
+      expect(config.mcp["github"]?.enabled).toBe(false);
     } finally {
       await testDb.cleanup();
     }
@@ -218,6 +221,55 @@ describe("mcp-server-service", () => {
     }
   });
 
+  it("denies a new specialist access when it is created while an MCP server is enabled", async () => {
+    const testDb = await createTestDatabase();
+    const opencodeService = createMockOpenCodeService();
+    const service = createMcpServerService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+    });
+    const specialistService = createSpecialistService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+
+    try {
+      await createTestSpecialist(specialistService, "Existing");
+      let signalDispose: () => void;
+      const disposeReached = new Promise<void>((resolve) => {
+        signalDispose = resolve;
+      });
+      let releaseDispose: () => void;
+      vi.mocked(opencodeService.dispose).mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            releaseDispose = resolve;
+            signalDispose!();
+          }),
+      );
+
+      const creatingMcp = service.create({
+        name: "github",
+        enabled: true,
+        config: remoteMcpConfig(),
+      });
+      await disposeReached;
+      const creatingSpecialist = createTestSpecialist(specialistService, "New");
+      releaseDispose!();
+
+      await creatingMcp;
+      const specialist = await creatingSpecialist;
+      expect(specialist.capabilities.mcpServers).toEqual([
+        { name: "github", enabled: false, action: "deny" },
+      ]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("leaves a new MCP server disabled when specialist workspace reconciliation fails", async () => {
     const testDb = await createTestDatabase();
     const opencodeService = createMockOpenCodeService();
@@ -246,6 +298,41 @@ describe("mcp-server-service", () => {
         expect.objectContaining({ name: "github", enabled: false }),
       ]);
       expect(opencodeService.disposeGlobal).toHaveBeenCalled();
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("disposes the global workspace when enabling a new MCP server fails", async () => {
+    const testDb = await createTestDatabase();
+    const opencodeService = createMockOpenCodeService();
+    const service = createMcpServerService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+    });
+    const specialistService = createSpecialistService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+
+    try {
+      await createTestSpecialist(specialistService, "Existing");
+      vi.mocked(opencodeService.dispose).mockImplementationOnce(async () => {
+        await writeFile(
+          join(testDb.config.paths.subdirectories.configuration, "mcp.json"),
+          "invalid",
+          "utf8",
+        );
+      });
+
+      await expect(
+        service.create({ name: "github", enabled: true, config: remoteMcpConfig() }),
+      ).rejects.toThrow(/invalid JSON/);
+
+      expect(opencodeService.disposeGlobal).toHaveBeenCalledOnce();
     } finally {
       await testDb.cleanup();
     }

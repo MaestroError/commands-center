@@ -23,7 +23,11 @@ import type { RuntimeConfig } from "../lib/runtime-config.js";
 import type { AppDb } from "../db/client.js";
 import { ConflictError } from "../lib/api-error.js";
 import type { OpenCodeService } from "./opencode-service.js";
-import { normalizeSpecialistCapabilities } from "./specialist-capability-sync.js";
+import {
+  normalizeSpecialistCapabilities,
+  setMcpServerAssignment,
+} from "./specialist-capability-sync.js";
+import { withSpecialistMcpMutationLock } from "./specialist-mcp-mutation-lock.js";
 import { createCustomToolService, type CustomToolService } from "./custom-tool-service.js";
 import { createProviderService } from "./provider-service.js";
 import { createCcManagedMcpAuthStateStore } from "../mcp/cc-managed/auth-state-store.js";
@@ -111,74 +115,76 @@ export function createSpecialistService(options: {
     },
 
     async create(input: CreateSpecialistInput): Promise<Specialist> {
-      const parsed = createSpecialistInputSchema.parse(input);
-      const id = createId();
-      const slug = await reserveSlug(parsed.name);
-      const timestamp = now();
-      const workspacePath = buildWorkspacePath(slug);
-      const capabilities = await normalizeCapabilities(parsed.capabilities);
-      const appMcpEntries = await appMcpWorkspaceEntryService.buildEntries({
-        slug,
-        capabilities,
-      });
+      return withSpecialistMcpMutationLock(async () => {
+        const parsed = createSpecialistInputSchema.parse(input);
+        const id = createId();
+        const slug = await reserveSlug(parsed.name);
+        const timestamp = now();
+        const workspacePath = buildWorkspacePath(slug);
+        const capabilities = await normalizeCapabilities(parsed.capabilities);
+        const appMcpEntries = await appMcpWorkspaceEntryService.buildEntries({
+          slug,
+          capabilities,
+        });
 
-      await prepareWorkspace({
-        config: options.config,
-        workspacePath,
-        input: {
+        await prepareWorkspace({
+          config: options.config,
+          workspacePath,
+          input: {
+            name: parsed.name,
+            role: parsed.role,
+            instructions: parsed.instructions,
+            defaultModel: parsed.defaultModel,
+            capabilities,
+            appMcpEntries,
+          },
+          skillRoot,
+          workspaceSkillRoot,
+        });
+
+        await customToolService.syncSpecialistAssignments({
+          workspacePath,
+          selectedToolSlugs: capabilities.customTools ?? [],
+          overwriteSlugs: parsed.customToolOverwriteSlugs,
+        });
+
+        // File-first: specialist.json is the source of record for the derived row.
+        await writeSpecialistFile(options.config, slug, "active", {
+          id,
           name: parsed.name,
           role: parsed.role,
           instructions: parsed.instructions,
           defaultModel: parsed.defaultModel,
+          iconPath: parsed.iconPath,
           capabilities,
-          appMcpEntries,
-        },
-        skillRoot,
-        workspaceSkillRoot,
+          createdAt: timestamp.toISOString(),
+          updatedAt: timestamp.toISOString(),
+        });
+
+        const [row] = await options.db
+          .insert(agents)
+          .values({
+            id,
+            slug,
+            name: parsed.name,
+            role: parsed.role,
+            instructions: parsed.instructions,
+            default_model: parsed.defaultModel,
+            icon_path: parsed.iconPath,
+            status: "active",
+            capabilities_json: JSON.stringify(capabilities),
+            created_at: timestamp,
+            updated_at: timestamp,
+            archived_at: null,
+          })
+          .returning();
+
+        if (!row) {
+          throw new Error("Failed to create specialist record.");
+        }
+
+        return mapSpecialist(row);
       });
-
-      await customToolService.syncSpecialistAssignments({
-        workspacePath,
-        selectedToolSlugs: capabilities.customTools ?? [],
-        overwriteSlugs: parsed.customToolOverwriteSlugs,
-      });
-
-      // File-first: specialist.json is the source of record for the derived row.
-      await writeSpecialistFile(options.config, slug, "active", {
-        id,
-        name: parsed.name,
-        role: parsed.role,
-        instructions: parsed.instructions,
-        defaultModel: parsed.defaultModel,
-        iconPath: parsed.iconPath,
-        capabilities,
-        createdAt: timestamp.toISOString(),
-        updatedAt: timestamp.toISOString(),
-      });
-
-      const [row] = await options.db
-        .insert(agents)
-        .values({
-          id,
-          slug,
-          name: parsed.name,
-          role: parsed.role,
-          instructions: parsed.instructions,
-          default_model: parsed.defaultModel,
-          icon_path: parsed.iconPath,
-          status: "active",
-          capabilities_json: JSON.stringify(capabilities),
-          created_at: timestamp,
-          updated_at: timestamp,
-          archived_at: null,
-        })
-        .returning();
-
-      if (!row) {
-        throw new Error("Failed to create specialist record.");
-      }
-
-      return mapSpecialist(row);
     },
 
     async update(id: string, input: UpdateSpecialistInput): Promise<Specialist | undefined> {
@@ -415,14 +421,25 @@ export function createSpecialistService(options: {
   async function normalizeCapabilities(
     capabilities: SpecialistCapabilitySelection,
   ): Promise<SpecialistCapabilitySelection> {
-    const rows = await options.db.select({ name: mcp_servers.name }).from(mcp_servers);
-    return specialistCapabilitySelectionSchema.parse(
-      normalizeSpecialistCapabilities(
-        capabilities,
-        rows.map((row) => row.name),
-        listCcManagedMcpServers(appMcpRegistry).map((row) => row.name),
-      ),
+    const rows = await options.db
+      .select({ name: mcp_servers.name, enabled: mcp_servers.enabled })
+      .from(mcp_servers);
+    const normalized = normalizeSpecialistCapabilities(
+      capabilities,
+      rows.map((row) => row.name),
+      listCcManagedMcpServers(appMcpRegistry).map((row) => row.name),
     );
+    const withDefaultDenials = rows
+      .filter((row) => row.enabled)
+      .reduce(
+        (result, row) =>
+          result.mcpServers?.some((server) => server.name === row.name)
+            ? result
+            : setMcpServerAssignment(result, row.name, false),
+        normalized,
+      );
+
+    return specialistCapabilitySelectionSchema.parse(withDefaultDenials);
   }
 
   function resolveWorkspacePath(row: typeof agents.$inferSelect): string {
