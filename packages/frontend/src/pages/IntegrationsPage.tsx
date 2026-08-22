@@ -344,6 +344,7 @@ export function IntegrationsPage() {
           onSubmit={async (input: {
             name: string;
             enabled?: boolean;
+            enableForAll: boolean;
             agentIds: string[];
             config:
               | {
@@ -359,18 +360,21 @@ export function IntegrationsPage() {
                 };
           }) => {
             setSuccessMessage(undefined);
-            const { agentIds, ...mcpInput } = input;
+            const { agentIds, enableForAll, ...mcpInput } = input;
 
             if (dialog.mode === "create") {
-              const created = await mcpMutations.create.mutateAsync({ ...mcpInput, enabled: true });
-              await syncAgentAssignments({
-                agents,
-                mutateAgent: agentMutations.update.mutateAsync,
-                selectedAgentIds: agentIds,
-                previousServerName: undefined,
-                nextServerName: created.name,
+              const created = await mcpMutations.create.mutateAsync({
+                ...mcpInput,
+                enabled: true,
+                enableForAll,
+                specialistIds: agentIds,
               });
-              setSuccessMessage(buildAssignmentMessage(`${created.name} added.`, agentIds.length));
+              setSuccessMessage(
+                buildAssignmentMessage(
+                  `${created.name} added.`,
+                  enableForAll ? agents.length : agentIds.length,
+                ),
+              );
 
               if (
                 created.config.transport !== "stdio" &&

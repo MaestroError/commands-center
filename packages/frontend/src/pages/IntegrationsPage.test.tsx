@@ -947,6 +947,8 @@ describe("IntegrationsPage", () => {
       expect(createMutateAsync).toHaveBeenCalledWith({
         name: "github",
         enabled: true,
+        enableForAll: false,
+        specialistIds: [],
         config: {
           url: "https://example.com/mcp",
           transport: "streamable-http",
@@ -957,7 +959,7 @@ describe("IntegrationsPage", () => {
     });
   });
 
-  it("assigns a newly created MCP server to selected specialists", async () => {
+  it("submits selected specialists as the create assignment policy", async () => {
     createMutateAsync.mockResolvedValue({
       id: "mcp-new",
       name: "github",
@@ -992,17 +994,37 @@ describe("IntegrationsPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add server" }));
 
     await waitFor(() => {
-      expect(updateSpecialistMutateAsync).toHaveBeenCalledWith({
-        id: "agent-1",
-        input: {
-          capabilities: {
-            builtInSkills: [],
-            customTools: [],
-            mcpServers: [{ name: "github", enabled: true, action: "allow" }],
-            toolPermissions: [],
-          },
-        },
-      });
+      expect(createMutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          enableForAll: false,
+          specialistIds: ["agent-1"],
+        }),
+      );
+    });
+    expect(updateSpecialistMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("submits enable-for-all as the create assignment policy", async () => {
+    createMutateAsync.mockResolvedValue({ name: "github", config: { transport: "stdio" } });
+
+    render(<IntegrationsPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add custom MCP server" }));
+    expect(screen.getByLabelText("Enable for all specialists")).not.toBeChecked();
+    fireEvent.click(screen.getByLabelText("Enable for all specialists"));
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "github" } });
+    fireEvent.change(screen.getByLabelText("URL"), {
+      target: { value: "https://example.com/mcp" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add server" }));
+
+    await waitFor(() => {
+      expect(createMutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          enableForAll: true,
+          specialistIds: [],
+        }),
+      );
     });
   });
 
@@ -1099,6 +1121,8 @@ describe("IntegrationsPage", () => {
       expect(createMutateAsync).toHaveBeenCalledWith({
         name: "filesystem",
         enabled: true,
+        enableForAll: false,
+        specialistIds: [],
         config: {
           transport: "stdio",
           command: ["npx", "-y", "@modelcontextprotocol/server-filesystem", "/tmp/workspace"],

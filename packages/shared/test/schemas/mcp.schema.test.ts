@@ -18,6 +18,18 @@ describe("createMcpServerInputSchema", () => {
     const parsed = createMcpServerInputSchema.parse({ name: "knowledge_base-2", config });
 
     expect(parsed.name).toBe("knowledge_base-2");
+    expect(parsed).toMatchObject({ enableForAll: false, specialistIds: [] });
+  });
+
+  it("accepts a specialist assignment policy", () => {
+    const parsed = createMcpServerInputSchema.parse({
+      name: "knowledge_base-2",
+      config,
+      enableForAll: true,
+      specialistIds: ["specialist-1"],
+    });
+
+    expect(parsed).toMatchObject({ enableForAll: true, specialistIds: ["specialist-1"] });
   });
 
   // OpenCode rewrites anything outside [A-Za-z0-9_-] when deriving tool ids, so a

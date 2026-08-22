@@ -1,4 +1,4 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
@@ -105,6 +105,147 @@ describe("mcp-server-service", () => {
 
       expect(rendered.mcp).toEqual({});
       expect(opencodeService.disposeGlobal).toHaveBeenCalledTimes(3);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("writes explicit specialist assignments before enabling a new global MCP server", async () => {
+    const testDb = await createTestDatabase();
+    const opencodeService = createMockOpenCodeService();
+    const service = createMcpServerService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+    });
+    const specialistService = createSpecialistService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+
+    try {
+      const selected = await createTestSpecialist(specialistService, "Selected");
+      const unselected = await createTestSpecialist(specialistService, "Unselected");
+      const archived = await createTestSpecialist(specialistService, "Archived");
+      await specialistService.archive(archived.id);
+
+      await service.create({
+        name: "github",
+        enabled: true,
+        specialistIds: [selected.id],
+        config: remoteMcpConfig(),
+      });
+
+      expect((await specialistService.get(selected.id))?.capabilities.mcpServers).toEqual([
+        { name: "github", enabled: true, action: "allow" },
+      ]);
+      expect((await specialistService.get(unselected.id))?.capabilities.mcpServers).toEqual([
+        { name: "github", enabled: false, action: "deny" },
+      ]);
+      expect((await specialistService.get(archived.id))?.capabilities.mcpServers).toEqual([]);
+      expect(await readFile(join(unselected.workspacePath, "opencode.jsonc"), "utf8")).toContain(
+        '"github": {\n      "enabled": false',
+      );
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("assigns a new enabled MCP server to every active specialist when requested", async () => {
+    const testDb = await createTestDatabase();
+    const opencodeService = createMockOpenCodeService();
+    const service = createMcpServerService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+    });
+    const specialistService = createSpecialistService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+
+    try {
+      const first = await createTestSpecialist(specialistService, "First");
+      const second = await createTestSpecialist(specialistService, "Second");
+
+      await service.create({
+        name: "github",
+        enabled: true,
+        enableForAll: true,
+        config: remoteMcpConfig(),
+      });
+
+      expect((await specialistService.get(first.id))?.capabilities.mcpServers).toEqual([
+        { name: "github", enabled: true, action: "allow" },
+      ]);
+      expect((await specialistService.get(second.id))?.capabilities.mcpServers).toEqual([
+        { name: "github", enabled: true, action: "allow" },
+      ]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("denies a new enabled MCP server to every active specialist when none are selected", async () => {
+    const testDb = await createTestDatabase();
+    const opencodeService = createMockOpenCodeService();
+    const service = createMcpServerService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+    });
+    const specialistService = createSpecialistService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+
+    try {
+      const specialist = await createTestSpecialist(specialistService, "Unselected");
+
+      await service.create({ name: "github", enabled: true, config: remoteMcpConfig() });
+
+      expect((await specialistService.get(specialist.id))?.capabilities.mcpServers).toEqual([
+        { name: "github", enabled: false, action: "deny" },
+      ]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("leaves a new MCP server disabled when specialist workspace reconciliation fails", async () => {
+    const testDb = await createTestDatabase();
+    const opencodeService = createMockOpenCodeService();
+    const service = createMcpServerService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+    });
+    const specialistService = createSpecialistService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+
+    try {
+      const specialist = await createTestSpecialist(specialistService, "Blocked");
+      await rm(specialist.workspacePath, { recursive: true, force: true });
+      await writeFile(specialist.workspacePath, "blocked", "utf8");
+
+      await expect(
+        service.create({ name: "github", enabled: true, config: remoteMcpConfig() }),
+      ).rejects.toThrow();
+
+      expect(await service.list()).toEqual([
+        expect.objectContaining({ name: "github", enabled: false }),
+      ]);
+      expect(opencodeService.disposeGlobal).toHaveBeenCalled();
     } finally {
       await testDb.cleanup();
     }
@@ -1228,4 +1369,34 @@ function createMockOpenCodeService(): OpenCodeService {
     dispose: vi.fn(() => Promise.resolve()),
     disposeGlobal: vi.fn(() => Promise.resolve()),
   } as unknown as OpenCodeService;
+}
+
+function remoteMcpConfig() {
+  return {
+    url: "https://example.com/mcp",
+    transport: "streamable-http" as const,
+    authMethod: "none" as const,
+    headers: [],
+  };
+}
+
+async function createTestSpecialist(
+  service: ReturnType<typeof createSpecialistService>,
+  name: string,
+) {
+  return service.create({
+    name,
+    role: "test role",
+    instructions: "test instructions",
+    defaultModel: "openai/gpt-4.1",
+    capabilities: {
+      builtInSkills: [],
+      workspaceSkills: [],
+      customTools: [],
+      mcpServers: [],
+      toolPermissions: [],
+      appMcpServers: [],
+      appToolPermissions: [],
+    },
+  });
 }

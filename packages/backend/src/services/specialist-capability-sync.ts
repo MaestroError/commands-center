@@ -105,11 +105,37 @@ export function renameMcpReferences(
   };
 }
 
+export function setMcpServerAssignment(
+  capabilities: SpecialistCapabilitySelection,
+  mcpName: string,
+  enabled: boolean,
+): SpecialistCapabilitySelection {
+  const remainingServers = (capabilities.mcpServers ?? []).filter(
+    (server) => server.name !== mcpName,
+  );
+  const remainingPermissions = (capabilities.toolPermissions ?? []).filter(
+    (rule) => !matchesMcpPrefix(rule.pattern, mcpName),
+  );
+
+  return {
+    ...capabilities,
+    mcpServers: [
+      ...remainingServers,
+      { name: mcpName, enabled, action: enabled ? "allow" : "deny" },
+    ],
+    toolPermissions: enabled ? (capabilities.toolPermissions ?? []) : remainingPermissions,
+  };
+}
+
 export async function rewriteAgentsForMcpChange(options: {
   db: AppDb;
   config: RuntimeConfig;
   opencodeService: OpenCodeService;
-  transform: (capabilities: SpecialistCapabilitySelection) => SpecialistCapabilitySelection;
+  transform: (
+    capabilities: SpecialistCapabilitySelection,
+    specialistId: string,
+  ) => SpecialistCapabilitySelection;
+  activeOnly?: boolean;
 }): Promise<number> {
   const registry = createCcManagedMcpServerRegistry({
     customToolService: createCustomToolService({
@@ -126,12 +152,16 @@ export async function rewriteAgentsForMcpChange(options: {
     toolAccessService: createCcManagedMcpToolAccessService(),
     registry,
   });
-  const rows = await options.db.query.agents.findMany();
+  const rows = await options.db.query.agents.findMany({
+    where: options.activeOnly
+      ? (table, operators) => operators.eq(table.status, "active")
+      : undefined,
+  });
   let updatedCount = 0;
 
   for (const row of rows) {
     const capabilities = parseCapabilities(row.capabilities_json);
-    const nextCapabilities = options.transform(capabilities);
+    const nextCapabilities = options.transform(capabilities, row.id);
     const workspacePath = resolveSpecialistWorkspacePath({
       config: options.config,
       slug: row.slug,

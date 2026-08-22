@@ -58,13 +58,54 @@ test("connects another CC instance and activates it with restart consent", async
   await expect(page.getByText("Connected", { exact: true })).toBeVisible();
 });
 
+test("submits explicit selected-specialist access for a custom MCP server", async ({ page }) => {
+  const servers: McpServerRecord[] = [];
+  const requests: unknown[] = [];
+  await mockIntegrationsApi(page, servers, [], [specialist("writer", "Writer")], requests);
+
+  await page.goto("/integrations");
+  await page.getByRole("button", { name: "Add custom MCP server" }).click();
+
+  await expect(page.getByLabel("Enable for all specialists")).not.toBeChecked();
+  await page.getByLabel("Name").fill("github");
+  await page.getByLabel("URL").fill("https://example.com/mcp");
+  await page.getByRole("button", { name: "Enable for specialists" }).click();
+  await page.getByLabel("Writer").check();
+  await page.getByRole("button", { name: "Add server" }).click();
+
+  await expect
+    .poll(() => requests)
+    .toEqual([expect.objectContaining({ enableForAll: false, specialistIds: ["writer"] })]);
+});
+
+test("submits enable-for-all access for a custom MCP server", async ({ page }) => {
+  const servers: McpServerRecord[] = [];
+  const requests: unknown[] = [];
+  await mockIntegrationsApi(page, servers, [], [specialist("writer", "Writer")], requests);
+
+  await page.goto("/integrations");
+  await page.getByRole("button", { name: "Add custom MCP server" }).click();
+  await page.getByLabel("Enable for all specialists").check();
+  await page.getByRole("button", { name: "Enable for specialists" }).click();
+  await expect(page.getByLabel("Writer")).toBeDisabled();
+  await page.getByLabel("Name").fill("github");
+  await page.getByLabel("URL").fill("https://example.com/mcp");
+  await page.getByRole("button", { name: "Add server" }).click();
+
+  await expect
+    .poll(() => requests)
+    .toEqual([expect.objectContaining({ enableForAll: true, specialistIds: [] })]);
+});
+
 async function mockIntegrationsApi(
   page: Page,
   servers: McpServerRecord[],
   savedSecrets: Array<{ key: string; restart: boolean }>,
+  specialists: unknown[] = [],
+  createdRequests: unknown[] = [],
 ): Promise<void> {
   await page.route("**/api/specialists", async (route: Route) => {
-    await route.fulfill(jsonResponse([]));
+    await route.fulfill(jsonResponse(specialists));
   });
 
   await page.route("**/api/secrets", async (route: Route) => {
@@ -87,6 +128,7 @@ async function mockIntegrationsApi(
     const body = route.request().postDataJSON() as Pick<McpServerRecord, "name" | "config"> & {
       enabled: boolean;
     };
+    createdRequests.push(body);
     const created: McpServerRecord = {
       id: "mcp-instance",
       name: body.name,
@@ -115,6 +157,30 @@ async function mockIntegrationsApi(
     server.runtimeStatus = { status: "connected" };
     await route.fulfill(jsonResponse(server));
   });
+}
+
+function specialist(id: string, name: string) {
+  return {
+    id,
+    name,
+    slug: id,
+    role: "Test specialist",
+    instructions: "Test instructions.",
+    defaultModel: "openai/gpt-4.1",
+    workspacePath: `/tmp/${id}`,
+    status: "active",
+    capabilities: {
+      builtInSkills: [],
+      workspaceSkills: [],
+      customTools: [],
+      mcpServers: [],
+      toolPermissions: [],
+      appMcpServers: [],
+      appToolPermissions: [],
+    },
+    createdAt: "2026-04-22T10:00:00.000Z",
+    updatedAt: "2026-04-22T10:00:00.000Z",
+  };
 }
 
 function jsonResponse(body: unknown) {

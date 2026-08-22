@@ -39,6 +39,7 @@ import {
   removeMcpReferences,
   renameMcpReferences,
   rewriteAgentsForMcpChange,
+  setMcpServerAssignment,
 } from "./specialist-capability-sync.js";
 
 const OPENCODE_CONFIG_SCHEMA_URL = "https://opencode.ai/config.json";
@@ -208,6 +209,7 @@ export function createMcpServerService(options: {
 
       const id = createId();
       const timestamp = now();
+      const initialEnabled = parsed.enabled ? false : parsed.enabled;
 
       // File-first: persist to configuration/mcp.json before DB insert.
       const existingEntries = await readMcpConfigFile(options.config);
@@ -216,7 +218,7 @@ export function createMcpServerService(options: {
         {
           id,
           name: parsed.name,
-          enabled: parsed.enabled,
+          enabled: initialEnabled,
           transport: normalizedConfig.transport,
           config: normalizedConfig,
           createdAt: timestamp.toISOString(),
@@ -224,13 +226,13 @@ export function createMcpServerService(options: {
         },
       ]);
 
-      const [row] = await options.db
+      let [row] = await options.db
         .insert(mcp_servers)
         .values({
           id,
           name: parsed.name,
           transport: normalizedConfig.transport,
-          enabled: parsed.enabled,
+          enabled: initialEnabled,
           config_json: JSON.stringify(normalizedConfig),
           created_at: timestamp,
           updated_at: timestamp,
@@ -242,6 +244,50 @@ export function createMcpServerService(options: {
       }
 
       await syncGlobalConfig();
+
+      if (parsed.enabled) {
+        const selectedSpecialists = new Set(parsed.specialistIds);
+        try {
+          await rewriteAgentsForMcpChange({
+            db: options.db,
+            config: options.config,
+            opencodeService: options.opencodeService,
+            activeOnly: true,
+            transform: (capabilities, specialistId) =>
+              setMcpServerAssignment(
+                capabilities,
+                parsed.name,
+                parsed.enableForAll || selectedSpecialists.has(specialistId),
+              ),
+          });
+        } catch (error) {
+          await options.opencodeService.disposeGlobal();
+          throw error;
+        }
+
+        const enabledAt = now();
+        const entries = await readMcpConfigFile(options.config);
+        await writeMcpConfigFile(
+          options.config,
+          entries.map((entry) =>
+            entry.id === id
+              ? { ...entry, enabled: true, updatedAt: enabledAt.toISOString() }
+              : entry,
+          ),
+        );
+        const [enabledRow] = await options.db
+          .update(mcp_servers)
+          .set({ enabled: true, updated_at: enabledAt })
+          .where(eq(mcp_servers.id, id))
+          .returning();
+
+        if (!enabledRow) {
+          throw new Error("Failed to enable MCP server record.");
+        }
+
+        row = enabledRow;
+        await syncGlobalConfig();
+      }
       await options.opencodeService.disposeGlobal();
       return readOne(row);
     },

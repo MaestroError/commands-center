@@ -41,6 +41,7 @@ export function McpServerDialog(props: {
   onSubmit: (input: {
     name: string;
     enabled?: boolean;
+    enableForAll: boolean;
     agentIds: string[];
     config:
       | {
@@ -65,6 +66,7 @@ export function McpServerDialog(props: {
   const [submitError, setSubmitError] = useState<string>();
   const [agentsExpanded, setAgentsExpanded] = useState(false);
   const [agentSearch, setAgentSearch] = useState("");
+  const [enableForAll, setEnableForAll] = useState(false);
   const agentSectionRef = useRef<HTMLElement>(null);
   const [selectedAgentIds, setSelectedAgentIds] = useState<string[]>(() =>
     props.agents
@@ -238,6 +240,26 @@ export function McpServerDialog(props: {
               </div>
             ) : null}
 
+            {props.mode === "create" ? (
+              <label className="flex items-start gap-3 rounded-lg border border-border bg-surface-elevated/40 p-4">
+                <input
+                  aria-label="Enable for all specialists"
+                  checked={enableForAll}
+                  onChange={(event) => setEnableForAll(event.target.checked)}
+                  type="checkbox"
+                />
+                <span>
+                  <span className="block text-sm font-medium text-text-primary">
+                    Enable for all specialists
+                  </span>
+                  <span className="mt-1 block text-xs text-text-secondary">
+                    Every active specialist will receive access. Leave unchecked to grant access
+                    only to selected specialists and explicitly deny all others.
+                  </span>
+                </span>
+              </label>
+            ) : null}
+
             <section
               ref={agentSectionRef}
               className="rounded-lg border border-border bg-surface-elevated/40"
@@ -251,13 +273,16 @@ export function McpServerDialog(props: {
                 <div>
                   <h3 className="text-sm font-medium text-text-primary">Enable for specialists</h3>
                   <p className="mt-1 text-xs text-text-secondary">
-                    Assign this MCP to selected specialists using the same capability update flow as
-                    Specialist Editor.
+                    {enableForAll && props.mode === "create"
+                      ? "All active specialists will receive access when this server is created."
+                      : "Assign this MCP to selected specialists using the same capability update flow as Specialist Editor."}
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-3">
                   <span className="text-xs text-text-secondary">
-                    {selectedAgentIds.length} selected
+                    {enableForAll && props.mode === "create"
+                      ? `All ${props.agents.length} selected`
+                      : `${selectedAgentIds.length} selected`}
                   </span>
                   <ChevronIcon expanded={agentsExpanded} />
                 </div>
@@ -290,6 +315,7 @@ export function McpServerDialog(props: {
                             <input
                               aria-label={agent.name}
                               checked={selected}
+                              disabled={enableForAll && props.mode === "create"}
                               onChange={() => toggleAgentSelection(agent.id)}
                               type="checkbox"
                             />
@@ -347,6 +373,7 @@ export function McpServerDialog(props: {
       const input = {
         name: toMcpServerName(form.name),
         ...(props.mode === "create" ? { enabled: true } : {}),
+        enableForAll,
         agentIds: selectedAgentIds,
         config:
           form.transport === "stdio"
