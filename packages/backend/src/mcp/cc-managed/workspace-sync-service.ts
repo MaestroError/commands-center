@@ -45,15 +45,15 @@ export async function syncCcManagedMcpSpecialistWorkspaces(options: {
   });
   // Archived specialists are never executed and archiving is one-way, so their
   // workspaces have no reader. Rewriting them on every boot is pure risk.
-  const rows = (await options.db.query.agents.findMany()).filter(
-    (row) => row.status !== "archived",
-  );
+  const rows = await options.db.query.agents.findMany({
+    where: (table, operators) => operators.eq(table.status, "active"),
+  });
   let updatedCount = 0;
   let failedCount = 0;
 
   for (const row of rows) {
     // This runs on the boot path. One unsyncable specialist must degrade to a
-    // logged warning, never to a server that refuses to start.
+    // logged failure, never to a server that refuses to start.
     try {
       const workspacePath = resolveSpecialistWorkspacePath({
         config: options.config,
