@@ -7,7 +7,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { AppDb } from "../../../src/db/client";
 import { agents } from "../../../src/db/schema/index";
 import { CC_DEFAULT_INTERACTIVE_TOOL_CALL_TIMEOUT_MS } from "../../../src/mcp/cc-managed/live-request-timeouts";
-import { syncCcManagedMcpSpecialistWorkspaces } from "../../../src/mcp/cc-managed/workspace-sync-service";
+import {
+  isConfigUpToDate,
+  syncCcManagedMcpSpecialistWorkspaces,
+} from "../../../src/mcp/cc-managed/workspace-sync-service";
 import { resolveSpecialistWorkspacePath } from "../../../src/services/specialist-workspace";
 import { createTestDatabase } from "../../helpers/db";
 
@@ -61,7 +64,7 @@ async function writeLibrarySkill(root: string, slug: string): Promise<void> {
 }
 
 describe("syncCcManagedMcpSpecialistWorkspaces", () => {
-  it("writes workspace config, skips when up to date, and rewrites when config drifts", async () => {
+  it("writes a bounded OpenAI header timeout and rewrites config drift", async () => {
     const testDb = await createTestDatabase();
     disposers.push(() => testDb.cleanup());
     await insertAgent(testDb.client.db, "sync-one");
@@ -77,9 +80,9 @@ describe("syncCcManagedMcpSpecialistWorkspaces", () => {
       slug: "sync-one",
       status: "active",
     });
-    expect(
-      JSON.parse(await readFile(join(workspacePath, "opencode.jsonc"), "utf8")),
-    ).toHaveProperty("permission");
+    const written = JSON.parse(await readFile(join(workspacePath, "opencode.jsonc"), "utf8"));
+    expect(written).toHaveProperty("permission");
+    expect(written).toHaveProperty("provider.openai.options.headerTimeout", 60_000);
 
     // Corrupt the config so the next sync detects drift and rewrites it.
     await mkdir(workspacePath, { recursive: true });
@@ -93,6 +96,113 @@ describe("syncCcManagedMcpSpecialistWorkspaces", () => {
     expect(rewrite).toBe(1);
     const rewritten = JSON.parse(await readFile(join(workspacePath, "opencode.jsonc"), "utf8"));
     expect(rewritten).toHaveProperty("permission");
+  });
+
+  it("recognizes an unchanged managed provider timeout as current", () => {
+    const config = {
+      $schema: "https://opencode.ai/config.json",
+      model: "openai/gpt-4.1",
+      provider: { openai: { options: { headerTimeout: 60_000 } } },
+      mcp: {},
+      permission: {
+        cc_default_set_task_result: "deny",
+        cc_default_add_task_artifact: "deny",
+        cc_default_mark_needs_human_review: "deny",
+      },
+    };
+
+    expect(isConfigUpToDate(config, {})).toBe(true);
+    expect(
+      isConfigUpToDate(
+        { ...config, provider: { openai: { options: { headerTimeout: 10_000 } } } },
+        {},
+      ),
+    ).toBe(false);
+  });
+
+  it("treats an incomplete managed config as drift", () => {
+    const config = {
+      $schema: "https://opencode.ai/config.json",
+      model: "openai/gpt-4.1",
+      provider: { openai: { options: { headerTimeout: 60_000 } } },
+      mcp: {},
+      permission: {
+        cc_default_set_task_result: "deny",
+        cc_default_add_task_artifact: "deny",
+        cc_default_mark_needs_human_review: "deny",
+      },
+    };
+    const missingSchema = {
+      model: config.model,
+      provider: config.provider,
+      mcp: config.mcp,
+      permission: config.permission,
+    };
+    const missingModel = {
+      $schema: config.$schema,
+      provider: config.provider,
+      mcp: config.mcp,
+      permission: config.permission,
+    };
+
+    expect(isConfigUpToDate(missingSchema, {})).toBe(false);
+    expect(isConfigUpToDate(missingModel, {})).toBe(false);
+  });
+
+  it("rewrites a workspace whose OpenAI header timeout is missing or stale", async () => {
+    const testDb = await createTestDatabase();
+    disposers.push(() => testDb.cleanup());
+    await insertAgent(testDb.client.db, "sync-openai-timeout");
+
+    await syncCcManagedMcpSpecialistWorkspaces({
+      db: testDb.client.db,
+      config: testDb.config,
+      logger,
+    });
+    const workspacePath = resolveSpecialistWorkspacePath({
+      config: testDb.config,
+      slug: "sync-openai-timeout",
+      status: "active",
+    });
+    const configPath = join(workspacePath, "opencode.jsonc");
+    const written = JSON.parse(await readFile(configPath, "utf8")) as {
+      provider: { openai: { options: { headerTimeout?: number } } };
+    };
+
+    delete written.provider.openai.options.headerTimeout;
+    await writeFile(configPath, JSON.stringify(written, null, 2), "utf8");
+
+    const missingRewrite = await syncCcManagedMcpSpecialistWorkspaces({
+      db: testDb.client.db,
+      config: testDb.config,
+      logger,
+    });
+    expect(missingRewrite).toBe(1);
+
+    const rewritten = JSON.parse(await readFile(configPath, "utf8")) as {
+      model: string;
+      provider: { openai: { options: { headerTimeout: number } } };
+      mcp: Record<string, unknown>;
+      permission: Record<string, unknown>;
+    };
+    expect(rewritten.model).toBe("openai/gpt-4.1");
+    expect(rewritten.provider.openai.options.headerTimeout).toBe(60_000);
+    expect(rewritten.mcp).toBeDefined();
+    expect(rewritten.permission).toBeDefined();
+
+    rewritten.provider.openai.options.headerTimeout = 10_000;
+    await writeFile(configPath, JSON.stringify(rewritten, null, 2), "utf8");
+
+    const staleRewrite = await syncCcManagedMcpSpecialistWorkspaces({
+      db: testDb.client.db,
+      config: testDb.config,
+      logger,
+    });
+    expect(staleRewrite).toBe(1);
+    const restored = JSON.parse(await readFile(configPath, "utf8")) as {
+      provider: { openai: { options: { headerTimeout: number } } };
+    };
+    expect(restored.provider.openai.options.headerTimeout).toBe(60_000);
   });
 
   it("rewrites a workspace whose MCP tool-call timeout is stale", async () => {

@@ -83,6 +83,11 @@ describe("OPENCODE_WORKSPACE_CONTRACT", () => {
     expect(JSON.parse(rendered.configJsonc)).toEqual({
       $schema: "https://opencode.ai/config.json",
       model: "openai/gpt-4.1",
+      provider: {
+        openai: {
+          options: { headerTimeout: 60_000 },
+        },
+      },
       mcp: {
         github: { enabled: true },
         cc_app: {
@@ -105,6 +110,18 @@ describe("OPENCODE_WORKSPACE_CONTRACT", () => {
     });
 
     expect(() => validateOpenCodeWorkspace(rendered)).not.toThrow();
+    const staleConfig = JSON.parse(rendered.configJsonc) as {
+      provider: { openai: { options: { headerTimeout: number } } };
+    };
+
+    staleConfig.provider.openai.options.headerTimeout = 10_000;
+
+    expect(() =>
+      validateOpenCodeWorkspace({
+        ...rendered,
+        configJsonc: `${JSON.stringify(staleConfig, null, 2)}\n`,
+      }),
+    ).toThrow();
   });
 
   it("omits workspace boundaries from rendered specialist rules", () => {
@@ -186,6 +203,11 @@ describe("OPENCODE_WORKSPACE_CONTRACT", () => {
     expect(JSON.parse(rendered.configJsonc)).toEqual({
       $schema: "https://opencode.ai/config.json",
       model: "openai/gpt-4.1",
+      provider: {
+        openai: {
+          options: { headerTimeout: 60_000 },
+        },
+      },
       mcp: {
         github: { enabled: false },
       },

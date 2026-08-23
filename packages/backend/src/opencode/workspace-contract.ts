@@ -21,6 +21,11 @@ const TASK_RUN_TOOL_PERMISSION_DENIES = {
 const permissionActionSchema = z.enum(["allow", "ask", "deny"]);
 const permissionRuleSchema = z.record(z.string().min(1), permissionActionSchema);
 const workspaceMcpEnabledSchema = z.object({ enabled: z.boolean() }).strict();
+const workspaceOpenAiProviderSchema = z
+  .object({
+    options: z.object({ headerTimeout: z.literal(60_000) }).strict(),
+  })
+  .strict();
 const workspaceRemoteMcpSchema = z
   .object({
     type: z.literal("remote"),
@@ -63,6 +68,7 @@ const workspaceConfigSchema = z
   .object({
     $schema: z.literal(OPENCODE_CONFIG_SCHEMA_URL),
     model: z.string().trim().min(1),
+    provider: z.object({ openai: workspaceOpenAiProviderSchema }).strict(),
     mcp: z
       .record(z.string().min(1), z.union([workspaceMcpEnabledSchema, workspaceRemoteMcpSchema]))
       .default({}),
@@ -264,6 +270,11 @@ export function renderOpenCodeWorkspace(input: OpenCodeWorkspaceInput): {
   const config = workspaceConfigSchema.parse({
     $schema: OPENCODE_CONFIG_SCHEMA_URL,
     model: input.defaultModel,
+    provider: {
+      openai: {
+        options: { headerTimeout: 60_000 },
+      },
+    },
     mcp: {
       ...Object.fromEntries(
         (input.capabilities.mcpServers ?? []).map((server) => [
@@ -308,6 +319,10 @@ export function validateOpenCodeWorkspace(rendered: {
 }): void {
   parseRulesMarkdown(rendered.rulesMarkdown);
   workspaceConfigSchema.parse(JSON.parse(rendered.configJsonc));
+}
+
+export function isOpenCodeWorkspaceConfigValid(config: unknown): boolean {
+  return workspaceConfigSchema.safeParse(config).success;
 }
 
 export function parseRulesMarkdown(markdown: string): z.infer<typeof workspaceRulesSchema> {

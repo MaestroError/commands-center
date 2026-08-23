@@ -19,6 +19,7 @@ import { createCcManagedMcpToolAccessService } from "./tool-access-service.js";
 import { createCcManagedMcpWorkspaceEntryService } from "./workspace-entry-service.js";
 import {
   isManagedSkillsManifestCurrent,
+  isOpenCodeWorkspaceConfigValid,
   writeOpenCodeWorkspace,
 } from "../../opencode/workspace-contract.js";
 
@@ -130,17 +131,37 @@ async function readWorkspaceConfig(workspacePath: string): Promise<Record<string
   }
 }
 
-function isConfigUpToDate(
+export function isConfigUpToDate(
   config: Record<string, unknown>,
   nextEntries: Record<
     string,
     { url: string; headers: Record<string, string>; enabled: boolean; timeout?: number }
   >,
 ): boolean {
+  if (!isOpenCodeWorkspaceConfigValid(config)) {
+    return false;
+  }
+
   const mcp = config["mcp"];
   const permission = config["permission"];
+  const openaiProvider =
+    config["provider"] && typeof config["provider"] === "object"
+      ? (config["provider"] as Record<string, unknown>)["openai"]
+      : undefined;
 
-  if (!mcp || typeof mcp !== "object" || !permission || typeof permission !== "object") {
+  if (
+    !mcp ||
+    typeof mcp !== "object" ||
+    !permission ||
+    typeof permission !== "object" ||
+    !openaiProvider ||
+    typeof openaiProvider !== "object" ||
+    (openaiProvider as Record<string, unknown>)["options"] === null ||
+    typeof (openaiProvider as Record<string, unknown>)["options"] !== "object" ||
+    ((openaiProvider as Record<string, unknown>)["options"] as Record<string, unknown>)[
+      "headerTimeout"
+    ] !== 60_000
+  ) {
     return false;
   }
 
