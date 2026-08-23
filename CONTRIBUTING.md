@@ -126,6 +126,10 @@ CCENTER_PACKAGE_SPEC="$(ls "$PWD"/packages/cli/commandscenter-*.tgz | tail -n 1)
 
 ## Git Workflow
 
+### Integration branches
+
+Automated maintenance branches start from `staging` and open draft pull requests back to `staging`. After review and required checks, a human merges them into `staging`. A weekly draft promotion pull request integrates `staging` into `main`; a human reviews and merges that promotion. Direct pushes to either protected branch are not part of this workflow.
+
 ### Pre-commit hooks
 
 Husky + lint-staged run automatically on every commit:
