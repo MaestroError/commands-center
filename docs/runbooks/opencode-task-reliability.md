@@ -64,6 +64,20 @@ Use the checks above to separate these cases:
   `/global/health` stays healthy. The session stops producing new messages even
   though it may still report `busy`.
 
+## OpenAI Response Header Timeout
+
+`Provider response headers timed out after 10000ms` means OpenAI did not return
+response headers before its provider deadline. It does not establish that a PDF
+export, tool call, or CommandsCenter failed. Long image- or tool-heavy chats can
+need more provider processing time before OpenAI responds.
+
+Switching OpenAI models does not change that provider timeout, and restarting
+CommandsCenter or OpenCode alone reloads the same persisted chat context without
+reducing it. Apply the managed workspace configuration update, then restart or
+reload OpenCode so it reads the bounded 60-second header timeout. For a chat
+already affected, compact the conversation if compaction can complete, or start
+a fresh chat when preserving its current context is not required.
+
 ## Task Run Monitor Timeouts
 
 A `running` task is finalized by the async monitor through one of:
