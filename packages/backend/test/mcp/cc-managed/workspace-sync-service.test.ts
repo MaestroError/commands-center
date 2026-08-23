@@ -20,8 +20,13 @@ afterEach(async () => {
   }
 });
 
-async function insertAgent(db: AppDb, slug: string): Promise<void> {
+async function insertAgent(
+  db: AppDb,
+  slug: string,
+  options: { status?: "active" | "archived"; workspaceSkills?: string[] } = {},
+): Promise<void> {
   const timestamp = new Date();
+  const status = options.status ?? "active";
   await db.insert(agents).values({
     id: `agent-${randomUUID()}`,
     slug,
@@ -30,10 +35,10 @@ async function insertAgent(db: AppDb, slug: string): Promise<void> {
     instructions: "Be useful.",
     default_model: "openai/gpt-4.1",
     icon_path: null,
-    status: "active",
+    status,
     capabilities_json: JSON.stringify({
       builtInSkills: [],
-      workspaceSkills: [],
+      workspaceSkills: options.workspaceSkills ?? [],
       customTools: [],
       mcpServers: [],
       toolPermissions: [],
@@ -42,8 +47,17 @@ async function insertAgent(db: AppDb, slug: string): Promise<void> {
     }),
     created_at: timestamp,
     updated_at: timestamp,
-    archived_at: null,
+    archived_at: status === "archived" ? timestamp : null,
   });
+}
+
+async function writeLibrarySkill(root: string, slug: string): Promise<void> {
+  await mkdir(join(root, slug), { recursive: true });
+  await writeFile(
+    join(root, slug, "SKILL.md"),
+    `---\nname: ${slug}\ndescription: ${slug} helper\n---\n\nBody.\n`,
+    "utf8",
+  );
 }
 
 describe("syncCcManagedMcpSpecialistWorkspaces", () => {
@@ -186,5 +200,78 @@ describe("syncCcManagedMcpSpecialistWorkspaces", () => {
 
     expect(updatedCount).toBe(1);
     await expect(readFile(manifestPath, "utf8")).resolves.toContain('"version": 1');
+  });
+
+  it("does not sync archived specialists", async () => {
+    const testDb = await createTestDatabase();
+    disposers.push(() => testDb.cleanup());
+    await insertAgent(testDb.client.db, "sync-archived", { status: "archived" });
+
+    const updatedCount = await syncCcManagedMcpSpecialistWorkspaces({
+      db: testDb.client.db,
+      config: testDb.config,
+      logger,
+    });
+
+    expect(updatedCount).toBe(0);
+    const archivedPath = resolveSpecialistWorkspacePath({
+      config: testDb.config,
+      slug: "sync-archived",
+      status: "archived",
+    });
+    await expect(readFile(join(archivedPath, "opencode.jsonc"), "utf8")).rejects.toThrow();
+  });
+
+  it("boots past a specialist whose library skill was deleted, keeping its copy", async () => {
+    const testDb = await createTestDatabase();
+    disposers.push(() => testDb.cleanup());
+    const libraryRoot = testDb.config.paths.subdirectories.skills;
+    await writeLibrarySkill(libraryRoot, "brief-interpreter");
+    await insertAgent(testDb.client.db, "designer-agent", {
+      workspaceSkills: ["brief-interpreter"],
+    });
+    await insertAgent(testDb.client.db, "healthy-agent");
+
+    await syncCcManagedMcpSpecialistWorkspaces({
+      db: testDb.client.db,
+      config: testDb.config,
+      logger,
+    });
+
+    // The library skill is deleted while the specialist still selects it.
+    await rm(join(libraryRoot, "brief-interpreter"), { recursive: true, force: true });
+    const designerPath = resolveSpecialistWorkspacePath({
+      config: testDb.config,
+      slug: "designer-agent",
+      status: "active",
+    });
+    await rm(join(designerPath, "opencode.jsonc"), { force: true });
+
+    // The sync must complete rather than throwing out of the boot path.
+    await expect(
+      syncCcManagedMcpSpecialistWorkspaces({
+        db: testDb.client.db,
+        config: testDb.config,
+        logger,
+      }),
+    ).resolves.toBeGreaterThan(0);
+
+    // The specialist's own copy is the last one left; it must survive.
+    await expect(
+      readFile(join(designerPath, ".opencode", "skills", "brief-interpreter", "SKILL.md"), "utf8"),
+    ).resolves.toContain("brief-interpreter");
+    await expect(readFile(join(designerPath, "opencode.jsonc"), "utf8")).resolves.toContain(
+      "permission",
+    );
+
+    // The unrelated specialist is synced too, not skipped by an early abort.
+    const healthyPath = resolveSpecialistWorkspacePath({
+      config: testDb.config,
+      slug: "healthy-agent",
+      status: "active",
+    });
+    await expect(readFile(join(healthyPath, "opencode.jsonc"), "utf8")).resolves.toContain(
+      "permission",
+    );
   });
 });

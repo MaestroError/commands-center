@@ -122,13 +122,22 @@ export type OpenCodeWorkspaceInput = {
   appMcpEntries?: Record<string, z.infer<typeof workspaceRemoteMcpSchema>>;
 };
 
-type ManagedSkillSource = z.infer<typeof managedSkillSourceSchema>;
+export type ManagedSkillSource = z.infer<typeof managedSkillSourceSchema>;
 type ManagedSkillsManifest = z.infer<typeof managedSkillsManifestSchema>;
 type ManagedSkillManifestEntry = z.infer<typeof managedSkillsManifestSchema>["skills"][number];
 type DesiredManagedSkillSelection = ManagedSkillManifestEntry & {
   requestedSlug: string;
 };
 type DesiredManagedSkill = DesiredManagedSkillSelection & { root: string };
+
+export type MissingSkillPolicy = "error" | "retain";
+
+export type MissingManagedSkill = {
+  slug: string;
+  requestedSlug: string;
+  source: ManagedSkillSource;
+  message: string;
+};
 
 export function getOpenCodeWorkspacePaths(root: string): {
   root: string;
@@ -196,6 +205,18 @@ export async function writeOpenCodeWorkspace(options: {
    * hand-edited rules are not clobbered unless the caller opts in.
    */
   writeRules?: boolean;
+  /**
+   * What to do when a selected skill's source directory is gone.
+   *
+   * - `error` (default): throw. Correct for user-initiated edits, where the
+   *   selection is being made right now and a bad slug should be rejected.
+   * - `retain`: keep the already-copied skill in the workspace, report it via
+   *   `onMissingSkill`, and carry on. Correct for bulk/background reconcile,
+   *   where a deleted library skill must not take unrelated work down with it.
+   */
+  missingSkillPolicy?: MissingSkillPolicy;
+  /** Called once per skill whose source is missing, under either policy. */
+  onMissingSkill?: (skill: MissingManagedSkill) => void;
 }): Promise<void> {
   const paths = getOpenCodeWorkspacePaths(options.workspacePath);
   const rendered = renderOpenCodeWorkspace(options.input);
@@ -207,11 +228,21 @@ export async function writeOpenCodeWorkspace(options: {
     skillRoot: options.skillRoot,
     workspaceSkillRoot: options.workspaceSkillRoot,
   });
-  await validateManagedSkillSources(desiredSkills);
+  const missingSkills = await collectMissingManagedSkillSources(desiredSkills);
+
+  for (const missing of missingSkills) {
+    options.onMissingSkill?.(missing);
+  }
+
+  if (missingSkills.length > 0 && (options.missingSkillPolicy ?? "error") === "error") {
+    throw new Error(missingSkills[0]!.message);
+  }
+
+  const missingSlugs = new Set(missingSkills.map((skill) => skill.slug));
 
   await mkdir(paths.root, { recursive: true });
   await mkdir(paths.skillsDir, { recursive: true });
-  await reconcileManagedSkills(paths.skillsDir, desiredSkills);
+  await reconcileManagedSkills(paths.skillsDir, desiredSkills, missingSlugs);
 
   if (options.writeRules !== false) {
     await writeFile(paths.rulesFile, rendered.rulesMarkdown, "utf8");
@@ -440,35 +471,53 @@ function resolveDesiredManagedSkillSelections(
   return desiredSkills;
 }
 
-async function validateManagedSkillSources(skills: DesiredManagedSkill[]): Promise<void> {
+async function collectMissingManagedSkillSources(
+  skills: DesiredManagedSkill[],
+): Promise<MissingManagedSkill[]> {
+  const missing: MissingManagedSkill[] = [];
+
   for (const skill of skills) {
     try {
       await validateSkillDirectory(join(skill.root, skill.slug), skill.slug);
     } catch (error) {
-      if (isMissingError(error)) {
-        const aliasNote = skill.requestedSlug === skill.slug ? "" : ` It maps to '${skill.slug}'.`;
-
-        throw new Error(
-          `${capitalize(skill.source)} skill '${skill.requestedSlug}' was not found.${aliasNote} Update this specialist's skill capabilities or restore the missing skill directory.`,
-        );
+      // Only a missing source is recoverable. A malformed SKILL.md still throws:
+      // that is a broken skill, not an absent one, and silently retaining it
+      // would hide real corruption.
+      if (!isMissingError(error)) {
+        throw error;
       }
 
-      throw error;
+      const aliasNote = skill.requestedSlug === skill.slug ? "" : ` It maps to '${skill.slug}'.`;
+
+      missing.push({
+        slug: skill.slug,
+        requestedSlug: skill.requestedSlug,
+        source: skill.source,
+        message: `${capitalize(skill.source)} skill '${skill.requestedSlug}' was not found.${aliasNote} Update this specialist's skill capabilities or restore the missing skill directory.`,
+      });
     }
   }
+
+  return missing;
 }
 
 async function reconcileManagedSkills(
   skillsDir: string,
   desiredSkills: DesiredManagedSkill[],
+  missingSlugs: ReadonlySet<string> = new Set(),
 ): Promise<void> {
   const previousSkills = (await readManagedSkillsManifest(skillsDir))?.skills ?? [];
+  // Skills whose source is gone stay in `desiredSlugs`, so the prune loop below
+  // leaves the already-copied workspace directory alone. That copy is often the
+  // only surviving one — deleting it here would destroy the library skill for
+  // good the first time a reconcile ran after its source was removed.
   const desiredSlugs = new Set(desiredSkills.map((skill) => skill.slug));
+  const copyableSkills = desiredSkills.filter((skill) => !missingSlugs.has(skill.slug));
 
-  await stageManagedSkills(skillsDir, desiredSkills);
+  await stageManagedSkills(skillsDir, copyableSkills);
 
   try {
-    for (const skill of desiredSkills) {
+    for (const skill of copyableSkills) {
       await replaceManagedSkill(skillsDir, skill.slug);
     }
 
@@ -479,12 +528,14 @@ async function reconcileManagedSkills(
     }
   } finally {
     await Promise.all(
-      desiredSkills.map((skill) =>
+      copyableSkills.map((skill) =>
         rm(getManagedSkillStagingPath(skillsDir, skill.slug), { recursive: true, force: true }),
       ),
     );
   }
 
+  // The manifest records the full selection, missing sources included, so the
+  // next boot sees the workspace as current instead of re-reporting it forever.
   await writeManagedSkillsManifest(
     skillsDir,
     desiredSkills.map(({ slug, source }) => ({ slug, source })),

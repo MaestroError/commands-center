@@ -30,10 +30,12 @@ import {
   renderOpenCodeWorkspace,
   validateOpenCodeWorkspace,
   writeOpenCodeWorkspace,
+  type MissingManagedSkill,
+  type MissingSkillPolicy,
 } from "../../src/opencode/workspace-contract";
 import { createTestDatabase } from "../helpers/db";
 
-const { mkdir, readFile, readdir, writeFile } = fsPromises;
+const { mkdir, readFile, readdir, rm, writeFile } = fsPromises;
 
 describe("OPENCODE_WORKSPACE_CONTRACT", () => {
   it("documents the canonical workspace file layout in one place", () => {
@@ -675,6 +677,118 @@ describe("OPENCODE_WORKSPACE_CONTRACT", () => {
     }
   });
 
+  it("retains the copied skill and reports it instead of throwing under the retain policy", async () => {
+    const testDb = await createTestDatabase();
+    const skillRoot = join(testDb.cwd, "builtin-skills");
+    const workspaceSkillRoot = testDb.config.paths.subdirectories.skills;
+    const workspacePath = join(testDb.config.paths.subdirectories.specialists, "designer-agent");
+    const skillsDir = getOpenCodeWorkspacePaths(workspacePath).skillsDir;
+
+    try {
+      await writeTestSkill(workspaceSkillRoot, "brief-interpreter", "Interpret design briefs");
+      await writeTestWorkspace({
+        workspacePath,
+        skillRoot,
+        workspaceSkillRoot,
+        workspaceSkills: ["brief-interpreter"],
+      });
+
+      // The library copy is deleted after the specialist already has its copy.
+      await rm(join(workspaceSkillRoot, "brief-interpreter"), { recursive: true, force: true });
+
+      const reported: MissingManagedSkill[] = [];
+
+      await expect(
+        writeTestWorkspace({
+          workspacePath,
+          skillRoot,
+          workspaceSkillRoot,
+          workspaceSkills: ["brief-interpreter"],
+          missingSkillPolicy: "retain",
+          onMissingSkill: (skill) => reported.push(skill),
+        }),
+      ).resolves.toBeUndefined();
+
+      expect(reported).toEqual([
+        {
+          slug: "brief-interpreter",
+          requestedSlug: "brief-interpreter",
+          source: "workspace",
+          message:
+            "Workspace skill 'brief-interpreter' was not found. Update this specialist's skill capabilities or restore the missing skill directory.",
+        },
+      ]);
+      // The surviving copy is the last one in existence: it must not be pruned.
+      await expect(
+        readFile(join(skillsDir, "brief-interpreter", "SKILL.md"), "utf8"),
+      ).resolves.toContain("Interpret design briefs");
+      await expect(readManagedManifest(skillsDir)).resolves.toEqual({
+        version: 1,
+        skills: [{ slug: "brief-interpreter", source: "workspace" }],
+      });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("still syncs the healthy skills when one source is missing", async () => {
+    const testDb = await createTestDatabase();
+    const skillRoot = join(testDb.cwd, "builtin-skills");
+    const workspaceSkillRoot = testDb.config.paths.subdirectories.skills;
+    const workspacePath = join(testDb.config.paths.subdirectories.specialists, "designer-agent");
+    const skillsDir = getOpenCodeWorkspacePaths(workspacePath).skillsDir;
+
+    try {
+      await writeTestSkill(workspaceSkillRoot, "brief-interpreter", "Interpret design briefs");
+      await writeTestSkill(workspaceSkillRoot, "layout-review", "Original layout review");
+      await writeTestWorkspace({
+        workspacePath,
+        skillRoot,
+        workspaceSkillRoot,
+        workspaceSkills: ["brief-interpreter", "layout-review"],
+      });
+
+      await rm(join(workspaceSkillRoot, "brief-interpreter"), { recursive: true, force: true });
+      await writeTestSkill(workspaceSkillRoot, "layout-review", "Updated layout review");
+
+      await writeTestWorkspace({
+        workspacePath,
+        skillRoot,
+        workspaceSkillRoot,
+        workspaceSkills: ["brief-interpreter", "layout-review"],
+        missingSkillPolicy: "retain",
+      });
+
+      await expect(
+        readFile(join(skillsDir, "layout-review", "SKILL.md"), "utf8"),
+      ).resolves.toContain("Updated layout review");
+      await expect(
+        readFile(join(skillsDir, "brief-interpreter", "SKILL.md"), "utf8"),
+      ).resolves.toContain("Interpret design briefs");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("keeps throwing on a missing source under the default policy", async () => {
+    const testDb = await createTestDatabase();
+    const skillRoot = join(testDb.cwd, "builtin-skills");
+    const workspacePath = join(testDb.config.paths.subdirectories.specialists, "writer-agent");
+
+    try {
+      await expect(
+        writeTestWorkspace({
+          workspacePath,
+          skillRoot,
+          workspaceSkillRoot: testDb.config.paths.subdirectories.skills,
+          builtInSkills: ["missing-skill"],
+        }),
+      ).rejects.toThrow("Built-in skill 'missing-skill' was not found");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("reports missing built-in skills with an actionable error", async () => {
     const testDb = await createTestDatabase();
 
@@ -769,6 +883,8 @@ async function writeTestWorkspace(options: {
   workspaceSkillRoot: string;
   builtInSkills?: string[];
   workspaceSkills?: string[];
+  missingSkillPolicy?: MissingSkillPolicy;
+  onMissingSkill?: (skill: MissingManagedSkill) => void;
 }): Promise<void> {
   const input: OpenCodeWorkspaceInput = {
     name: "Writer",
@@ -791,6 +907,8 @@ async function writeTestWorkspace(options: {
     input,
     skillRoot: options.skillRoot,
     workspaceSkillRoot: options.workspaceSkillRoot,
+    missingSkillPolicy: options.missingSkillPolicy,
+    onMissingSkill: options.onMissingSkill,
   });
 }
 

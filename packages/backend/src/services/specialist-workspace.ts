@@ -8,6 +8,8 @@ import { resolveBuiltInSkillsRoot } from "../lib/builtin-skills.js";
 import {
   listBuiltInSkills as listContractBuiltInSkills,
   writeOpenCodeWorkspace,
+  type MissingManagedSkill,
+  type MissingSkillPolicy,
 } from "../opencode/workspace-contract.js";
 
 export type SpecialistWorkspaceInput = {
@@ -49,6 +51,9 @@ export async function prepareWorkspace(options: {
   workspaceSkillRoot?: string;
   /** Whether to (re)write AGENTS.md. Defaults to true. */
   writeRules?: boolean;
+  /** See `writeOpenCodeWorkspace`. Defaults to `error`. */
+  missingSkillPolicy?: MissingSkillPolicy;
+  onMissingSkill?: (skill: MissingManagedSkill) => void;
 }): Promise<void> {
   await writeOpenCodeWorkspace({
     workspacePath: options.workspacePath,
@@ -56,6 +61,8 @@ export async function prepareWorkspace(options: {
     skillRoot: options.skillRoot ?? getBuiltInSkillRoot(options.config),
     workspaceSkillRoot: options.workspaceSkillRoot ?? getWorkspaceSkillRoot(options.config),
     writeRules: options.writeRules,
+    missingSkillPolicy: options.missingSkillPolicy,
+    onMissingSkill: options.onMissingSkill,
   });
 }
 
