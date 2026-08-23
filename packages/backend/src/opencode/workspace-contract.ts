@@ -321,6 +321,10 @@ export function validateOpenCodeWorkspace(rendered: {
   workspaceConfigSchema.parse(JSON.parse(rendered.configJsonc));
 }
 
+export function isOpenCodeWorkspaceConfigValid(config: unknown): boolean {
+  return workspaceConfigSchema.safeParse(config).success;
+}
+
 export function parseRulesMarkdown(markdown: string): z.infer<typeof workspaceRulesSchema> {
   const lines = markdown.trim().split("\n");
   const title = lines[0]?.match(/^#\s+(.+)$/)?.[1]?.trim();

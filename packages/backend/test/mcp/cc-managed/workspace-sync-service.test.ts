@@ -100,6 +100,8 @@ describe("syncCcManagedMcpSpecialistWorkspaces", () => {
 
   it("recognizes an unchanged managed provider timeout as current", () => {
     const config = {
+      $schema: "https://opencode.ai/config.json",
+      model: "openai/gpt-4.1",
       provider: { openai: { options: { headerTimeout: 60_000 } } },
       mcp: {},
       permission: {
@@ -110,7 +112,41 @@ describe("syncCcManagedMcpSpecialistWorkspaces", () => {
     };
 
     expect(isConfigUpToDate(config, {})).toBe(true);
-    expect(isConfigUpToDate(config, {})).toBe(true);
+    expect(
+      isConfigUpToDate(
+        { ...config, provider: { openai: { options: { headerTimeout: 10_000 } } } },
+        {},
+      ),
+    ).toBe(false);
+  });
+
+  it("treats an incomplete managed config as drift", () => {
+    const config = {
+      $schema: "https://opencode.ai/config.json",
+      model: "openai/gpt-4.1",
+      provider: { openai: { options: { headerTimeout: 60_000 } } },
+      mcp: {},
+      permission: {
+        cc_default_set_task_result: "deny",
+        cc_default_add_task_artifact: "deny",
+        cc_default_mark_needs_human_review: "deny",
+      },
+    };
+    const missingSchema = {
+      model: config.model,
+      provider: config.provider,
+      mcp: config.mcp,
+      permission: config.permission,
+    };
+    const missingModel = {
+      $schema: config.$schema,
+      provider: config.provider,
+      mcp: config.mcp,
+      permission: config.permission,
+    };
+
+    expect(isConfigUpToDate(missingSchema, {})).toBe(false);
+    expect(isConfigUpToDate(missingModel, {})).toBe(false);
   });
 
   it("rewrites a workspace whose OpenAI header timeout is missing or stale", async () => {

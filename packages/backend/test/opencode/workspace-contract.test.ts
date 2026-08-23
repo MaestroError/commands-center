@@ -110,10 +110,16 @@ describe("OPENCODE_WORKSPACE_CONTRACT", () => {
     });
 
     expect(() => validateOpenCodeWorkspace(rendered)).not.toThrow();
+    const staleConfig = JSON.parse(rendered.configJsonc) as {
+      provider: { openai: { options: { headerTimeout: number } } };
+    };
+
+    staleConfig.provider.openai.options.headerTimeout = 10_000;
+
     expect(() =>
       validateOpenCodeWorkspace({
         ...rendered,
-        configJsonc: rendered.configJsonc.replace("60000", "10000"),
+        configJsonc: `${JSON.stringify(staleConfig, null, 2)}\n`,
       }),
     ).toThrow();
   });

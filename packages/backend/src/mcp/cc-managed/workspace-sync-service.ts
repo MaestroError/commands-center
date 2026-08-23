@@ -19,6 +19,7 @@ import { createCcManagedMcpToolAccessService } from "./tool-access-service.js";
 import { createCcManagedMcpWorkspaceEntryService } from "./workspace-entry-service.js";
 import {
   isManagedSkillsManifestCurrent,
+  isOpenCodeWorkspaceConfigValid,
   writeOpenCodeWorkspace,
 } from "../../opencode/workspace-contract.js";
 
@@ -137,6 +138,10 @@ export function isConfigUpToDate(
     { url: string; headers: Record<string, string>; enabled: boolean; timeout?: number }
   >,
 ): boolean {
+  if (!isOpenCodeWorkspaceConfigValid(config)) {
+    return false;
+  }
+
   const mcp = config["mcp"];
   const permission = config["permission"];
   const openaiProvider =
