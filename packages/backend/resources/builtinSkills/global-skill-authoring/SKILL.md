@@ -18,6 +18,25 @@ Use this skill when creating or updating reusable workspace skills for CommandsC
 - CommandsCenter treats `.cc/workspace/skills/` as the source of truth.
 - Assigned workspace skill directories under a specialist's `.opencode/skills/` folder are generated copies. Other unassigned directories there may be durable specialist-local skills. Edit the workspace skill source, not its generated assigned copy.
 
+## How assigned copies track the source
+
+The workspace skill under `.cc/workspace/skills/<slug>/` stays authoritative for
+every specialist assigned to it:
+
+- Editing the source rewrites each assigned specialist's copy on the next sync.
+  Local edits to an assigned copy under `.opencode/skills/<slug>/` are lost.
+- Deleting the source does **not** remove the copies. Assigned specialists keep
+  working exactly as before; CommandsCenter logs a warning and leaves each copy
+  in place. What you lose is the ability to assign that skill to any further
+  specialist.
+- Unassigning the skill from a specialist **does** delete that specialist's copy.
+  Removal follows the assignment, never the source.
+
+To give one specialist a variant it owns, do not edit its assigned copy. Either
+rename the variant to a slug that is not assigned to it — an unassigned slug is a
+durable specialist-local skill that sync never touches — or create it with
+`self-skill-authoring`. Keep the assigned slug reserved for the shared version.
+
 ## Preferred workflow
 
 1. Use the CommandsCenter skills page to create a workspace skill from a name and description.

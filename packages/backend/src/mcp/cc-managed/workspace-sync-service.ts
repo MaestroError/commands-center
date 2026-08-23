@@ -43,49 +43,73 @@ export async function syncCcManagedMcpSpecialistWorkspaces(options: {
     toolAccessService,
     registry,
   });
-  const rows = await options.db.query.agents.findMany();
+  // Archived specialists are never executed and archiving is one-way, so their
+  // workspaces have no reader. Rewriting them on every boot is pure risk.
+  const rows = (await options.db.query.agents.findMany()).filter(
+    (row) => row.status !== "archived",
+  );
   let updatedCount = 0;
+  let failedCount = 0;
 
   for (const row of rows) {
-    const workspacePath = resolveSpecialistWorkspacePath({
-      config: options.config,
-      slug: row.slug,
-      status: row.status === "archived" ? "archived" : "active",
-    });
-    const nextCapabilities = specialistCapabilitySelectionSchema.parse(
-      JSON.parse(row.capabilities_json),
-    );
-    const nextEntries = await workspaceEntryService.buildEntries({
-      slug: row.slug,
-      capabilities: nextCapabilities,
-    });
-    const workspaceInput = {
-      name: row.name,
-      role: row.role,
-      instructions: row.instructions,
-      defaultModel: row.default_model,
-      capabilities: nextCapabilities,
-      appMcpEntries: nextEntries,
-    };
-    const [currentConfig, skillsManifestCurrent] = await Promise.all([
-      readWorkspaceConfig(workspacePath),
-      isManagedSkillsManifestCurrent({ workspacePath, input: workspaceInput }),
-    ]);
+    // This runs on the boot path. One unsyncable specialist must degrade to a
+    // logged warning, never to a server that refuses to start.
+    try {
+      const workspacePath = resolveSpecialistWorkspacePath({
+        config: options.config,
+        slug: row.slug,
+        status: "active",
+      });
+      const nextCapabilities = specialistCapabilitySelectionSchema.parse(
+        JSON.parse(row.capabilities_json),
+      );
+      const nextEntries = await workspaceEntryService.buildEntries({
+        slug: row.slug,
+        capabilities: nextCapabilities,
+      });
+      const workspaceInput = {
+        name: row.name,
+        role: row.role,
+        instructions: row.instructions,
+        defaultModel: row.default_model,
+        capabilities: nextCapabilities,
+        appMcpEntries: nextEntries,
+      };
+      const [currentConfig, skillsManifestCurrent] = await Promise.all([
+        readWorkspaceConfig(workspacePath),
+        isManagedSkillsManifestCurrent({ workspacePath, input: workspaceInput }),
+      ]);
 
-    if (currentConfig && isConfigUpToDate(currentConfig, nextEntries) && skillsManifestCurrent) {
-      continue;
+      if (currentConfig && isConfigUpToDate(currentConfig, nextEntries) && skillsManifestCurrent) {
+        continue;
+      }
+
+      await writeOpenCodeWorkspace({
+        workspacePath,
+        input: workspaceInput,
+        skillRoot: getBuiltInSkillRoot(options.config),
+        workspaceSkillRoot: getWorkspaceSkillRoot(options.config),
+        // A skill removed from the library does not change how this specialist
+        // runs — its copy is already in the workspace. Report it and move on.
+        missingSkillPolicy: "retain",
+        onMissingSkill: (skill) => {
+          options.logger.warn(
+            { slug: row.slug, skill: skill.requestedSlug, source: skill.source },
+            "specialist references a missing library skill; keeping the copy already in its workspace",
+          );
+        },
+      });
+      updatedCount += 1;
+    } catch (error) {
+      failedCount += 1;
+      options.logger.error(
+        { err: error, slug: row.slug },
+        "cc-managed MCP workspace sync failed for specialist; leaving its workspace as-is",
+      );
     }
-
-    await writeOpenCodeWorkspace({
-      workspacePath,
-      input: workspaceInput,
-      skillRoot: getBuiltInSkillRoot(options.config),
-      workspaceSkillRoot: getWorkspaceSkillRoot(options.config),
-    });
-    updatedCount += 1;
   }
 
-  options.logger.info({ updatedCount }, "cc-managed MCP workspace sync completed");
+  options.logger.info({ updatedCount, failedCount }, "cc-managed MCP workspace sync completed");
   return updatedCount;
 }
 

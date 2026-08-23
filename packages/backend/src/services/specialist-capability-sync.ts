@@ -190,6 +190,9 @@ export async function rewriteAgentsForMcpChange(options: {
       },
       skillRoot: getBuiltInSkillRoot(options.config),
       workspaceSkillRoot: getWorkspaceSkillRoot(options.config),
+      // An MCP server change must not fail because some other specialist
+      // references a library skill that has since been deleted.
+      missingSkillPolicy: "retain",
     });
 
     if (typeof options.opencodeService.dispose === "function") {

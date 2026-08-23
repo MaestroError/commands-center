@@ -17,6 +17,7 @@ Use this skill when creating or updating a specialist-local OpenCode skill for t
 - Treat `.opencode/skills/` as private to this specialist. Other specialists will not receive these skills automatically.
 - CommandsCenter preserves specialist-local skill directories when it synchronizes assigned skills.
 - Choose a slug that does not match an assigned built-in or workspace skill. An explicit assignment owns that slug and CommandsCenter refreshes it from the assigned source.
+- To fork an assigned skill for this specialist only, copy it to a new unassigned slug and edit that. Editing the assigned copy in place is pointless: the next sync overwrites it from the source.
 - Use `global-skill-authoring` instead when the user wants a reusable CommandsCenter workspace skill that can be assigned to any specialist from the Skills page.
 - Do not edit `.cc/workspace/skills/` when the user asks for a self-skill.
 
