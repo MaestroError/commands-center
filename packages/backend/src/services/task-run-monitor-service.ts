@@ -252,13 +252,13 @@ export function createTaskRunMonitorService(deps: {
     }
 
     let statusType: string | undefined;
-    let statusKnown = false;
+    let statusReadSucceeded = false;
     let retryStatus: { attempt: number; message: string; next: number } | undefined;
 
     try {
       const status = await transport.getSessionStatus(run);
       statusType = status.type;
-      statusKnown = true;
+      statusReadSucceeded = true;
       handle.lastStatus = status.type;
       if (status.type === "retry") {
         retryStatus = { attempt: status.attempt, message: status.message, next: status.next };
@@ -346,17 +346,23 @@ export function createTaskRunMonitorService(deps: {
       return false;
     }
 
-    if (!statusKnown) {
+    if (!statusReadSucceeded) {
       // OpenCode status is temporarily unavailable. Do not let an existing
       // assistant message advance idle-settle detection, or the run could be
       // marked completed while OpenCode is still busy. Keep polling with backoff
-      // until status is known again (or the monitor lifetime times out).
+      // until the status request succeeds again (or the monitor lifetime times out).
       handle.idleCount = 0;
       handle.delayMs = nextMonitorDelay(handle.delayMs);
       return false;
     }
 
     if (!latestAssistant) {
+      handle.idleCount = 0;
+      handle.delayMs = config.initialPollMs;
+      return false;
+    }
+
+    if (!latestAssistant.completedAt) {
       handle.idleCount = 0;
       handle.delayMs = config.initialPollMs;
       return false;

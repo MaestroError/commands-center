@@ -299,7 +299,7 @@ describe("opencode-service", () => {
       expect(init.method).toBe("GET");
     });
 
-    it("treats a missing session status entry as idle", async () => {
+    it("treats a missing session status entry as unknown", async () => {
       fetchMock.mockResolvedValue(jsonResponse(200, { "other-session": { type: "busy" } }));
       const service = createOpenCodeService({
         client: FAKE_CLIENT,
@@ -308,7 +308,7 @@ describe("opencode-service", () => {
       });
 
       await expect(service.getSessionStatus("/work/agent-a", "sess-idle")).resolves.toEqual({
-        type: "idle",
+        type: "unknown",
       });
     });
 

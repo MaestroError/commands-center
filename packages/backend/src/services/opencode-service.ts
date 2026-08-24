@@ -126,6 +126,7 @@ const openCodePendingQuestionListSchema = z.array(openCodePendingQuestionSchema)
 export type OpenCodeSession = z.infer<typeof openCodeSessionSchema>;
 export type OpenCodeSessionMessage = z.infer<typeof openCodeMessageSchema>;
 export type OpenCodeSessionStatus = z.infer<typeof openCodeSessionStatusSchema>;
+export type OpenCodeTaskSessionStatus = OpenCodeSessionStatus | { type: "unknown" };
 export type OpenCodeSessionStatusMap = z.infer<typeof openCodeSessionStatusMapSchema>;
 export type OpenCodePendingPermission = z.infer<typeof openCodePendingPermissionSchema>;
 export type OpenCodePendingQuestion = z.infer<typeof openCodePendingQuestionSchema>;
@@ -413,7 +414,10 @@ export function createOpenCodeService(options: {
       return openCodeSessionStatusMapSchema.parse(result);
     },
 
-    async getSessionStatus(directory: string, sessionID: string): Promise<OpenCodeSessionStatus> {
+    async getSessionStatus(
+      directory: string,
+      sessionID: string,
+    ): Promise<OpenCodeTaskSessionStatus> {
       const result = await requestSessionJson({
         config: options.config,
         directory,
@@ -421,7 +425,7 @@ export function createOpenCodeService(options: {
         path: "/session/status",
       });
       const statuses = openCodeSessionStatusMapSchema.parse(result);
-      return statuses[sessionID] ?? { type: "idle" };
+      return statuses[sessionID] ?? { type: "unknown" };
     },
 
     async promptSession(input: {
