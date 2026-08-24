@@ -554,6 +554,9 @@ describe("task routes", () => {
         body: "Please double-check the docs.",
       });
       expect(reactivated?.status).toBe("running");
+      expect(Date.parse(reactivated?.startedAt ?? "")).toBeGreaterThan(
+        Date.parse(run.startedAt ?? ""),
+      );
       expect(taskAfter?.status).toBe("queued");
     } finally {
       await harness.close();
@@ -814,6 +817,7 @@ async function createTerminalRunFixture(
     .toBe("running");
 
   await harness.taskService.setRunStatus(queued.id, "completed", {
+    startedAt: "2026-06-01T06:00:00.000Z",
     completedAt: "2026-06-01T12:30:00.000Z",
     finalMessage: "Finished.",
   });
