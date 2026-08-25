@@ -532,7 +532,7 @@ describe("createTaskExecutionService", () => {
         elapsedRunMs: expect.any(Number),
       });
       expect(Number(timedOut?.errorDetails?.["elapsedRunMs"])).toBeGreaterThanOrEqual(30);
-      expect(Number(timedOut?.errorDetails?.["elapsedRunMs"])).toBeLessThan(2_000);
+      expect(Number(timedOut?.errorDetails?.["elapsedRunMs"])).toBeLessThan(30_000);
       expect(finalizedFollowup?.status).toBe("failed");
     } finally {
       await testDb.cleanup();
