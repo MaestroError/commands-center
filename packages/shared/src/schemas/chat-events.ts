@@ -57,6 +57,13 @@ const connectedEventSchema = z.object({
   properties: z.object({}),
 });
 
+const upstreamConnectedEventSchema = z.object({
+  type: z.literal("upstream.connected"),
+  properties: z.object({
+    reconnected: z.boolean(),
+  }),
+});
+
 const heartbeatEventSchema = z.object({
   type: z.literal("heartbeat"),
   properties: z.object({}),
@@ -228,6 +235,7 @@ const liveRequestCancelledEventSchema = z.object({
 
 export const chatEventSchema = z.discriminatedUnion("type", [
   connectedEventSchema,
+  upstreamConnectedEventSchema,
   heartbeatEventSchema,
   sessionStatusEventSchema,
   sessionErrorEventSchema,

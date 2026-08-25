@@ -152,6 +152,21 @@ async function* oneEvent(event: ChatEvent, signal: AbortSignal): AsyncGenerator<
   await waitForAbort(signal);
 }
 
+async function* reconnectingUpstream(
+  signal: AbortSignal,
+  reconnect: Promise<void>,
+  eventAfterReconnect?: ChatEvent,
+): AsyncGenerator<ChatEvent> {
+  yield { type: "connected", properties: {} };
+  yield { type: "upstream.connected", properties: { reconnected: false } };
+  await reconnect;
+  yield { type: "upstream.connected", properties: { reconnected: true } };
+  if (eventAfterReconnect) {
+    yield eventAfterReconnect;
+  }
+  await waitForAbort(signal);
+}
+
 describe("useConversation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -364,11 +379,11 @@ describe("useConversation", () => {
       values: {},
     });
     await waitFor(() => {
-      expect(connectConversationEvents).toHaveBeenCalledTimes(2);
+      expect(result.current.conversation?.messages).toContainEqual(
+        expect.objectContaining({ id: "assistant-after-apply" }),
+      );
     });
-    expect(result.current.conversation?.messages).toContainEqual(
-      expect.objectContaining({ id: "assistant-after-apply" }),
-    );
+    expect(connectConversationEvents).toHaveBeenCalledTimes(2);
   });
 
   it("keeps a reconnected stream active when state reconciliation fails", async () => {
@@ -418,6 +433,150 @@ describe("useConversation", () => {
       );
     });
     expect(connectConversationEvents).toHaveBeenCalledTimes(2);
+  });
+
+  it("restores messages missed during an upstream reconnect without closing browser SSE", async () => {
+    let reconnectUpstream: (() => void) | undefined;
+    const reconnect = new Promise<void>((resolve) => {
+      reconnectUpstream = resolve;
+    });
+    vi.mocked(connectConversationEvents).mockImplementation((_conversationId, signal) =>
+      reconnectingUpstream(signal, reconnect),
+    );
+    vi.mocked(getConversation).mockResolvedValue(
+      makeConversation({
+        messages: [
+          {
+            id: "assistant-missed-during-outage",
+            conversationId: "conv-1",
+            role: "assistant",
+            content: "Recovered.",
+            parts: [{ id: "part-recovered", type: "text", text: "Recovered." }],
+            attachments: [],
+            createdAt: "2026-01-01T00:03:00.000Z",
+            updatedAt: "2026-01-01T00:03:00.000Z",
+          },
+        ],
+      }),
+    );
+
+    const queryClient = createQueryClient();
+    const { result } = renderHook(() => useConversation("writer"), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    await waitFor(() => {
+      expect(result.current.status).toBe("ready");
+    });
+    expect(getConversation).not.toHaveBeenCalled();
+
+    reconnectUpstream?.();
+
+    await waitFor(() => {
+      expect(result.current.conversation?.messages).toContainEqual(
+        expect.objectContaining({ id: "assistant-missed-during-outage" }),
+      );
+    });
+    expect(connectConversationEvents).toHaveBeenCalledTimes(1);
+  });
+
+  it("rehydrates pending interactions after an upstream reconnect", async () => {
+    let reconnectUpstream: (() => void) | undefined;
+    const reconnect = new Promise<void>((resolve) => {
+      reconnectUpstream = resolve;
+    });
+    vi.mocked(connectConversationEvents).mockImplementation((_conversationId, signal) =>
+      reconnectingUpstream(signal, reconnect),
+    );
+    vi.mocked(getPendingInteractions)
+      .mockResolvedValueOnce(noPendingInteractions())
+      .mockResolvedValueOnce({
+        permissions: [
+          {
+            id: "permission-missed-during-outage",
+            sessionID: "sess-1",
+            permission: "bash",
+            patterns: [],
+            metadata: {},
+            always: [],
+          },
+        ],
+        question: null,
+        liveRequests: [],
+      });
+
+    const queryClient = createQueryClient();
+    const { result } = renderHook(() => useConversation("writer"), {
+      wrapper: createWrapper(queryClient),
+    });
+    await waitFor(() => {
+      expect(getPendingInteractions).toHaveBeenCalledTimes(1);
+    });
+
+    reconnectUpstream?.();
+
+    await waitFor(() => {
+      expect(result.current.pendingPermission?.id).toBe("permission-missed-during-outage");
+    });
+  });
+
+  it("keeps a live message delivered after reconnect hydration", async () => {
+    let reconnectUpstream: (() => void) | undefined;
+    const reconnect = new Promise<void>((resolve) => {
+      reconnectUpstream = resolve;
+    });
+    const liveMessage: ChatEvent = {
+      type: "message.updated",
+      properties: {
+        sessionID: "sess-1",
+        message: {
+          id: "assistant-live-after-reconnect",
+          conversationId: "",
+          role: "assistant",
+          content: "",
+          parts: [],
+          attachments: [],
+          createdAt: "2026-01-01T00:04:00.000Z",
+          updatedAt: "2026-01-01T00:04:00.000Z",
+        },
+      },
+    };
+    vi.mocked(connectConversationEvents).mockImplementation((_conversationId, signal) =>
+      reconnectingUpstream(signal, reconnect, liveMessage),
+    );
+    vi.mocked(getConversation).mockResolvedValue(
+      makeConversation({
+        messages: [
+          {
+            id: "assistant-hydrated-on-reconnect",
+            conversationId: "conv-1",
+            role: "assistant",
+            content: "Persisted.",
+            parts: [{ id: "part-persisted", type: "text", text: "Persisted." }],
+            attachments: [],
+            createdAt: "2026-01-01T00:03:00.000Z",
+            updatedAt: "2026-01-01T00:03:00.000Z",
+          },
+        ],
+      }),
+    );
+
+    const queryClient = createQueryClient();
+    const { result } = renderHook(() => useConversation("writer"), {
+      wrapper: createWrapper(queryClient),
+    });
+    await waitFor(() => {
+      expect(result.current.status).toBe("ready");
+    });
+
+    reconnectUpstream?.();
+
+    await waitFor(() => {
+      expect(result.current.conversation?.messages.map((message) => message.id)).toEqual([
+        "assistant-hydrated-on-reconnect",
+        "assistant-live-after-reconnect",
+      ]);
+    });
   });
 
   it("forwards conversation actions to the API layer", async () => {

@@ -83,6 +83,7 @@ export type ConversationState = {
 export type Action =
   | { type: "HYDRATE"; snapshot: { current: ConversationDetail; previous: ConversationSummary[] } }
   | { type: "HYDRATE_DETAIL"; detail: ConversationDetail; previous?: ConversationSummary[] }
+  | { type: "MERGE_RECONNECT_DETAIL"; detail: ConversationDetail }
   | { type: "OPTIMISTIC_USER_MESSAGE"; message: ConversationMessage }
   | { type: "SEND_FAILED"; message: string }
   | { type: "CLEAR_SEND_ERROR" }
@@ -169,6 +170,17 @@ export function conversationReducer(state: ConversationState, action: Action): C
         sendError: null,
       };
 
+    case "MERGE_RECONNECT_DETAIL":
+      return {
+        ...state,
+        conversation: {
+          ...action.detail,
+          messages: mergeById(action.detail.messages, state.conversation?.messages ?? []),
+        },
+        parts: mergePartsMaps(buildPartsMap(action.detail.messages), state.parts),
+        sendError: null,
+      };
+
     case "OPTIMISTIC_USER_MESSAGE": {
       if (!state.conversation) return state;
       const msg = action.message;
@@ -249,6 +261,27 @@ export function conversationReducer(state: ConversationState, action: Action): C
     default:
       return state;
   }
+}
+
+function mergeById<T extends { id: string }>(persisted: T[], live: T[]): T[] {
+  const liveById = new Map(live.map((item) => [item.id, item]));
+  const merged = persisted.map((item) => liveById.get(item.id) ?? item);
+  const persistedIds = new Set(persisted.map((item) => item.id));
+
+  return [...merged, ...live.filter((item) => !persistedIds.has(item.id))];
+}
+
+function mergePartsMaps(
+  persisted: Record<string, ConversationPart[]>,
+  live: Record<string, ConversationPart[]>,
+): Record<string, ConversationPart[]> {
+  const merged = { ...persisted };
+
+  for (const [messageId, parts] of Object.entries(live)) {
+    merged[messageId] = mergeById(persisted[messageId] ?? [], parts);
+  }
+
+  return merged;
 }
 
 function applySseEvent(state: ConversationState, event: ChatEvent): ConversationState {
@@ -551,6 +584,21 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
       });
     };
 
+    const rehydrateConversation = async (mergeDetail: boolean): Promise<void> => {
+      try {
+        const [detail, pending] = await Promise.all([
+          getConversation(activeAgentId, activeConversationId),
+          getPendingInteractions(activeConversationId),
+        ]);
+
+        if (controller.signal.aborted) return;
+        dispatch({ type: mergeDetail ? "MERGE_RECONNECT_DETAIL" : "HYDRATE_DETAIL", detail });
+        hydratePendingInteractions(pending);
+      } catch {
+        if (controller.signal.aborted) return;
+      }
+    };
+
     void (async () => {
       void getPendingInteractions(activeConversationId)
         .then(hydratePendingInteractions)
@@ -579,20 +627,16 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
               reconnectDelay = INITIAL_SSE_RECONNECT_DELAY_MS;
 
               if (connectionAttempt > 1) {
-                try {
-                  const [detail, pending] = await Promise.all([
-                    getConversation(activeAgentId, activeConversationId),
-                    getPendingInteractions(activeConversationId),
-                  ]);
-
-                  if (controller.signal.aborted) return;
-                  dispatch({ type: "HYDRATE_DETAIL", detail });
-                  hydratePendingInteractions(pending);
-                } catch {
-                  if (controller.signal.aborted) return;
-                }
+                await rehydrateConversation(false);
               }
 
+              continue;
+            }
+
+            if (event.type === "upstream.connected") {
+              if (event.properties.reconnected) {
+                await rehydrateConversation(true);
+              }
               continue;
             }
 

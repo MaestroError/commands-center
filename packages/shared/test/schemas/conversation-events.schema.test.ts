@@ -173,6 +173,18 @@ describe("conversation and event schemas", () => {
     });
   });
 
+  it("parses upstream connection state", () => {
+    expect(
+      chatEventSchema.parse({
+        type: "upstream.connected",
+        properties: { reconnected: true },
+      }),
+    ).toEqual({
+      type: "upstream.connected",
+      properties: { reconnected: true },
+    });
+  });
+
   it("parses reply inputs and rejects invalid permission replies", () => {
     expect(replyQuestionInputSchema.parse({ answers: [["yes"], ["a", "b"]] })).toEqual({
       answers: [["yes"], ["a", "b"]],

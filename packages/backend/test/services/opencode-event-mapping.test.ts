@@ -116,7 +116,7 @@ describe("opencode event service mapping", () => {
     expect(titles).toEqual(["New title"]);
     expect(types).toEqual(
       expect.arrayContaining([
-        "connected",
+        "upstream.connected",
         "heartbeat",
         "message.updated",
         "message.part.updated",

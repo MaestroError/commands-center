@@ -55,10 +55,25 @@ async function runSubscription(
   const { directory, sessionID, signal, onEvent, onTitleUpdate } = options;
   let retryDelay = 500;
   const maxRetryDelay = 15_000;
+  let hasConnected = false;
 
   while (!signal.aborted) {
     try {
-      await consumeEventStream(config, directory, sessionID, signal, onEvent, onTitleUpdate);
+      await consumeEventStream(
+        config,
+        directory,
+        sessionID,
+        signal,
+        onEvent,
+        () => {
+          onEvent({
+            type: "upstream.connected",
+            properties: { reconnected: hasConnected },
+          });
+          hasConnected = true;
+        },
+        onTitleUpdate,
+      );
       // Stream ended normally (server closed) — reconnect
       retryDelay = 500;
     } catch (error) {
@@ -87,6 +102,7 @@ async function consumeEventStream(
   sessionID: string,
   signal: AbortSignal,
   onEvent: (event: ChatEvent) => void,
+  onConnected: () => void,
   onTitleUpdate?: (title: string) => void,
 ): Promise<void> {
   const url = new URL("/event", config.opencode.baseUrl);
@@ -122,6 +138,11 @@ async function consumeEventStream(
       buffer = events.remainder;
 
       for (const raw of events.parsed) {
+        if (raw.type === "server.connected") {
+          onConnected();
+          continue;
+        }
+
         // Intercept session.updated to propagate title changes
         if (
           onTitleUpdate &&
@@ -195,10 +216,6 @@ function extractSseEvents(buffer: string): ExtractResult {
 
 function mapEvent(sessionID: string, raw: SseEvent): ChatEvent | null {
   // Server-level events
-  if (raw.type === "server.connected") {
-    return { type: "connected", properties: {} };
-  }
-
   if (raw.type === "server.heartbeat") {
     return { type: "heartbeat", properties: {} };
   }

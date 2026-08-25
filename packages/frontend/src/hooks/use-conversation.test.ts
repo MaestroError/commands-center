@@ -280,6 +280,68 @@ describe("HYDRATE_DETAIL", () => {
   });
 });
 
+describe("MERGE_RECONNECT_DETAIL", () => {
+  it("unions hydrated and live-only messages by id", () => {
+    const shared = makeMessage({ id: "shared", content: "live" });
+    const liveOnly = makeMessage({ id: "live-only" });
+    const state = stateWithConversation([shared, liveOnly]);
+
+    const next = conversationReducer(state, {
+      type: "MERGE_RECONNECT_DETAIL",
+      detail: makeConversation({
+        messages: [
+          makeMessage({ id: "missed" }),
+          makeMessage({ id: "shared", content: "persisted" }),
+        ],
+      }),
+    });
+
+    expect(next.conversation?.messages.map((message) => message.id)).toEqual([
+      "missed",
+      "shared",
+      "live-only",
+    ]);
+  });
+
+  it("keeps live parts when reconnect hydration contains an older version", () => {
+    const livePart = makePart({ id: "part-shared", text: "newer live text" });
+    const state = stateWithConversation([makeMessage({ id: "shared" })], { shared: [livePart] });
+
+    const next = conversationReducer(state, {
+      type: "MERGE_RECONNECT_DETAIL",
+      detail: makeConversation({
+        messages: [
+          makeMessage({
+            id: "shared",
+            parts: [makePart({ id: "part-shared", text: "older persisted text" })],
+          }),
+        ],
+      }),
+    });
+
+    expect(next.parts["shared"]).toEqual([livePart]);
+  });
+
+  it("preserves live interaction and session state", () => {
+    const liveRequest = makeLiveRequest();
+    const state: ConversationState = {
+      ...stateWithConversation(),
+      sessionStatus: { type: "busy" },
+      liveRequests: [liveRequest],
+      pendingQuestion: { id: "question-1", sessionID: "sess-1", questions: [] },
+    };
+
+    const next = conversationReducer(state, {
+      type: "MERGE_RECONNECT_DETAIL",
+      detail: makeConversation({ title: "Refreshed" }),
+    });
+
+    expect(next.sessionStatus).toEqual({ type: "busy" });
+    expect(next.liveRequests).toEqual([liveRequest]);
+    expect(next.pendingQuestion?.id).toBe("question-1");
+  });
+});
+
 // ---------------------------------------------------------------------------
 // OPTIMISTIC_USER_MESSAGE
 // ---------------------------------------------------------------------------
