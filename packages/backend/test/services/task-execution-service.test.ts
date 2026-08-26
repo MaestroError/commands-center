@@ -1880,13 +1880,14 @@ describe("createTaskExecutionService", () => {
   it("finalizes a recovered incomplete assistant turn as an engine interruption", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const opencodeService = createMockOpenCodeService({
+      incompleteAsyncPrompt: true,
+      missingSessionStatus: true,
+    });
     const conversationService = createConversationService({
       db: testDb.client.db,
       config: testDb.config,
-      opencodeService: createMockOpenCodeService({
-        incompleteAsyncPrompt: true,
-        missingSessionStatus: true,
-      }),
+      opencodeService,
     });
     const executionService = createTaskExecutionService({
       taskService,
@@ -1916,6 +1917,7 @@ describe("createTaskExecutionService", () => {
         opencodeSessionId: "session-1",
         lastAssistantMessageId: "message-2",
       });
+      expect(opencodeService.abortSession).toHaveBeenCalledWith(expect.any(String), "session-1");
     } finally {
       executionService.dispose();
       await testDb.cleanup();

@@ -270,6 +270,8 @@ export function createTaskRetryPolicy(ctx: TaskRetryPolicyContext) {
       return;
     }
 
+    await abortOpenCodeTaskRun(latest);
+
     const requeue = await resolveRequeueSettings();
     const nextRequeueCount = readRequeueCount(latest) + 1;
     const willRequeue = requeue.enabled && nextRequeueCount <= requeue.limit;
