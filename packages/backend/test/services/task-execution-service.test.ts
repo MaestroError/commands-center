@@ -723,6 +723,71 @@ describe("createTaskExecutionService", () => {
     }
   });
 
+  it("rejects converted-run replies before changing task-run state or syncing the conversation", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const opencodeService = createMockOpenCodeService();
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({
+      db: testDb.client.db,
+      taskService,
+      conversationService,
+      monitor: { autoStart: false },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Converted reply" });
+      const run = await taskService.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        status: "running",
+        triggerSource: "manual",
+        renderedPrompt: "Initial run.",
+      });
+      const conversation = await conversationService.createTaskRunConversation({
+        agentId: agent.id,
+        taskId: task.id,
+        taskRunId: run.id,
+        title: "Task: Converted reply",
+      });
+      await taskService.updateRun(run.id, { opencodeSessionId: conversation.opencodeSessionId });
+      await taskService.setRunStatus(run.id, "completed", {
+        completedAt: "2026-06-01T12:00:00.000Z",
+      });
+      await conversationService.openTaskRunConversationInChat(task.id, run.id);
+      const taskBefore = await taskService.get(task.id);
+
+      const getSession = vi.fn(opencodeService.getSession);
+      const listSessionMessages = vi.fn(opencodeService.listSessionMessages);
+      const promptSessionAsync = vi.fn(opencodeService.promptSessionAsync);
+      opencodeService.getSession = getSession;
+      opencodeService.listSessionMessages = listSessionMessages;
+      opencodeService.promptSessionAsync = promptSessionAsync;
+
+      await expect(
+        executionService.sendRunReply(run.id, { body: "Continue this run." }),
+      ).rejects.toMatchObject({
+        code: "conflict",
+        statusCode: 409,
+        message: "This task run was continued in chat. Open its chat to continue.",
+      });
+
+      expect((await taskService.getRunById(run.id))?.status).toBe("completed");
+      expect((await taskService.get(task.id))?.status).toBe(taskBefore?.status);
+      expect(await taskService.listFollowups(run.id)).toEqual([]);
+      expect(getSession).not.toHaveBeenCalled();
+      expect(listSessionMessages).not.toHaveBeenCalled();
+      expect(promptSessionAsync).not.toHaveBeenCalled();
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("reports the blocking run when a reply hits the running-run constraint", async () => {
     const testDb = await createTestDatabase();
     const prompts: { model?: { providerID: string; modelID: string }; text: string }[] = [];
@@ -1654,16 +1719,74 @@ describe("createTaskExecutionService", () => {
       const run = await executionService.trigger(task.id, { triggerSource: "manual" });
       await expectRunStatus(taskService, run.id, "running");
       await expectTaskRunInspectionMessageCount(conversationService, task.id, run.id, 1);
+      await taskService.setRunStatus(run.id, "completed", {
+        completedAt: "2026-06-01T12:00:00.000Z",
+      });
+      const taskBefore = await taskService.get(task.id);
       const opened = await conversationService.openTaskRunConversationInChat(task.id, run.id);
       const inspection = await conversationService.inspectTaskRunConversation(task.id, run.id);
       const conversations = await conversationService.list(agent.id);
+      const current = await conversationService.resolveCurrent(agent.id);
+      const runAfter = await taskService.getRunById(run.id);
 
       expect(opened.current.id).toBe(inspection.conversation?.id);
       expect(inspection.canOpenInChat).toBe(true);
-      expect(inspection.conversation?.source).toBe("chat");
+      expect(inspection.conversation?.source).toBe("task_run");
+      expect(inspection.conversation?.convertedAt).toBeDefined();
       expect(inspection.conversation?.messages).toHaveLength(1);
       expect(conversations).toHaveLength(1);
       expect(conversations[0]?.taskRunId).toBe(run.id);
+      expect(current.current.id).toBe(opened.current.id);
+      expect(runAfter?.status).toBe("completed");
+      expect(await taskService.get(task.id)).toMatchObject({
+        status: taskBefore?.status,
+        latestRunConversation: {
+          id: opened.current.id,
+          source: "task_run",
+          isCurrent: true,
+        },
+      });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("starts a new run without replacing the converted chat", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService(),
+    });
+    const executionService = createTaskExecutionService({ taskService, conversationService });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Reusable task" });
+      const firstRun = await executionService.trigger(task.id, { triggerSource: "manual" });
+      await expectRunStatus(taskService, firstRun.id, "running");
+      await taskService.setRunStatus(firstRun.id, "completed", {
+        completedAt: "2026-06-01T12:00:00.000Z",
+      });
+      const converted = await conversationService.openTaskRunConversationInChat(
+        task.id,
+        firstRun.id,
+      );
+
+      const secondRun = await executionService.trigger(task.id, { triggerSource: "manual" });
+      await expectRunStatus(taskService, secondRun.id, "running");
+      const secondInspection = await conversationService.inspectTaskRunConversation(
+        task.id,
+        secondRun.id,
+      );
+      const current = await conversationService.resolveCurrent(agent.id);
+
+      expect(secondRun.id).not.toBe(firstRun.id);
+      expect(secondInspection.conversation?.id).not.toBe(converted.current.id);
+      expect(secondInspection.conversation?.source).toBe("task_run");
+      expect(secondInspection.conversation?.convertedAt).toBeUndefined();
+      expect(current.current.id).toBe(converted.current.id);
     } finally {
       await testDb.cleanup();
     }

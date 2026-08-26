@@ -11,14 +11,14 @@ import {
   type DocumentScope,
   type RegisteredArtifact,
 } from "@cc/shared/schemas";
-import { desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull } from "drizzle-orm";
 import { z } from "zod";
 
 import type { AppDb } from "../db/client.js";
 import { agents, artifacts, conversations as conversationsTable } from "../db/schema/index.js";
 import type { artifact_share_links } from "../db/schema/index.js";
 import { createId, now } from "../db/ids.js";
-import { BadRequestError, NotFoundError } from "../lib/api-error.js";
+import { BadRequestError, ConflictError, NotFoundError } from "../lib/api-error.js";
 import { writeConfigFileAtomic } from "../lib/config-file.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
 import { resolveSpecialistWorkspacePath } from "./specialist-workspace.js";
@@ -120,7 +120,10 @@ export function createArtifactService(options: { db: AppDb; config: RuntimeConfi
   }
 
   return {
-    async create(input: { conversationId: string } & AddArtifactInput): Promise<Artifact> {
+    async create(
+      input: { conversationId: string } & AddArtifactInput,
+      authorization?: { agentId: string; currentConvertedTaskRunId: string },
+    ): Promise<Artifact> {
       const conversation = await options.db.query.conversations.findFirst({
         where: (table, operators) => operators.eq(table.id, input.conversationId),
         columns: { id: true },
@@ -143,7 +146,7 @@ export function createArtifactService(options: { db: AppDb; config: RuntimeConfi
         agentSlug,
       );
 
-      await options.db.insert(artifacts).values({
+      const values = {
         id,
         conversation_id: input.conversationId,
         title: input.title,
@@ -153,6 +156,33 @@ export function createArtifactService(options: { db: AppDb; config: RuntimeConfi
         document_scope: location.scope,
         document_owner_slug: location.ownerSlug,
         created_at: timestamp,
+      };
+
+      options.db.transaction((tx) => {
+        if (authorization) {
+          const authorized = tx
+            .select({ id: conversationsTable.id })
+            .from(conversationsTable)
+            .where(
+              and(
+                eq(conversationsTable.id, input.conversationId),
+                eq(conversationsTable.agent_id, authorization.agentId),
+                eq(conversationsTable.task_run_id, authorization.currentConvertedTaskRunId),
+                eq(conversationsTable.status, "active"),
+                eq(conversationsTable.is_current, true),
+                isNotNull(conversationsTable.converted_at),
+              ),
+            )
+            .get();
+
+          if (!authorized) {
+            throw new ConflictError(
+              "Task run artifacts require the specialist's current converted chat.",
+            );
+          }
+        }
+
+        tx.insert(artifacts).values(values).run();
       });
 
       const row = await getRow(id);

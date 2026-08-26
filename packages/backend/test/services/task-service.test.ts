@@ -1025,6 +1025,171 @@ describe("createTaskService", () => {
     }
   });
 
+  it("adds an artifact to an owned terminal run through its current converted chat", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await service.create({ agentId: agent.id, title: "Converted artifact" });
+      const run = await service.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        status: "completed",
+        triggerSource: "manual",
+        renderedPrompt: "Create a report.",
+      });
+      await seedRunConversation(testDb.client.db, run.id, agent.id);
+      await testDb.client.db
+        .update(conversations)
+        .set({ converted_at: new Date(), is_current: true })
+        .where(eq(conversations.task_run_id, run.id));
+
+      const updated = await service.addRunArtifact(run.id, agent.id, {
+        title: "Converted report",
+        type: "file",
+        link: ".cc/artifacts/converted.md",
+      });
+
+      expect(updated.status).toBe("completed");
+      expect(updated.conversation).toMatchObject({
+        id: `conv-${run.id}`,
+        source: "task_run",
+        isCurrent: true,
+      });
+      expect(updated.artifacts).toEqual([
+        expect.objectContaining({
+          title: "Converted report",
+          type: "file",
+          link: ".cc/artifacts/converted.md",
+        }),
+      ]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("rejects terminal-run artifacts when the converted chat is not current", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await service.create({ agentId: agent.id, title: "Historical artifact" });
+      const run = await service.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        status: "completed",
+        triggerSource: "manual",
+        renderedPrompt: "Create a report.",
+      });
+      await seedRunConversation(testDb.client.db, run.id, agent.id);
+      await testDb.client.db
+        .update(conversations)
+        .set({ converted_at: new Date(), is_current: false })
+        .where(eq(conversations.task_run_id, run.id));
+
+      await expect(
+        service.addRunArtifact(run.id, agent.id, {
+          title: "Late report",
+          type: "file",
+          link: ".cc/artifacts/late.md",
+        }),
+      ).rejects.toThrow("Only running task runs can be updated by an agent.");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("rejects converted-chat artifacts from a different specialist", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const otherAgent = await insertAgent(testDb.client.db, { id: "artifact-other-agent" });
+      const task = await service.create({ agentId: agent.id, title: "Private artifact" });
+      const run = await service.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        status: "completed",
+        triggerSource: "manual",
+        renderedPrompt: "Create a report.",
+      });
+      await seedRunConversation(testDb.client.db, run.id, agent.id);
+      await testDb.client.db
+        .update(conversations)
+        .set({ converted_at: new Date(), is_current: true })
+        .where(eq(conversations.task_run_id, run.id));
+
+      await expect(
+        service.addRunArtifact(run.id, otherAgent.id, {
+          title: "Private report",
+          type: "file",
+          link: ".cc/artifacts/private.md",
+        }),
+      ).rejects.toThrow("Task run not found.");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("keeps terminal-run result updates unavailable after conversion", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await service.create({ agentId: agent.id, title: "Converted outcome" });
+      const run = await service.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        status: "completed",
+        triggerSource: "manual",
+        renderedPrompt: "Finish the task.",
+      });
+      await seedRunConversation(testDb.client.db, run.id, agent.id);
+      await testDb.client.db
+        .update(conversations)
+        .set({ converted_at: new Date(), is_current: true })
+        .where(eq(conversations.task_run_id, run.id));
+
+      await expect(service.setRunResultText(run.id, agent.id, "Too late.")).rejects.toThrow(
+        "Only running task runs can be updated by an agent.",
+      );
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("keeps terminal-run human-review mutations unavailable after conversion", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await service.create({ agentId: agent.id, title: "Converted review" });
+      const run = await service.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        status: "completed",
+        triggerSource: "manual",
+        renderedPrompt: "Finish the task.",
+      });
+      await seedRunConversation(testDb.client.db, run.id, agent.id);
+      await testDb.client.db
+        .update(conversations)
+        .set({ converted_at: new Date(), is_current: true })
+        .where(eq(conversations.task_run_id, run.id));
+
+      await expect(service.markRunNeedsHumanReview(run.id, agent.id, "Too late.")).rejects.toThrow(
+        "Only running task runs can be updated by an agent.",
+      );
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("rejects outcome updates for the wrong agent or non-running runs", async () => {
     const testDb = await createTestDatabase();
     const service = createTaskService({ db: testDb.client.db, config: testDb.config });

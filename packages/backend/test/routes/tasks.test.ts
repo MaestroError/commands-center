@@ -206,13 +206,13 @@ describe("task routes", () => {
         method: "GET",
         url: `/api/tasks/${task.id}/runs/${String(runId)}/session`,
       });
-      const openInChat = await server.inject({
-        method: "POST",
-        url: `/api/tasks/${task.id}/runs/${String(runId)}/open-in-chat`,
-      });
       await taskService.setRunStatus(String(runId), "completed", {
         completedAt: new Date().toISOString(),
         finalMessage: "Task completed by monitor.",
+      });
+      const openInChat = await server.inject({
+        method: "POST",
+        url: `/api/tasks/${task.id}/runs/${String(runId)}/open-in-chat`,
       });
       const activeRuns = await server.inject({ method: "GET", url: "/api/tasks/runs/active" });
       const accepted = await server.inject({ method: "POST", url: `/api/tasks/${task.id}/accept` });
@@ -220,7 +220,9 @@ describe("task routes", () => {
       expect(session.statusCode).toBe(200);
       expect(session.json().conversation.source).toBe("task_run");
       expect(openInChat.statusCode).toBe(200);
-      expect(openInChat.json().current.source).toBe("chat");
+      expect(openInChat.json().current.source).toBe("task_run");
+      expect(openInChat.json().current.convertedAt).toBeDefined();
+      expect(openInChat.json().current.isCurrent).toBe(true);
       expect(activeRuns.statusCode).toBe(200);
       expect(activeRuns.json()).toEqual([]);
       expect(accepted.statusCode).toBe(200);
@@ -587,6 +589,86 @@ describe("task routes", () => {
       expect(response.json().error.message).toBe(
         "Cannot send a reply while the run is in progress.",
       );
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("rejects a converted-run reply route before changing task or run state", async () => {
+    const harness = await createTaskRouteHarness();
+
+    try {
+      const { task, run } = await createTerminalRunFixture(harness, "Converted reply route");
+      const opened = await harness.server.inject({
+        method: "POST",
+        url: `/api/tasks/${task.id}/runs/${run.id}/open-in-chat`,
+      });
+      const taskBefore = await harness.taskService.get(task.id);
+      const response = await harness.server.inject({
+        method: "POST",
+        url: `/api/tasks/${task.id}/runs/${run.id}/followups`,
+        payload: { body: "Continue from the task panel." },
+      });
+
+      expect(opened.statusCode).toBe(200);
+      expect(response.statusCode).toBe(409);
+      expect(response.json().error.message).toBe(
+        "This task run was continued in chat. Open its chat to continue.",
+      );
+      expect((await harness.taskService.getRunById(run.id))?.status).toBe("completed");
+      expect((await harness.taskService.get(task.id))?.status).toBe(taskBefore?.status);
+      expect(await harness.taskService.listFollowups(run.id)).toEqual([]);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("rejects opening a running task run in chat", async () => {
+    const harness = await createTaskRouteHarness();
+
+    try {
+      const agent = await insertAgent(harness.testDb.client.db);
+      const task = await harness.taskService.create({ agentId: agent.id, title: "Running chat" });
+      const run = await harness.taskExecutionService.queue(task.id, { triggerSource: "manual" });
+      await expect
+        .poll(async () => (await harness.taskService.getRunById(run.id))?.status)
+        .toBe("running");
+
+      const response = await harness.server.inject({
+        method: "POST",
+        url: `/api/tasks/${task.id}/runs/${run.id}/open-in-chat`,
+      });
+
+      expect(response.statusCode).toBe(409);
+      expect(response.json().error.message).toBe(
+        "Only completed, failed, or error task runs can continue in chat.",
+      );
+      expect((await harness.taskService.getRunById(run.id))?.status).toBe("running");
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("rejects opening a run through a different task path", async () => {
+    const harness = await createTaskRouteHarness();
+
+    try {
+      const { task, run } = await createTerminalRunFixture(harness, "Owned run");
+      const otherTask = await harness.taskService.create({
+        agentId: task.agentId,
+        title: "Different task",
+      });
+
+      const response = await harness.server.inject({
+        method: "POST",
+        url: `/api/tasks/${otherTask.id}/runs/${run.id}/open-in-chat`,
+      });
+
+      expect(response.statusCode).toBe(404);
+      expect(response.json().error.message).toBe("Task run session not found.");
+      expect(
+        (await harness.taskService.getRunById(run.id))?.conversation?.convertedAt,
+      ).toBeUndefined();
     } finally {
       await harness.close();
     }

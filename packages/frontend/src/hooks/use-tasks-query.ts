@@ -486,7 +486,12 @@ export function useTaskMutations() {
         openTaskRunInChat(taskId, runId),
       onSuccess: async (_snapshot, variables) => {
         await Promise.all([
+          queryClient.invalidateQueries({ queryKey: queryKeys.task(variables.taskId) }),
           queryClient.invalidateQueries({ queryKey: queryKeys.taskRuns(variables.taskId) }),
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.taskRun(variables.taskId, variables.runId),
+          }),
+          queryClient.invalidateQueries({ queryKey: ["tasks"] }),
           queryClient.invalidateQueries({
             queryKey: queryKeys.taskRunSession(variables.taskId, variables.runId),
           }),

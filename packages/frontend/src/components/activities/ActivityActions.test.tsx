@@ -3,16 +3,31 @@ import { MemoryRouter, useLocation } from "react-router";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { activityKindSchema, type Activity } from "@cc/shared/schemas";
+import { activityKindSchema, type Activity, type TaskRun } from "@cc/shared/schemas";
 
 import { ActivityActions } from "./ActivityActions";
 
 import * as api from "@/lib/api";
 
-const { acceptMutate, createRunFollowupMutateAsync, runTemplateNowMutate } = vi.hoisted(() => ({
+const {
+  acceptMutate,
+  createRunFollowupMutateAsync,
+  openInChatMutateAsync,
+  runTemplateNowMutate,
+  taskRunQuery,
+  specialistsQuery,
+} = vi.hoisted(() => ({
   acceptMutate: vi.fn(),
   createRunFollowupMutateAsync: vi.fn(),
+  openInChatMutateAsync: vi.fn(),
   runTemplateNowMutate: vi.fn(),
+  taskRunQuery: vi.fn<
+    () => {
+      data?: Pick<TaskRun, "id" | "agentId"> & { conversation?: TaskRun["conversation"] };
+      isLoading: boolean;
+    }
+  >(),
+  specialistsQuery: vi.fn<() => { data?: Array<{ id: string; slug: string; name: string }> }>(),
 }));
 
 vi.mock("@/lib/api", async (importOriginal) => ({
@@ -21,6 +36,7 @@ vi.mock("@/lib/api", async (importOriginal) => ({
 }));
 
 vi.mock("@/hooks/use-tasks-query", () => ({
+  useTaskRunQuery: () => taskRunQuery(),
   useTaskMutations: () => ({
     accept: { mutate: acceptMutate, isPending: false, isError: false },
     createRunFollowup: {
@@ -28,12 +44,16 @@ vi.mock("@/hooks/use-tasks-query", () => ({
       isPending: false,
       isError: false,
     },
+    openInChat: {
+      mutateAsync: openInChatMutateAsync,
+      isPending: false,
+    },
     runTemplateNow: { mutate: runTemplateNowMutate, isPending: false },
   }),
 }));
 
 vi.mock("@/hooks/use-specialists-query", () => ({
-  useSpecialistsQuery: () => ({ data: [] }),
+  useSpecialistsQuery: () => specialistsQuery(),
 }));
 
 function activity(overrides: Partial<Activity> & { id: string; kind: Activity["kind"] }): Activity {
@@ -84,7 +104,13 @@ beforeEach(() => {
   );
   createRunFollowupMutateAsync.mockReset();
   createRunFollowupMutateAsync.mockResolvedValue(undefined);
+  openInChatMutateAsync.mockReset();
+  openInChatMutateAsync.mockResolvedValue({ current: { id: "conversation-1" } });
   runTemplateNowMutate.mockReset();
+  taskRunQuery.mockReset();
+  taskRunQuery.mockReturnValue({ data: undefined, isLoading: false });
+  specialistsQuery.mockReset();
+  specialistsQuery.mockReturnValue({ data: [] });
 });
 
 describe("ActivityActions", () => {
@@ -190,6 +216,42 @@ describe("ActivityActions", () => {
       });
     });
     expect(onArchive).toHaveBeenCalledWith("a1");
+  });
+
+  it("task_needs_review: opens a converted run chat without replying or archiving", async () => {
+    taskRunQuery.mockReturnValue({
+      data: {
+        id: "r1",
+        agentId: "agent-1",
+        conversation: {
+          id: "conversation-1",
+          source: "task_run",
+          isCurrent: true,
+          convertedAt: "2026-08-26T08:00:00.000Z",
+        },
+      },
+      isLoading: false,
+    });
+    specialistsQuery.mockReturnValue({
+      data: [{ id: "agent-1", slug: "planner", name: "Planner" }],
+    });
+    const { onArchive } = renderActions(
+      activity({
+        id: "a1",
+        kind: "task_needs_review",
+        payload: { taskId: "t1", taskRunId: "r1", question: "Publish it?" },
+      }),
+    );
+
+    expect(screen.queryByLabelText("Review reply")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open chat" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("location")).toHaveTextContent("/chat/planner/conversation-1");
+    });
+    expect(openInChatMutateAsync).toHaveBeenCalledWith({ taskId: "t1", runId: "r1" });
+    expect(createRunFollowupMutateAsync).not.toHaveBeenCalled();
+    expect(onArchive).not.toHaveBeenCalled();
   });
 
   it("task_run_failed: opens the task and marks read", () => {

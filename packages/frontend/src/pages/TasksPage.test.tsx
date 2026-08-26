@@ -427,6 +427,31 @@ describe("TasksPage", () => {
     expect(within(card).queryByRole("button", { name: "Accept" })).not.toBeInTheDocument();
   });
 
+  it("offers Start new run on a card whose latest run was converted to chat", async () => {
+    mockFetch({
+      taskPayload: {
+        ...task,
+        status: "review",
+        latestRunId: "run-1",
+        latestRunConversation: {
+          id: "conversation-1",
+          source: "task_run",
+          isCurrent: true,
+          convertedAt: "2026-08-26T08:00:00.000Z",
+        },
+      },
+    });
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const taskLink = await screen.findByRole("link", { name: "Ship release" });
+    const card = taskLink.closest("article");
+    if (!card) throw new Error("Expected task card.");
+
+    expect(within(card).getByRole("button", { name: "Start new run" })).toBeInTheDocument();
+    expect(within(card).queryByRole("button", { name: "Rerun" })).not.toBeInTheDocument();
+  });
+
   it("filters board cards by status suggestions", async () => {
     mockFetch({
       taskPayload: { ...task, status: "scheduled", scheduledAt: "2026-01-02T12:00:00.000Z" },
@@ -1113,6 +1138,43 @@ describe("TasksPage", () => {
         }),
       );
     });
+  });
+
+  it("opens chat instead of replying from a converted run comment", async () => {
+    mockFetch({
+      feedbackPayload: [feedbackThread],
+      runsPayload: [
+        {
+          ...run,
+          conversation: {
+            id: "conversation-1",
+            source: "task_run",
+            isCurrent: true,
+            convertedAt: "2026-08-26T08:00:00.000Z",
+          },
+        },
+      ],
+      sessionPayload: {
+        conversation: {
+          ...conversation,
+          id: "conversation-1",
+          source: "task_run",
+          isCurrent: true,
+          convertedAt: "2026-08-26T08:00:00.000Z",
+        },
+      },
+    });
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("link", { name: "Ship release" }));
+    const comments = await screen.findByRole("region", { name: "Feedback comments" });
+
+    expect(within(comments).queryByRole("button", { name: "Reply" })).not.toBeInTheDocument();
+    await user.click(within(comments).getByRole("button", { name: "Open chat" }));
+
+    expect(await screen.findByText("planner/conversation-1")).toBeInTheDocument();
   });
 
   it("submits feedback with file, skill, and specialist mentions from the board panel", async () => {
@@ -3465,7 +3527,11 @@ describe("TaskDetailPage", () => {
   it("shows when a task run has already continued in chat", async () => {
     mockFetch({
       sessionPayload: {
-        conversation: { ...conversation, source: "chat", convertedAt: "2026-01-01T00:05:00.000Z" },
+        conversation: {
+          ...conversation,
+          source: "task_run",
+          convertedAt: "2026-01-01T00:05:00.000Z",
+        },
       },
     });
 

@@ -79,6 +79,9 @@ export function TaskDetailPanel(props: {
   const taskSkills = useTaskComposerSkills(agent, catalogQuery.data);
   const activeSectionId = selectedSectionId ?? "overview";
   const latestRunResult = readLatestRunResult(runsQuery.data ?? []);
+  const latestRunConverted = Boolean(
+    task?.latestRunConversation?.convertedAt ?? latestRunResult?.run.conversation?.convertedAt,
+  );
 
   useEffect(() => {
     if (!task || isPromptEditing) {
@@ -329,6 +332,7 @@ export function TaskDetailPanel(props: {
                   <TaskPanelPrimaryActions
                     activeRun={props.activeRun}
                     currentSearch={props.currentSearch}
+                    latestRunConverted={latestRunConverted}
                     onAccept={() => props.onAccept(task)}
                     onArchive={() => props.onArchive(task)}
                     onQueue={() => props.onQueue(task)}
@@ -349,6 +353,12 @@ export function TaskDetailPanel(props: {
                     Preview context
                   </Button>
                 </div>
+                {latestRunConverted ? (
+                  <p className="text-sm text-text-secondary">
+                    Start new run uses the task definition and context in a separate session; it
+                    does not continue or replace the converted chat.
+                  </p>
+                ) : null}
                 {queuePreview ? <QueuePreviewSummary preview={queuePreview} /> : null}
               </div>
 
@@ -428,6 +438,7 @@ function TaskPanelPrimaryActions(props: {
   task: Task;
   activeRun?: TaskRun;
   currentSearch: string;
+  latestRunConverted: boolean;
   onAccept: () => void;
   onArchive: () => void;
   onQueue: () => void;
@@ -466,7 +477,7 @@ function TaskPanelPrimaryActions(props: {
   if (status === "failed") {
     return (
       <Button onClick={props.onQueue} type="button">
-        Rerun
+        {props.latestRunConverted ? "Start new run" : "Rerun"}
       </Button>
     );
   }
@@ -478,7 +489,7 @@ function TaskPanelPrimaryActions(props: {
           Accept
         </Button>
         <Button variant="secondary" onClick={props.onQueue} type="button">
-          Rerun
+          {props.latestRunConverted ? "Start new run" : "Rerun"}
         </Button>
       </>
     );

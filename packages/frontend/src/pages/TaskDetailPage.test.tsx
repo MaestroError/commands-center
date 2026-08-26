@@ -227,6 +227,57 @@ describe("TaskDetailPage overview", () => {
     expect(triggerMutate).toHaveBeenCalledWith({ id: "task-1" });
   });
 
+  it("labels execution after a converted latest run as Start new run", async () => {
+    mockUseTaskQuery.mockReturnValue({
+      data: buildTask({
+        latestRunId: "run-1",
+        latestRunConversation: {
+          id: "conversation-1",
+          source: "task_run",
+          isCurrent: true,
+          convertedAt: "2026-08-26T08:00:00.000Z",
+        },
+      }),
+      isLoading: false,
+      error: null,
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    expect(screen.queryByRole("button", { name: "Run now" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Start new run" }));
+    expect(triggerMutate).toHaveBeenCalledWith({ id: "task-1" });
+  });
+
+  it("opens a converted run from history instead of offering a reply", async () => {
+    mockUseTaskQuery.mockReturnValue({ data: buildTask(), isLoading: false, error: null });
+    mockUseTaskRunsQuery.mockReturnValue({
+      data: [
+        buildRun({
+          conversation: {
+            id: "conversation-1",
+            source: "task_run",
+            isCurrent: false,
+            convertedAt: "2026-08-26T08:00:00.000Z",
+          },
+        }),
+      ],
+      isLoading: false,
+      error: null,
+    });
+    openInChatMutateAsync.mockResolvedValue({ current: { id: "conversation-1" } });
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(screen.getByTestId("task-detail-tab-runs"));
+    expect(screen.queryByTestId("task-run-reply-run-1")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Open chat" }));
+
+    await waitFor(() => {
+      expect(navigateMock).toHaveBeenCalledWith("/chat/planner/conversation-1");
+    });
+  });
+
   it("renders a minimal task without optional fields", async () => {
     mockUseTaskQuery.mockReturnValue({
       data: buildTask({
@@ -364,8 +415,8 @@ describe("TaskDetailPage run mode", () => {
     await user.click(screen.getByRole("button", { name: /Rendered context/ }));
     expect(screen.getByText("Do the work")).toBeInTheDocument();
 
-    // Continue in chat navigates to the recovered conversation.
-    await user.click(screen.getByRole("button", { name: "Continue in chat" }));
+    // Reopening the converted chat reselects and navigates to the recovered conversation.
+    await user.click(screen.getByRole("button", { name: "Open chat" }));
     await waitFor(() => {
       expect(navigateMock).toHaveBeenCalledWith("/chat/planner/conv-9");
     });

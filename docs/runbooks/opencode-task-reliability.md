@@ -122,3 +122,19 @@ notes `Requeue limit (N) reached`.
 - Queued task runs should stay queued while OpenCode is unhealthy.
 - `/api/health` should report `degraded` when OpenCode is unhealthy while the
   CommandsCenter API remains available.
+
+## Converted Task-Run Continuations
+
+**Continue in chat** transfers continuation ownership for that run to normal
+chat without accepting, archiving, or otherwise changing the task or terminal
+run. The originating run remains linked in task history and subsequent actions
+show **Open chat** instead of offering a task-run reply.
+
+Starting the reusable task again creates an independent run and session. When
+the latest run is continued in chat, the UI labels this **Start new run** to
+distinguish it from reopening the existing chat continuation.
+
+In a current converted chat, `cc_default_add_task_artifact` remains a supported
+compatibility alias for the canonical `cc_default_add_artifact` tool. It writes
+to the existing conversation only; result and human-review task-run tools stay
+unavailable after the run is terminal.

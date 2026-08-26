@@ -663,5 +663,8 @@ describe("useTaskMutations", () => {
     expect(queryClient.getQueryData(queryKeys.taskRun("task-1", "run-1"))).toEqual(run);
     expect(queryClient.getQueryData(queryKeys.taskFeedback("task-1"))).toEqual([feedback]);
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.taskTemplates });
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: queryKeys.taskRun("task-1", "run-1"),
+    });
   });
 });

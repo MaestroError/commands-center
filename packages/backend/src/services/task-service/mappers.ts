@@ -277,16 +277,77 @@ export async function mapTaskRunsWithReplyState(
   }
 
   const runIds = runs.map((run) => run.id);
-  const [activeReplyRunIds, artifactsByRunId] = await Promise.all([
+  const [activeReplyRunIds, artifactsByRunId, conversationsByRunId] = await Promise.all([
     getActiveReplyRunIds(db, runIds),
     getArtifactsByRunIds(db, config, runIds),
+    getTaskRunConversationsByRunIds(db, runIds),
   ]);
 
   return runs.map((run) => ({
     ...run,
     hasActiveReply: activeReplyRunIds.has(run.id),
     artifacts: artifactsByRunId.get(run.id) ?? [],
+    conversation: conversationsByRunId.get(run.id),
   }));
+}
+
+export async function mapTasksWithLatestRunConversation(
+  db: AppDb,
+  rows: Array<typeof tasks.$inferSelect>,
+): Promise<Task[]> {
+  const mapped = rows.map(mapTask);
+  const conversationsByRunId = await getTaskRunConversationsByRunIds(
+    db,
+    mapped.flatMap((task) => (task.latestRunId ? [task.latestRunId] : [])),
+  );
+
+  return mapped.map((task) => ({
+    ...task,
+    latestRunConversation: task.latestRunId
+      ? conversationsByRunId.get(task.latestRunId)
+      : undefined,
+  }));
+}
+
+async function getTaskRunConversationsByRunIds(
+  db: AppDb,
+  runIds: string[],
+): Promise<
+  Map<string, { id: string; source: "chat" | "task_run"; isCurrent: boolean; convertedAt?: string }>
+> {
+  const grouped = new Map<
+    string,
+    { id: string; source: "chat" | "task_run"; isCurrent: boolean; convertedAt?: string }
+  >();
+  const uniqueRunIds = Array.from(new Set(runIds.filter(Boolean)));
+
+  if (uniqueRunIds.length === 0) {
+    return grouped;
+  }
+
+  const rows = await db
+    .select({
+      id: conversationsTable.id,
+      runId: conversationsTable.task_run_id,
+      source: conversationsTable.source,
+      isCurrent: conversationsTable.is_current,
+      convertedAt: conversationsTable.converted_at,
+    })
+    .from(conversationsTable)
+    .where(inArray(conversationsTable.task_run_id, uniqueRunIds));
+
+  for (const row of rows) {
+    if (row.runId) {
+      grouped.set(row.runId, {
+        id: row.id,
+        source: row.source === "task_run" ? "task_run" : "chat",
+        isCurrent: row.isCurrent,
+        convertedAt: row.convertedAt?.toISOString(),
+      });
+    }
+  }
+
+  return grouped;
 }
 
 // Load each run's conversation-anchored artifacts (with active share links),

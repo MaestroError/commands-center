@@ -74,6 +74,33 @@ describe("add_artifact", () => {
     expect(result.content[0]?.text).toContain("Registered artifact");
   });
 
+  it("registers an artifact against the current converted task-run conversation", async () => {
+    const { testDb, tool } = await setup();
+    const agentId = await insertAgent(testDb.client.db, "reviewer");
+    const timestamp = new Date();
+    await testDb.client.db.insert(conversations).values({
+      id: `conv-${randomUUID()}`,
+      agent_id: agentId,
+      opencode_session_id: `session-${randomUUID()}`,
+      title: "Converted run",
+      status: "active",
+      source: "task_run",
+      is_current: true,
+      task_run_id: null,
+      created_at: timestamp,
+      updated_at: timestamp,
+      converted_at: timestamp,
+    });
+
+    const result = await tool.execute(
+      { title: "Converted report", type: "url", link: "https://example.com/report" },
+      { agentSlug: "reviewer" },
+    );
+
+    expect(result.isError).toBeFalsy();
+    expect(result.structuredContent).toMatchObject({ title: "Converted report", type: "url" });
+  });
+
   it("errors when the specialist is unknown", async () => {
     const { tool } = await setup();
     const result = await tool.execute(
