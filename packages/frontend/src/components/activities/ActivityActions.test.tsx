@@ -96,6 +96,43 @@ describe("ActivityActions", () => {
     expect(onArchive).toHaveBeenCalledWith(`activity-${kind}`);
   });
 
+  it("keeps activity actions at least 44px tall on mobile", () => {
+    renderActions(activity({ id: "a1", kind: "specialist_info" }));
+
+    expect(screen.getByRole("button", { name: "Mark read" })).toHaveClass("min-h-11");
+  });
+
+  it("expands a lone primary action across the mobile footer", () => {
+    renderActions(activity({ id: "a1", kind: "specialist_info" }));
+
+    expect(screen.getByRole("button", { name: "Mark read" })).toHaveClass("flex-1");
+  });
+
+  it("keeps a multi-action mobile footer on one row", () => {
+    renderActions(activity({ id: "a1", kind: "task_completed", payload: { taskId: "t1" } }));
+
+    expect(screen.getByRole("button", { name: "Accept" }).parentElement).toHaveClass("flex-nowrap");
+  });
+
+  it("keeps secondary mobile actions at intrinsic width", () => {
+    renderActions(activity({ id: "a1", kind: "task_completed", payload: { taskId: "t1" } }));
+
+    expect(screen.getByRole("button", { name: "Open task" })).toHaveClass("shrink-0");
+    expect(screen.getByRole("button", { name: "Mark read" })).toHaveClass("shrink-0");
+  });
+
+  it("uses the compact intrinsic button height on desktop", () => {
+    renderActions(activity({ id: "a1", kind: "specialist_info" }));
+
+    expect(screen.getByRole("button", { name: "Mark read" })).toHaveClass("md:min-h-0");
+  });
+
+  it("restores intrinsic primary action width on desktop", () => {
+    renderActions(activity({ id: "a1", kind: "specialist_info" }));
+
+    expect(screen.getByRole("button", { name: "Mark read" })).toHaveClass("md:flex-none");
+  });
+
   it("secret_request: fills the secret value through the form", async () => {
     vi.mocked(api.fillSecret).mockResolvedValue(
       activity({ id: "a1", kind: "secret_request", status: "archived" }),
@@ -113,7 +150,12 @@ describe("ActivityActions", () => {
 
   it("task_completed: accepts the task then archives the card", () => {
     const { onArchive } = renderActions(
-      activity({ id: "a1", kind: "task_completed", payload: { taskId: "t1" } }),
+      activity({
+        id: "a1",
+        kind: "task_completed",
+        level: "info",
+        payload: { taskId: "t1" },
+      }),
     );
 
     fireEvent.click(screen.getByText("Accept"));

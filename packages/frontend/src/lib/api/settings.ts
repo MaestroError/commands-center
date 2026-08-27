@@ -245,6 +245,14 @@ export async function archiveActivity(id: string): Promise<Activity> {
   );
 }
 
+export async function unarchiveActivity(id: string): Promise<Activity> {
+  return requestJson<Activity>(
+    `/api/activities/${encodeURIComponent(id)}/unarchive`,
+    activitySchema,
+    { method: "POST" },
+  );
+}
+
 export async function archiveAllActivities(): Promise<ArchiveAllActivitiesResponse> {
   return requestJson<ArchiveAllActivitiesResponse>(
     "/api/activities/archive-all",

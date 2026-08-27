@@ -88,11 +88,11 @@ export function ActivityBell() {
                   <ActivityCard
                     key={activity.id}
                     activity={activity}
-                    compact
+                    mode="compact"
                     archiving={
                       archiveMutation.isPending && archiveMutation.variables === activity.id
                     }
-                    onArchive={(id) => archiveMutation.mutate(id)}
+                    onMarkRead={(id) => archiveMutation.mutate(id)}
                   />
                 ))}
               </div>

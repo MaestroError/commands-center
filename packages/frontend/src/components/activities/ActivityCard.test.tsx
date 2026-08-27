@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { Activity, Task } from "@cc/shared/schemas";
@@ -52,6 +52,19 @@ vi.mock("@/hooks/use-tasks-query", () => ({
   }),
 }));
 
+vi.mock("@/hooks/use-specialists-query", () => ({
+  useSpecialistsQuery: () => ({
+    data: [
+      {
+        id: "agent-1",
+        slug: "tonny",
+        name: "Tonny",
+        iconPath: "emoji:🧑‍💻",
+      },
+    ],
+  }),
+}));
+
 function activity(overrides: Partial<Activity> & { id: string; kind: Activity["kind"] }): Activity {
   return {
     level: "action_required",
@@ -71,7 +84,7 @@ function renderCard(value: Activity, props: Partial<Parameters<typeof ActivityCa
   render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={["/"]}>
-        <ActivityCard activity={value} onArchive={vi.fn()} {...props} />
+        <ActivityCard activity={value} onMarkRead={vi.fn()} {...props} />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -81,6 +94,8 @@ describe("ActivityCard acceptance criteria", () => {
   it("task_completed: shows the task's acceptance criteria", () => {
     renderCard(activity({ id: "a1", kind: "task_completed", payload: { taskId: "t1" } }));
 
+    fireEvent.click(screen.getByRole("button", { name: /Acceptance criteria/ }));
+
     expect(screen.getByRole("list", { name: "Acceptance criteria" })).toBeInTheDocument();
     expect(screen.getByText("Read changelog")).toBeInTheDocument();
     expect(screen.getByText("Tag the release")).toBeInTheDocument();
@@ -88,6 +103,8 @@ describe("ActivityCard acceptance criteria", () => {
 
   it("task_needs_review: criteria are interactive (operator can toggle)", () => {
     renderCard(activity({ id: "a1", kind: "task_needs_review", payload: { taskId: "t1" } }));
+
+    fireEvent.click(screen.getByRole("button", { name: /Acceptance criteria/ }));
 
     expect(screen.getAllByRole("checkbox").length).toBeGreaterThan(0);
   });
@@ -312,8 +329,10 @@ describe("ActivityCard acceptance criteria", () => {
 
   it("read-only history renders non-interactive criteria", () => {
     renderCard(activity({ id: "a1", kind: "task_completed", payload: { taskId: "t1" } }), {
-      readOnly: true,
+      mode: "resolved",
     });
+
+    fireEvent.click(screen.getByRole("button", { name: /Acceptance criteria/ }));
 
     expect(screen.getByText("Read changelog")).toBeInTheDocument();
     // Read-only criteria render as disabled markers, not toggle buttons.
@@ -322,7 +341,7 @@ describe("ActivityCard acceptance criteria", () => {
 
   it("compact cards omit criteria to stay condensed", () => {
     renderCard(activity({ id: "a1", kind: "task_completed", payload: { taskId: "t1" } }), {
-      compact: true,
+      mode: "compact",
     });
 
     expect(screen.queryByText("Read changelog")).not.toBeInTheDocument();
@@ -338,7 +357,7 @@ describe("ActivityCard acceptance criteria", () => {
           artifacts: [{ title: "PR #4", type: "url", link: "https://example.com/pull/4" }],
         },
       }),
-      { compact: true },
+      { mode: "compact" },
     );
 
     expect(screen.queryByRole("list", { name: "Activity artifacts" })).not.toBeInTheDocument();
@@ -349,4 +368,117 @@ describe("ActivityCard acceptance criteria", () => {
 
     expect(screen.queryByText("Read changelog")).not.toBeInTheDocument();
   });
+
+  it("renders source specialist metadata from the normalized payload", () => {
+    renderCard(
+      activity({
+        id: "a1",
+        kind: "specialist_info",
+        payload: { sourceSpecialistId: "agent-1" },
+      }),
+    );
+
+    const source = screen.getByTestId("activity-source");
+    expect(within(source).getByText("by")).toBeInTheDocument();
+    expect(within(source).getByText("Tonny")).toBeInTheDocument();
+  });
+
+  it("constrains the card and swipe wrapper to the feed width", () => {
+    renderCard(activity({ id: "a1", kind: "specialist_info" }));
+
+    const card = screen.getByTestId("activity-card-a1");
+    expect(card).toHaveClass("w-full", "max-w-full", "min-w-0");
+    expect(card.parentElement).toHaveClass("w-full", "max-w-full", "min-w-0");
+  });
+
+  it("elevates the mobile fixed footer above scrolling content", () => {
+    renderCard(activity({ id: "a1", kind: "specialist_info" }), { mobile: true });
+
+    expect(screen.getByTestId("activity-card-footer")).toHaveClass(
+      "bg-surface-elevated",
+      "shadow-[var(--shadow-fixed-footer)]",
+    );
+  });
+
+  it("uses the rounded reference surface and elevated header on mobile", () => {
+    renderCard(activity({ id: "a1", kind: "specialist_warning" }), { mobile: true });
+
+    expect(screen.getByTestId("activity-card-a1")).toHaveClass("rounded-xl", "border-l-[3px]");
+    expect(screen.getByTestId("activity-card-header")).toHaveClass(
+      "shadow-[var(--shadow-fixed-header)]",
+    );
+  });
+
+  it("places mobile metadata before the title", () => {
+    renderCard(
+      activity({
+        id: "a1",
+        kind: "specialist_warning",
+        title: "Warning title",
+        payload: { sourceSpecialistId: "agent-1" },
+      }),
+      { mobile: true },
+    );
+
+    const source = screen.getByTestId("activity-source");
+    const title = screen.getByRole("heading", { name: "Warning title" });
+    expect(source.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("reveals structured run output on demand", () => {
+    renderCard(
+      activity({
+        id: "a1",
+        kind: "task_completed",
+        payload: { runOutput: "outcome: ready_for_review" },
+      }),
+    );
+
+    expect(screen.queryByText("outcome: ready_for_review")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Run output/ }));
+    expect(screen.getByText("outcome: ready_for_review")).toBeInTheDocument();
+  });
+
+  it("offers mark unread for resolved cards", () => {
+    const onMarkUnread = vi.fn();
+    renderCard(activity({ id: "a1", kind: "specialist_info", status: "archived" }), {
+      mode: "resolved",
+      onMarkUnread,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Mark unread" }));
+
+    expect(onMarkUnread).toHaveBeenCalledWith("a1");
+  });
+
+  it("uses responsive sizing for the resolved action", () => {
+    renderCard(activity({ id: "a1", kind: "specialist_info", status: "archived" }), {
+      mode: "resolved",
+      onMarkUnread: vi.fn(),
+    });
+
+    expect(screen.getByRole("button", { name: "Mark unread" })).toHaveClass(
+      "min-h-11",
+      "md:min-h-0",
+    );
+  });
+
+  it("swipes a pending card aside to mark it read", async () => {
+    const onMarkRead = vi.fn();
+    renderCard(activity({ id: "a1", kind: "specialist_info" }), { onMarkRead });
+    const card = screen.getByTestId("activity-card-a1");
+
+    dispatchPointer(card, "pointerdown", 200, 20);
+    dispatchPointer(card, "pointermove", 40, 24);
+    dispatchPointer(card, "pointerup", 40, 24);
+
+    expect(card).toHaveStyle({ transform: "translateX(-110%)" });
+    await waitFor(() => expect(onMarkRead).toHaveBeenCalledWith("a1"));
+  });
 });
+
+function dispatchPointer(element: Element, type: string, clientX: number, clientY: number): void {
+  const event = new MouseEvent(type, { bubbles: true, clientX, clientY });
+  Object.defineProperty(event, "pointerId", { value: 1 });
+  fireEvent(element, event);
+}

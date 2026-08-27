@@ -59,7 +59,10 @@ describe("notification tools", () => {
         level: "info",
         title: "Heads up",
         body: "**important** detail",
-        payload: expect.objectContaining({ proposedBySlug: "researcher" }),
+        payload: expect.objectContaining({
+          proposedBySlug: "researcher",
+          sourceSpecialistSlug: "researcher",
+        }),
       }),
     );
   });

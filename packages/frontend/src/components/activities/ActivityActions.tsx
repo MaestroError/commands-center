@@ -11,6 +11,7 @@ import {
 } from "@cc/shared/schemas";
 
 import { createTaskPromptValue } from "@/components/tasks/task-prompt";
+import { buttonVariants } from "@/components/ui/button-variants";
 import { useFillSecretMutation } from "@/hooks/use-activities-query";
 import { useSpecialistsQuery } from "@/hooks/use-specialists-query";
 import { useTaskMutations } from "@/hooks/use-tasks-query";
@@ -18,6 +19,7 @@ import type {
   TaskCreationPrefill,
   TaskTemplateCreationPrefill,
 } from "@/services/task-prefill-service";
+import { cn } from "@/lib/cn";
 
 type ActivityActionsProps = {
   activity: Activity;
@@ -27,7 +29,7 @@ type ActivityActionsProps = {
 
 /**
  * Per-kind action buttons. The primary (highlighted) button is always the one
- * that resolves the activity — i.e. moves it from Unreads to Resolved.
+ * that resolves the activity — i.e. moves it from an unresolved view to Resolved.
  */
 export function ActivityActions(props: ActivityActionsProps) {
   switch (props.activity.kind) {
@@ -403,8 +405,8 @@ function RunCommandProposalActions({ activity, onArchive, archiving }: ActivityA
   }
 
   return (
-    <div className="mt-1 grid gap-2">
-      <pre className="overflow-x-auto rounded-md border border-border bg-surface px-2 py-1.5 text-xs text-text-primary">
+    <div className="mt-1 grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
+      <pre className="min-w-0 max-w-full overflow-x-auto rounded-md border border-border bg-surface px-2 py-1.5 text-xs text-text-primary">
         <code>{command}</code>
       </pre>
       {confirming ? (
@@ -471,7 +473,7 @@ function stringField(activity: Activity, key: string): string | undefined {
 }
 
 function ActionRow({ children }: { children: ReactNode }) {
-  return <div className="flex flex-wrap items-center gap-2">{children}</div>;
+  return <div className="flex w-full flex-nowrap items-center gap-2 md:flex-wrap">{children}</div>;
 }
 
 function ActionButton({
@@ -487,12 +489,13 @@ function ActionButton({
   type?: "button" | "submit";
   variant: "primary" | "secondary" | "muted";
 }) {
-  const className =
-    variant === "primary"
-      ? "rounded-md bg-accent px-2.5 py-1 text-xs font-medium text-on-accent transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
-      : variant === "secondary"
-        ? "rounded-md border border-border bg-surface px-2.5 py-1 text-xs text-text-primary transition hover:border-accent/50 disabled:cursor-not-allowed disabled:opacity-50"
-        : "rounded-md px-2.5 py-1 text-xs text-text-secondary transition hover:text-text-primary disabled:opacity-50";
+  const className = cn(
+    buttonVariants({ variant: variant === "primary" ? "primary" : "secondary" }),
+    "min-h-11 min-w-0 md:min-h-0",
+    variant === "primary" ? "flex-1 md:flex-none" : "w-auto shrink-0",
+    variant === "muted" &&
+      "border-transparent bg-transparent text-text-secondary hover:bg-surface-elevated hover:text-text-primary",
+  );
   return (
     <button type={type} className={className} disabled={disabled} onClick={onClick}>
       {children}

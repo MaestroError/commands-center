@@ -100,6 +100,34 @@ describe("activity service", () => {
     await expect(service.archive("nope")).rejects.toThrow(/not found/i);
   });
 
+  it("unarchives an archived activity and clears its archived timestamp", async () => {
+    const activity = await service.emit({
+      kind: "task_completed",
+      level: "action_required",
+      title: "Done",
+    });
+    await service.archive(activity.id);
+
+    const unarchived = await service.unarchive(activity.id);
+
+    expect(unarchived.status).toBe("pending");
+    expect(unarchived.archivedAt).toBeNull();
+    expect(await service.actionRequiredCount()).toBe(1);
+  });
+
+  it("unarchive is idempotent and rejects unknown ids", async () => {
+    const activity = await service.emit({
+      kind: "feedback_resolved",
+      level: "info",
+      title: "Feedback",
+    });
+
+    const pending = await service.unarchive(activity.id);
+
+    expect(pending.status).toBe("pending");
+    await expect(service.unarchive("nope")).rejects.toThrow(/not found/i);
+  });
+
   it("archives all pending activities by dedupeKey", async () => {
     await service.emit({
       kind: "task_run_approval",

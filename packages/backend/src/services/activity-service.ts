@@ -138,6 +138,24 @@ export function createActivityService(options: { db: AppDb; logger?: Logger }) {
       return mapActivity({ ...existing, status: "archived", archived_at: now, updated_at: now });
     },
 
+    async unarchive(id: string): Promise<Activity> {
+      const existing = await db.query.activities.findFirst({
+        where: (table, operators) => operators.eq(table.id, id),
+      });
+      if (!existing) {
+        throw new NotFoundError("Activity not found.");
+      }
+      if (existing.status === "pending") {
+        return mapActivity(existing);
+      }
+      const now = new Date();
+      await db
+        .update(activities)
+        .set({ status: "pending", archived_at: null, updated_at: now })
+        .where(eq(activities.id, id));
+      return mapActivity({ ...existing, status: "pending", archived_at: null, updated_at: now });
+    },
+
     async archiveAllPending(): Promise<number> {
       const now = new Date();
       const archived = await db

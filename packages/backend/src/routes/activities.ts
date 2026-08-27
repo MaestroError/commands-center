@@ -59,6 +59,17 @@ export function registerActivityRoutes(server: AppServer, context: RuntimeContex
     async (request) => service.archive(request.params.id),
   );
 
+  app.post(
+    "/api/activities/:id/unarchive",
+    {
+      schema: {
+        params: idParamsSchema,
+        response: { 200: activitySchema },
+      },
+    },
+    async (request) => service.unarchive(request.params.id),
+  );
+
   // Resolve a secret_request: store the value, restart the engine so it takes
   // effect, then archive the card. Safe to restart here — no agent turn is
   // blocked on this (the request was non-blocking).
