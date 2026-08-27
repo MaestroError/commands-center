@@ -387,6 +387,7 @@ export async function startServerRuntime(
     orchestrator,
     logger,
     retryDelayMs: config.timeouts.opencodeHealthPollMs,
+    onStarted: () => conversationService.resumeInteractiveChatWatchdogs(),
   });
   void taskExecutionService.resumeRunningTaskRuns().catch((error: unknown) => {
     logger.error({ err: error }, "task run monitor resume failed");
@@ -424,6 +425,7 @@ export function startOpenCodeEngineBestEffort(options: {
   orchestrator: Pick<OpenCodeOrchestrator, "start" | "getStatus">;
   logger: Logger;
   retryDelayMs: number;
+  onStarted?: () => Promise<void>;
 }): OpenCodeStartupHandle {
   let disposed = false;
   let retryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -445,6 +447,11 @@ export function startOpenCodeEngineBestEffort(options: {
     try {
       await options.orchestrator.start();
       retryAttempts = 0;
+      try {
+        await options.onStarted?.();
+      } catch (error) {
+        options.logger.warn({ err: error }, "opencode startup recovery failed");
+      }
     } catch (error) {
       if (disposed) {
         return;

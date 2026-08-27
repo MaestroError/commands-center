@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import type { Logger } from "pino";
 
 import { createId } from "../../src/db/ids";
-import { artifact_share_links, artifacts } from "../../src/db/schema/index";
+import { artifact_share_links, artifacts, conversations } from "../../src/db/schema/index";
 import { createArtifactService } from "../../src/services/artifact-service";
 import { NotFoundError } from "../../src/lib/api-error";
 import { createConversationService } from "../../src/services/conversation-service";
@@ -111,6 +111,82 @@ async function setup(
 }
 
 describe("conversation-service delegating methods", () => {
+  it("re-arms active busy and retrying chats after restart", async () => {
+    const watchdog = {
+      rearm: vi.fn(() => Promise.resolve()),
+    } as unknown as InteractiveChatWatchdogService;
+    const { testDb, service, opencodeService, agent } = await setup({ watchdog });
+    const busy = await service.resolveCurrent(agent.id);
+    const retrying = await service.startFresh(agent.id);
+    const idle = await service.startFresh(agent.id);
+    await testDb.client.db.insert(conversations).values({
+      id: createId(),
+      agent_id: agent.id,
+      opencode_session_id: "task-session",
+      title: "Task run",
+      status: "active",
+      source: "task_run",
+      is_current: false,
+      created_at: new Date(),
+      updated_at: new Date(),
+    });
+    opencodeService.getSessionStatus = vi.fn((_directory: string, sessionID: string) => {
+      if (sessionID === busy.current.opencodeSessionId) {
+        return Promise.resolve({ type: "busy" as const });
+      }
+      if (sessionID === retrying.current.opencodeSessionId) {
+        return Promise.resolve({
+          type: "retry" as const,
+          attempt: 1,
+          message: "retrying",
+          next: 1,
+        });
+      }
+      return Promise.resolve({ type: "idle" as const });
+    });
+
+    await service.resumeInteractiveChatWatchdogs();
+
+    expect(watchdog.rearm).toHaveBeenCalledTimes(2);
+    expect(watchdog.rearm).toHaveBeenCalledWith({
+      conversationId: busy.current.id,
+      directory: agent.workspacePath,
+      sessionID: busy.current.opencodeSessionId,
+    });
+    expect(watchdog.rearm).toHaveBeenCalledWith({
+      conversationId: retrying.current.id,
+      directory: agent.workspacePath,
+      sessionID: retrying.current.opencodeSessionId,
+    });
+    expect(opencodeService.getSessionStatus).not.toHaveBeenCalledWith(
+      expect.anything(),
+      "task-session",
+    );
+    expect(watchdog.rearm).not.toHaveBeenCalledWith(
+      expect.objectContaining({ sessionID: idle.current.opencodeSessionId }),
+    );
+  });
+
+  it("continues restart recovery when one chat cannot be re-armed", async () => {
+    const recoveryError = new Error("snapshot failed");
+    const logger = { warn: vi.fn() } as unknown as Logger;
+    const watchdog = {
+      rearm: vi.fn().mockRejectedValueOnce(recoveryError).mockResolvedValueOnce(undefined),
+    } as unknown as InteractiveChatWatchdogService;
+    const { service, opencodeService, agent } = await setup({ watchdog, logger });
+    await service.resolveCurrent(agent.id);
+    await service.startFresh(agent.id);
+    opencodeService.getSessionStatus = vi.fn(() => Promise.resolve({ type: "busy" as const }));
+
+    await expect(service.resumeInteractiveChatWatchdogs()).resolves.toBeUndefined();
+
+    expect(watchdog.rearm).toHaveBeenCalledTimes(2);
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ err: recoveryError }),
+      "interactive chat watchdog restart recovery failed",
+    );
+  });
+
   it("arms the chat watchdog only after an async prompt is accepted", async () => {
     const arm = vi.fn();
     const cancel = vi.fn();

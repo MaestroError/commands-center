@@ -157,6 +157,46 @@ export function createConversationService(options: {
   return {
     taskRunOperationGuard,
 
+    async resumeInteractiveChatWatchdogs(): Promise<void> {
+      const watchdog = options.interactiveChatWatchdogService;
+      if (!watchdog) return;
+
+      const activeChats = await options.db.query.conversations.findMany({
+        where: (table, operators) =>
+          operators.and(operators.eq(table.status, "active"), operators.eq(table.source, "chat")),
+      });
+      await Promise.all(
+        activeChats.map(async (conversation) => {
+          try {
+            const agent = await options.db.query.agents.findFirst({
+              where: (table, operators) => operators.eq(table.id, conversation.agent_id),
+            });
+            if (!agent || agent.status !== "active") return;
+            const directory = withResolvedWorkspacePath(agent).workspace_path;
+            const status = await options.opencodeService.getSessionStatus(
+              directory,
+              conversation.opencode_session_id,
+            );
+            if (status.type !== "busy" && status.type !== "retry") return;
+            await watchdog.rearm({
+              conversationId: conversation.id,
+              directory,
+              sessionID: conversation.opencode_session_id,
+            });
+          } catch (error) {
+            options.logger?.warn(
+              {
+                err: error,
+                conversationId: conversation.id,
+                sessionID: conversation.opencode_session_id,
+              },
+              "interactive chat watchdog restart recovery failed",
+            );
+          }
+        }),
+      );
+    },
+
     async resolveCurrent(agentId: string): Promise<ConversationSnapshot> {
       const agent = await getAgent(agentId);
       let current = await options.db.query.conversations.findFirst({

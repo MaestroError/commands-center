@@ -79,6 +79,14 @@ Route direct and nested OpenCode descendant interactions through their owning ro
 - Apply a successful authoritative pending snapshot independently of conversation-detail refresh failure.
 - Cover upstream reconnection without a browser reconnect and deferred live or initially hydrated auto-reply failures after a successful pending snapshot and failed detail refresh.
 
+### 9. Repeated timeout, snapshot ordering, and restart recovery
+
+- Preserve the original no-progress deadline when bounded watchdog polls time out, distinguish an internal poll timeout from handle cancellation, and still attempt the bounded root abort after the deadline.
+- Fence initial and reconnect pending-interaction snapshots by request generation so only the newest requested reconciliation may update permissions, questions, live requests, or auto-approve fallback state.
+- After OpenCode starts, find persisted active chat conversations whose sessions are still busy or retrying and re-arm their watchdogs from a fresh bounded baseline.
+- Keep restart recovery best-effort per conversation, exclude task-run and idle sessions, and do not let recovery failure consume the OpenCode startup retry budget.
+- Cover repeated timed-out polls after the deadline, initial-after-reconnect and overlapping-reconnect completion order, recovered settled turns, and startup recovery failure isolation.
+
 ## Verification
 
 1. Run focused backend adapter, event, conversation, monitor, route, and watchdog tests.
