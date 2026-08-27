@@ -950,6 +950,114 @@ describe("useConversation", () => {
       expect(result.current.liveRequests).toEqual([]);
     });
 
+    it("ignores an initial snapshot superseded by reconnect reconciliation", async () => {
+      const initialPending = createDeferred<PendingInteractions>();
+      const reconnectPending = createDeferred<PendingInteractions>();
+      const reconnect = createDeferred<void>();
+      vi.mocked(getPendingInteractions)
+        .mockReturnValueOnce(initialPending.promise)
+        .mockReturnValueOnce(reconnectPending.promise);
+      vi.mocked(getConversation).mockResolvedValue(makeConversation());
+      vi.mocked(connectConversationEvents).mockImplementation(
+        async function* (_conversationId, signal): AsyncGenerator<ChatEvent> {
+          yield { type: "connected", properties: {} };
+          await reconnect.promise;
+          yield { type: "connected", properties: { reconnected: true } };
+          await waitForAbort(signal);
+        },
+      );
+      const queryClient = createQueryClient();
+      const { result } = renderHook(() => useConversation("writer"), {
+        wrapper: createWrapper(queryClient),
+      });
+      await waitFor(() => expect(getPendingInteractions).toHaveBeenCalledOnce());
+
+      reconnect.resolve();
+      await waitFor(() => expect(getPendingInteractions).toHaveBeenCalledTimes(2));
+      reconnectPending.resolve(noPendingInteractions());
+      await act(async () => Promise.resolve());
+      initialPending.resolve({
+        permissions: [
+          {
+            id: "stale-permission",
+            sessionID: "sess-1",
+            permission: "bash",
+            patterns: [],
+            metadata: {},
+            always: [],
+          },
+        ],
+        question: {
+          id: "stale-question",
+          sessionID: "sess-1",
+          questions: [{ question: "Stale?", options: [{ label: "Yes" }] }],
+        },
+        liveRequests: [makeLiveRequest({ id: "stale-live" })],
+      });
+      await act(async () => Promise.resolve());
+
+      expect(result.current.pendingPermission).toBeNull();
+      expect(result.current.pendingQuestion).toBeNull();
+      expect(result.current.liveRequests).toEqual([]);
+    });
+
+    it("keeps the newest of overlapping reconnect snapshots", async () => {
+      const firstReconnectPending = createDeferred<PendingInteractions>();
+      const secondReconnectPending = createDeferred<PendingInteractions>();
+      const firstReconnect = createDeferred<void>();
+      const secondReconnect = createDeferred<void>();
+      vi.mocked(getPendingInteractions)
+        .mockResolvedValueOnce(noPendingInteractions())
+        .mockReturnValueOnce(firstReconnectPending.promise)
+        .mockReturnValueOnce(secondReconnectPending.promise);
+      vi.mocked(getConversation).mockResolvedValue(makeConversation());
+      vi.mocked(connectConversationEvents).mockImplementation(
+        async function* (_conversationId, signal): AsyncGenerator<ChatEvent> {
+          yield { type: "connected", properties: {} };
+          await firstReconnect.promise;
+          yield { type: "connected", properties: { reconnected: true } };
+          await secondReconnect.promise;
+          yield { type: "connected", properties: { reconnected: true } };
+          await waitForAbort(signal);
+        },
+      );
+      const queryClient = createQueryClient();
+      const { result } = renderHook(() => useConversation("writer"), {
+        wrapper: createWrapper(queryClient),
+      });
+      await waitFor(() => expect(getPendingInteractions).toHaveBeenCalledOnce());
+
+      firstReconnect.resolve();
+      await waitFor(() => expect(getPendingInteractions).toHaveBeenCalledTimes(2));
+      secondReconnect.resolve();
+      await waitFor(() => expect(getPendingInteractions).toHaveBeenCalledTimes(3));
+      secondReconnectPending.resolve({
+        permissions: [
+          {
+            id: "new-permission",
+            sessionID: "sess-1",
+            permission: "bash",
+            patterns: [],
+            metadata: {},
+            always: [],
+          },
+        ],
+        question: {
+          id: "new-question",
+          sessionID: "sess-1",
+          questions: [{ question: "New?", options: [{ label: "Yes" }] }],
+        },
+        liveRequests: [makeLiveRequest({ id: "new-live" })],
+      });
+      await waitFor(() => expect(result.current.pendingPermission?.id).toBe("new-permission"));
+      firstReconnectPending.resolve(noPendingInteractions());
+      await act(async () => Promise.resolve());
+
+      expect(result.current.pendingPermission?.id).toBe("new-permission");
+      expect(result.current.pendingQuestion?.id).toBe("new-question");
+      expect(result.current.liveRequests[0]?.id).toBe("new-live");
+    });
+
     it("auto-replies to rehydrated permissions when auto approve is enabled, without surfacing them", async () => {
       window.localStorage.setItem("cc-specialist-auto-approve-writer", "true");
       vi.mocked(getPendingInteractions).mockResolvedValue({

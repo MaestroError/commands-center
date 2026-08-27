@@ -664,6 +664,20 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
         authoritative,
       });
     };
+    let pendingHydrationGeneration = 0;
+
+    const requestPendingInteractions = (authoritative: boolean): void => {
+      const requestSequence = terminalSequence;
+      const requestGeneration = ++pendingHydrationGeneration;
+      void getPendingInteractions(activeConversationId)
+        .then((pending) => {
+          if (requestGeneration !== pendingHydrationGeneration) return;
+          hydratePendingInteractions(pending, authoritative, requestSequence);
+        })
+        .catch(() => {
+          // The live stream remains the fallback for later interactions.
+        });
+    };
 
     void (async () => {
       let connectionAttempt = 0;
@@ -689,27 +703,15 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
               reconnectDelay = INITIAL_SSE_RECONNECT_DELAY_MS;
 
               if (initialConnection) {
-                const initialHydrationSequence = terminalSequence;
-                void getPendingInteractions(activeConversationId)
-                  .then((pending) =>
-                    hydratePendingInteractions(pending, false, initialHydrationSequence),
-                  )
-                  .catch(() => {
-                    // The live stream remains the fallback for later interactions.
-                  });
+                requestPendingInteractions(false);
               } else {
-                const reconnectHydrationSequence = terminalSequence;
                 void getConversation(activeAgentId, activeConversationId)
                   .then((detail) => {
                     if (controller.signal.aborted) return;
                     dispatch({ type: "HYDRATE_DETAIL", detail });
                   })
                   .catch(() => {});
-                void getPendingInteractions(activeConversationId)
-                  .then((pending) =>
-                    hydratePendingInteractions(pending, true, reconnectHydrationSequence),
-                  )
-                  .catch(() => {});
+                requestPendingInteractions(true);
               }
 
               continue;
