@@ -216,6 +216,33 @@ describe("interactive-chat-watchdog-service", () => {
     expect(opencodeService.listSessionStatuses).not.toHaveBeenCalled();
   });
 
+  it("disarms fallback protection when no prompt was accepted", async () => {
+    vi.useFakeTimers();
+    const opencodeService = createMockOpenCodeService();
+    opencodeService.getSessionTreeIds = vi.fn(() => Promise.resolve(new Set(["root"])));
+    opencodeService.listSessionMessages = vi.fn(() => Promise.resolve([]));
+    opencodeService.listSessionStatuses = vi.fn(() =>
+      Promise.resolve({ root: { type: "idle" as const } }),
+    );
+    const service = createInteractiveChatWatchdogService({
+      opencodeService,
+      logger: createLogger(),
+      noProgressMs: 10,
+      pollMs: 1,
+    });
+    const fallback = await service.prepareFallback({
+      conversationId: "conversation-1",
+      directory: "/work",
+      sessionID: "root",
+    });
+    fallback.arm();
+
+    await vi.advanceTimersByTimeAsync(20);
+
+    expect(opencodeService.listSessionStatuses).toHaveBeenCalledOnce();
+    expect(opencodeService.abortSession).not.toHaveBeenCalled();
+  });
+
   it("does not abort or publish after cancellation during a poll", async () => {
     vi.useFakeTimers();
     let now = 0;

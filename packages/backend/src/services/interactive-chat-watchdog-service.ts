@@ -20,7 +20,7 @@ type WatchdogHandle = {
   conversationId: string;
   directory: string;
   sessionID: string;
-  signature: string;
+  signature?: string;
   sawProgress: boolean;
   lastProgressAt: number;
   timer?: ReturnType<typeof setInterval>;
@@ -64,15 +64,24 @@ export function createInteractiveChatWatchdogService(options: {
       directory: string;
       sessionID: string;
     }): Promise<{ arm: () => void; cancel: () => void }> {
-      return prepareHandle(input, false);
+      return prepareHandle(input, false, false);
+    },
+
+    prepareFallback(input: {
+      conversationId: string;
+      directory: string;
+      sessionID: string;
+    }): Promise<{ arm: () => void; cancel: () => void }> {
+      return prepareHandle(input, false, true);
     },
 
     async rearm(input: {
       conversationId: string;
       directory: string;
       sessionID: string;
+      signal?: AbortSignal;
     }): Promise<void> {
-      const prepared = await prepareHandle(input, true);
+      const prepared = await prepareHandle(input, true, false);
       prepared.arm();
     },
 
@@ -117,8 +126,10 @@ export function createInteractiveChatWatchdogService(options: {
       conversationId: string;
       directory: string;
       sessionID: string;
+      signal?: AbortSignal;
     },
     sawProgress: boolean,
+    fallback: boolean,
   ): Promise<{ arm: () => void; cancel: () => void }> {
     const generation = generations.get(input.conversationId) ?? 0;
     const activeAbort = handles.get(input.conversationId)?.abortPromise;
@@ -133,21 +144,28 @@ export function createInteractiveChatWatchdogService(options: {
       if (protectedHandle) protectedHandle.replacements -= 1;
     }
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), prepareTimeoutMs);
-    let snapshot: Awaited<ReturnType<typeof readSnapshot>>;
-    try {
-      snapshot = await readSnapshot(input.directory, input.sessionID, controller.signal);
-    } catch (error) {
-      releaseReplacement();
-      throw error;
-    } finally {
-      clearTimeout(timeout);
+    let signature: string | undefined;
+    if (!fallback) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), prepareTimeoutMs);
+      const signal = input.signal
+        ? AbortSignal.any([input.signal, controller.signal])
+        : controller.signal;
+      try {
+        signature = (await readSnapshot(input.directory, input.sessionID, signal)).signature;
+        signal.throwIfAborted();
+      } catch (error) {
+        releaseReplacement();
+        throw error;
+      } finally {
+        clearTimeout(timeout);
+      }
     }
-    controller.signal.throwIfAborted();
     const handle: WatchdogHandle = {
-      ...input,
-      signature: snapshot.signature,
+      conversationId: input.conversationId,
+      directory: input.directory,
+      sessionID: input.sessionID,
+      signature,
       sawProgress,
       lastProgressAt: now(),
       abortFailures: 0,
@@ -201,12 +219,19 @@ export function createInteractiveChatWatchdogService(options: {
         readSnapshot(handle.directory, handle.sessionID, pollController.signal),
       ]);
       if (!isCurrent()) return;
-      if (snapshot.signature !== handle.signature) {
+      const status = statuses[handle.sessionID];
+      if (handle.signature === undefined) {
+        if (status?.type !== "busy" && status?.type !== "retry") {
+          void stop(handle.conversationId);
+          return;
+        }
+        handle.signature = snapshot.signature;
+        handle.sawProgress = true;
+      } else if (snapshot.signature !== handle.signature) {
         handle.signature = snapshot.signature;
         handle.sawProgress = true;
         handle.lastProgressAt = now();
       }
-      const status = statuses[handle.sessionID];
       if (
         status?.type !== "busy" &&
         status?.type !== "retry" &&

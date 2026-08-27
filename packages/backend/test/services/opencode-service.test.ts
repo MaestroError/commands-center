@@ -80,6 +80,43 @@ describe("opencode-service", () => {
       expect(init.method).toBe("POST");
     });
 
+    it("forwards a caller-provided request signal", async () => {
+      const hangingFetch = vi.fn(
+        (_url: URL, init: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            init.signal?.addEventListener(
+              "abort",
+              () =>
+                reject(
+                  init.signal?.reason instanceof Error ? init.signal.reason : new Error("aborted"),
+                ),
+              { once: true },
+            );
+          }),
+      );
+      vi.stubGlobal("fetch", hangingFetch);
+      const config = createConfig();
+      const service = createOpenCodeService({
+        client: FAKE_CLIENT,
+        config,
+        logger: createLogger(),
+      });
+
+      const controller = new AbortController();
+      const request = service.promptSessionAsync({
+        directory: "/work/agent-a",
+        sessionID: "sess-1",
+        agent: "build",
+        model: { providerID: "anthropic", modelID: "claude" },
+        text: "hello",
+        signal: controller.signal,
+      });
+      controller.abort();
+
+      await expect(request).rejects.toThrow();
+      expect((hangingFetch.mock.calls[0]?.[1] as RequestInit).signal).toBe(controller.signal);
+    });
+
     it("includes `system` in the body only when provided", async () => {
       fetchMock.mockResolvedValue(jsonResponse(204));
       const service = createOpenCodeService({

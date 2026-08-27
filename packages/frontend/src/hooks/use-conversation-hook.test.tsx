@@ -443,6 +443,113 @@ describe("useConversation", () => {
     expect(connectConversationEvents).toHaveBeenCalledTimes(2);
   });
 
+  it("ignores a reconnect detail snapshot superseded by message, part, and status events", async () => {
+    const reconnect = createDeferred<void>();
+    const detail = createDeferred<ConversationDetail>();
+    vi.mocked(getConversation).mockReturnValue(detail.promise);
+    vi.mocked(connectConversationEvents).mockImplementation(
+      async function* (_conversationId, signal): AsyncGenerator<ChatEvent> {
+        yield { type: "connected", properties: {} };
+        await reconnect.promise;
+        yield { type: "connected", properties: { reconnected: true } };
+        yield {
+          type: "message.updated",
+          properties: {
+            sessionID: "sess-1",
+            message: {
+              id: "assistant-race",
+              conversationId: "conv-1",
+              role: "assistant",
+              content: "New message",
+              parts: [],
+              attachments: [],
+              createdAt: "2026-01-01T00:01:00.000Z",
+              updatedAt: "2026-01-01T00:01:00.000Z",
+            },
+          },
+        };
+        yield {
+          type: "message.part.updated",
+          properties: {
+            sessionID: "sess-1",
+            messageID: "assistant-race",
+            part: { id: "part-race", type: "text", text: "New part" },
+          },
+        };
+        yield {
+          type: "session.status",
+          properties: { sessionID: "sess-1", status: { type: "busy" } },
+        };
+        await waitForAbort(signal);
+      },
+    );
+    const queryClient = createQueryClient();
+    const { result } = renderHook(() => useConversation("writer"), {
+      wrapper: createWrapper(queryClient),
+    });
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+
+    reconnect.resolve();
+    await waitFor(() => expect(result.current.sessionStatus).toEqual({ type: "busy" }));
+    detail.resolve(
+      makeConversation({
+        messages: [
+          {
+            id: "assistant-race",
+            conversationId: "conv-1",
+            role: "assistant",
+            content: "Stale message",
+            parts: [{ id: "part-race", type: "text", text: "Stale part" }],
+            attachments: [],
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+          },
+        ],
+      }),
+    );
+    await act(async () => Promise.resolve());
+
+    expect(result.current.conversation?.messages[0]?.content).toBe("New message");
+    expect(result.current.parts["assistant-race"]?.[0]).toMatchObject({ text: "New part" });
+    expect(result.current.sessionStatus).toEqual({ type: "busy" });
+  });
+
+  it("keeps the newest of overlapping reconnect detail snapshots", async () => {
+    const firstReconnect = createDeferred<void>();
+    const secondReconnect = createDeferred<void>();
+    const firstDetail = createDeferred<ConversationDetail>();
+    const secondDetail = createDeferred<ConversationDetail>();
+    vi.mocked(getConversation)
+      .mockReturnValueOnce(firstDetail.promise)
+      .mockReturnValueOnce(secondDetail.promise);
+    vi.mocked(connectConversationEvents).mockImplementation(
+      async function* (_conversationId, signal): AsyncGenerator<ChatEvent> {
+        yield { type: "connected", properties: {} };
+        await firstReconnect.promise;
+        yield { type: "connected", properties: { reconnected: true } };
+        await secondReconnect.promise;
+        yield { type: "connected", properties: { reconnected: true } };
+        await waitForAbort(signal);
+      },
+    );
+    const queryClient = createQueryClient();
+    const { result } = renderHook(() => useConversation("writer"), {
+      wrapper: createWrapper(queryClient),
+    });
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+
+    firstReconnect.resolve();
+    await waitFor(() => expect(getConversation).toHaveBeenCalledTimes(1));
+    secondReconnect.resolve();
+    await waitFor(() => expect(getConversation).toHaveBeenCalledTimes(2));
+    secondDetail.resolve(makeConversation({ title: "Newest detail" }));
+    await waitFor(() => expect(result.current.conversation?.title).toBe("Newest detail"));
+    firstDetail.resolve(makeConversation({ title: "Older detail" }));
+    await act(async () => Promise.resolve());
+
+    expect(result.current.conversation?.title).toBe("Newest detail");
+  });
+
   it("removes interactions resolved while the event stream was disconnected", async () => {
     let closeFirstStream: (() => void) | undefined;
     const firstStreamClosed = new Promise<void>((resolve) => {
@@ -1485,6 +1592,128 @@ describe("useConversation", () => {
 
       await waitFor(() => expect(result.current.pendingQuestion?.id).toBe("q-2"));
       expect(getPendingInteractions).toHaveBeenCalledOnce();
+    });
+
+    it("does not resurrect a replied question from an in-flight reconnect snapshot", async () => {
+      const reconnect = createDeferred<void>();
+      const reconnectPending = createDeferred<PendingInteractions>();
+      const firstQuestion = {
+        id: "q-replied",
+        sessionID: "sess-1",
+        questions: [{ question: "First?", options: [{ label: "Yes" }] }],
+      };
+      const secondQuestion = {
+        id: "q-next",
+        sessionID: "child-session",
+        questions: [{ question: "Second?", options: [{ label: "Continue" }] }],
+      };
+      const pending = {
+        permissions: [],
+        question: firstQuestion,
+        questions: [firstQuestion, secondQuestion],
+        liveRequests: [],
+      };
+      vi.mocked(getPendingInteractions)
+        .mockResolvedValueOnce(pending)
+        .mockReturnValueOnce(reconnectPending.promise);
+      vi.mocked(getConversation).mockResolvedValue(makeConversation());
+      vi.mocked(connectConversationEvents).mockImplementation(
+        async function* (_conversationId, signal): AsyncGenerator<ChatEvent> {
+          yield { type: "connected", properties: {} };
+          await reconnect.promise;
+          yield { type: "connected", properties: { reconnected: true } };
+          await waitForAbort(signal);
+        },
+      );
+      const queryClient = createQueryClient();
+      const { result } = renderHook(() => useConversation("writer"), {
+        wrapper: createWrapper(queryClient),
+      });
+      await waitFor(() => expect(result.current.pendingQuestion?.id).toBe("q-replied"));
+
+      reconnect.resolve();
+      await waitFor(() => expect(getPendingInteractions).toHaveBeenCalledTimes(2));
+      act(() => result.current.replyQuestion("q-replied", [["Yes"]]));
+      await waitFor(() => expect(result.current.pendingQuestion?.id).toBe("q-next"));
+      reconnectPending.resolve(pending);
+      await act(async () => Promise.resolve());
+
+      expect(result.current.pendingQuestion?.id).toBe("q-next");
+    });
+
+    it("does not resurrect a stale rejected question from an in-flight reconnect snapshot", async () => {
+      const reconnect = createDeferred<void>();
+      const reconnectPending = createDeferred<PendingInteractions>();
+      const firstQuestion = {
+        id: "q-rejected",
+        sessionID: "sess-1",
+        questions: [{ question: "First?", options: [{ label: "Yes" }] }],
+      };
+      const secondQuestion = {
+        id: "q-next",
+        sessionID: "child-session",
+        questions: [{ question: "Second?", options: [{ label: "Continue" }] }],
+      };
+      const pending = {
+        permissions: [],
+        question: firstQuestion,
+        questions: [firstQuestion, secondQuestion],
+        liveRequests: [],
+      };
+      vi.mocked(getPendingInteractions)
+        .mockResolvedValueOnce(pending)
+        .mockReturnValueOnce(reconnectPending.promise);
+      vi.mocked(getConversation).mockResolvedValue(makeConversation());
+      vi.mocked(rejectQuestion).mockRejectedValueOnce(
+        new ApiRequestError('Pending request "q-rejected" no longer exists.', 410),
+      );
+      vi.mocked(connectConversationEvents).mockImplementation(
+        async function* (_conversationId, signal): AsyncGenerator<ChatEvent> {
+          yield { type: "connected", properties: {} };
+          await reconnect.promise;
+          yield { type: "connected", properties: { reconnected: true } };
+          await waitForAbort(signal);
+        },
+      );
+      const queryClient = createQueryClient();
+      const { result } = renderHook(() => useConversation("writer"), {
+        wrapper: createWrapper(queryClient),
+      });
+      await waitFor(() => expect(result.current.pendingQuestion?.id).toBe("q-rejected"));
+
+      reconnect.resolve();
+      await waitFor(() => expect(getPendingInteractions).toHaveBeenCalledTimes(2));
+      act(() => result.current.rejectQuestion("q-rejected"));
+      await waitFor(() => expect(result.current.pendingQuestion?.id).toBe("q-next"));
+      reconnectPending.resolve(pending);
+      await act(async () => Promise.resolve());
+
+      expect(result.current.pendingQuestion?.id).toBe("q-next");
+    });
+
+    it("keeps a question actionable when its reply fails transiently", async () => {
+      vi.mocked(getPendingInteractions).mockResolvedValue({
+        permissions: [],
+        question: {
+          id: "q-transient",
+          sessionID: "sess-1",
+          questions: [{ question: "Proceed?", options: [{ label: "Yes" }] }],
+        },
+        liveRequests: [],
+      });
+      vi.mocked(replyQuestion).mockRejectedValueOnce(new ApiRequestError("Internal error.", 500));
+      const queryClient = createQueryClient();
+      const { result } = renderHook(() => useConversation("writer"), {
+        wrapper: createWrapper(queryClient),
+      });
+      await waitFor(() => expect(result.current.pendingQuestion?.id).toBe("q-transient"));
+
+      act(() => result.current.replyQuestion("q-transient", [["Yes"]]));
+      await waitFor(() =>
+        expect(replyQuestion).toHaveBeenCalledWith("conv-1", "q-transient", [["Yes"]]),
+      );
+
+      expect(result.current.pendingQuestion?.id).toBe("q-transient");
     });
 
     it("drops a stale permission reply from local state on a 404", async () => {

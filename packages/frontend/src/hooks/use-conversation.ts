@@ -548,6 +548,7 @@ export type UseConversationReturn = {
 export function useConversation(agentSlug: string, conversationId?: string): UseConversationReturn {
   const [state, dispatch] = useReducer(conversationReducer, initialState);
   const sseAbortRef = useRef<AbortController | null>(null);
+  const interactionEventRecorderRef = useRef<((event: ChatEvent) => void) | null>(null);
 
   // Auto-approve state with localStorage persistence
   const [autoApprove, setAutoApproveState] = useState(() => {
@@ -619,6 +620,8 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
     const controller = new AbortController();
     sseAbortRef.current = controller;
     let interactionSequence = 0;
+    let conversationEventSequence = 0;
+    let detailHydrationGeneration = 0;
     const terminalPermissions = new Map<string, number>();
     const terminalQuestions = new Map<string, number>();
     const terminalLiveRequests = new Map<string, number>();
@@ -629,6 +632,7 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
 
     const recordInteraction = (event: ChatEvent): number => {
       interactionSequence += 1;
+      conversationEventSequence += 1;
       if (event.type === "permission.asked") {
         openedPermissions.set(event.properties.id, interactionSequence);
       } else if (event.type === "permission.replied") {
@@ -647,6 +651,13 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
       }
       return interactionSequence;
     };
+
+    const recordLocalInteraction = (event: ChatEvent): void => {
+      if (controller.signal.aborted) return;
+      recordInteraction(event);
+      dispatch({ type: "SSE_EVENT", event });
+    };
+    interactionEventRecorderRef.current = recordLocalInteraction;
 
     const filterTerminatedInteractions = (
       pending: PendingInteractions,
@@ -758,9 +769,13 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
               if (initialConnection) {
                 requestPendingInteractions(false);
               } else {
+                const detailRequestSequence = conversationEventSequence;
+                const detailRequestGeneration = ++detailHydrationGeneration;
                 void getConversation(activeAgentId, activeConversationId)
                   .then((detail) => {
                     if (controller.signal.aborted) return;
+                    if (detailRequestGeneration !== detailHydrationGeneration) return;
+                    if (detailRequestSequence !== conversationEventSequence) return;
                     dispatch({ type: "HYDRATE_DETAIL", detail });
                   })
                   .catch(() => {});
@@ -799,6 +814,9 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
 
     return () => {
       controller.abort();
+      if (interactionEventRecorderRef.current === recordLocalInteraction) {
+        interactionEventRecorderRef.current = null;
+      }
       if (sseAbortRef.current === controller) {
         sseAbortRef.current = null;
       }
@@ -915,34 +933,70 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
     (requestId: string, answers: string[][]) => {
       if (!state.conversation) return;
       const conversationId = state.conversation.id;
+      const sessionID = [state.pendingQuestion, ...state.queuedQuestions].find(
+        (question) => question?.id === requestId,
+      )?.sessionID;
+      const terminalEvent: ChatEvent = {
+        type: "question.replied",
+        properties: {
+          sessionID: sessionID ?? state.conversation.opencodeSessionId,
+          requestID: requestId,
+        },
+      };
+      const recordTerminal = interactionEventRecorderRef.current;
+      const finish = (): void => {
+        if (recordTerminal) {
+          recordTerminal(terminalEvent);
+        } else {
+          dispatch({ type: "DISCARD_STALE_QUESTION", requestId });
+        }
+      };
       void apiReplyQuestion(conversationId, requestId, answers)
         .then(() => {
-          dispatch({ type: "DISCARD_STALE_QUESTION", requestId });
+          finish();
         })
         .catch((error: unknown) => {
           if (isStaleRequestError(error)) {
-            dispatch({ type: "DISCARD_STALE_QUESTION", requestId });
+            finish();
           }
         });
     },
-    [state.conversation],
+    [state.conversation, state.pendingQuestion, state.queuedQuestions],
   );
 
   const rejectQ = useCallback(
     (requestId: string) => {
       if (!state.conversation) return;
       const conversationId = state.conversation.id;
+      const sessionID = [state.pendingQuestion, ...state.queuedQuestions].find(
+        (question) => question?.id === requestId,
+      )?.sessionID;
+      const terminalEvent: ChatEvent = {
+        type: "question.rejected",
+        properties: {
+          sessionID: sessionID ?? state.conversation.opencodeSessionId,
+          requestID: requestId,
+        },
+      };
+      const recordTerminal = interactionEventRecorderRef.current;
+      const finish = (): void => {
+        if (recordTerminal) {
+          recordTerminal(terminalEvent);
+        } else {
+          dispatch({ type: "DISCARD_STALE_QUESTION", requestId });
+        }
+      };
       void apiRejectQuestion(conversationId, requestId)
         .then(() => {
-          dispatch({ type: "DISCARD_STALE_QUESTION", requestId });
+          finish();
         })
         .catch((error: unknown) => {
           if (isStaleRequestError(error)) {
-            dispatch({ type: "DISCARD_STALE_QUESTION", requestId });
+            finish();
           }
         });
     },
-    [state.conversation],
+    [state.conversation, state.pendingQuestion, state.queuedQuestions],
   );
 
   const resolveLive = useCallback(

@@ -468,12 +468,17 @@ export function createOpenCodeService(options: {
       return openCodeSessionStatusMapSchema.parse(result);
     },
 
-    async getSessionStatus(directory: string, sessionID: string): Promise<OpenCodeSessionStatus> {
+    async getSessionStatus(
+      directory: string,
+      sessionID: string,
+      signal?: AbortSignal,
+    ): Promise<OpenCodeSessionStatus> {
       const result = await requestSessionJson({
         config: options.config,
         directory,
         method: "GET",
         path: "/session/status",
+        signal,
       });
       const statuses = openCodeSessionStatusMapSchema.parse(result);
       return statuses[sessionID] ?? { type: "idle" };
@@ -580,6 +585,7 @@ export function createOpenCodeService(options: {
       text: string;
       attachments?: SendConversationAttachmentInput[];
       system?: string;
+      signal?: AbortSignal;
     }): Promise<void> {
       await requestSessionJson({
         config: options.config,
@@ -592,6 +598,7 @@ export function createOpenCodeService(options: {
           ...(input.system ? { system: input.system } : {}),
           parts: buildPromptParts(input.text, input.attachments ?? []),
         },
+        signal: input.signal,
       });
     },
 

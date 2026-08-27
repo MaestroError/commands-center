@@ -68,6 +68,7 @@ const DESCENDANT_INTERACTION_EVENTS = new Set([
   "question.replied",
   "question.rejected",
 ]);
+const HEALTHY_STREAM_LIFETIME_MS = 1_000;
 
 async function runSubscription(
   config: RuntimeConfig,
@@ -84,6 +85,7 @@ async function runSubscription(
   const maxRetryDelay = 15_000;
 
   while (!signal.aborted) {
+    let streamHealthy = false;
     try {
       await consumeEventStream(
         config,
@@ -94,9 +96,11 @@ async function runSubscription(
         resolveSessionTree,
         onReady,
         onTitleUpdate,
+        () => {
+          streamHealthy = true;
+        },
       );
       // Stream ended normally (server closed) — reconnect
-      retryDelay = 500;
     } catch (error) {
       if (signal.aborted) {
         return;
@@ -107,6 +111,8 @@ async function runSubscription(
         "opencode event stream error, reconnecting",
       );
     }
+
+    if (streamHealthy) retryDelay = 500;
 
     if (signal.aborted) {
       return;
@@ -130,6 +136,7 @@ async function consumeEventStream(
   ) => Promise<Set<string>>,
   onReady?: () => void,
   onTitleUpdate?: (title: string) => void,
+  onHealthy?: () => void,
 ): Promise<void> {
   const url = new URL("/event", config.opencode.baseUrl);
   url.searchParams.set("directory", directory);
@@ -151,6 +158,8 @@ async function consumeEventStream(
 
   const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
   let buffer = "";
+  const healthyTimer = setTimeout(() => onHealthy?.(), HEALTHY_STREAM_LIFETIME_MS);
+  healthyTimer.unref?.();
 
   try {
     onReady?.();
@@ -166,6 +175,7 @@ async function consumeEventStream(
       buffer = events.remainder;
 
       for (const raw of events.parsed) {
+        onHealthy?.();
         // Intercept session.updated to propagate title changes
         if (
           onTitleUpdate &&
@@ -208,6 +218,7 @@ async function consumeEventStream(
     await reader.cancel().catch(() => {});
     throw error;
   } finally {
+    clearTimeout(healthyTimer);
     reader.releaseLock();
   }
 }

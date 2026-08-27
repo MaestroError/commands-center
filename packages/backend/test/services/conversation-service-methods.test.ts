@@ -4,13 +4,22 @@ import { eq } from "drizzle-orm";
 import type { Logger } from "pino";
 
 import { createId } from "../../src/db/ids";
-import { artifact_share_links, artifacts, conversations } from "../../src/db/schema/index";
+import {
+  artifact_share_links,
+  artifacts,
+  conversations,
+  task_runs,
+} from "../../src/db/schema/index";
 import { createArtifactService } from "../../src/services/artifact-service";
 import { NotFoundError } from "../../src/lib/api-error";
 import { createConversationService } from "../../src/services/conversation-service";
 import { createSpecialistService } from "../../src/services/specialist-service";
 import { createTaskService } from "../../src/services/task-service";
-import type { OpenCodeService, OpenCodeSession } from "../../src/services/opencode-service";
+import {
+  OpenCodeRequestError,
+  type OpenCodeService,
+  type OpenCodeSession,
+} from "../../src/services/opencode-service";
 import {
   createInteractiveChatWatchdogService,
   type InteractiveChatWatchdogService,
@@ -20,6 +29,7 @@ import { createTestDatabase } from "../helpers/db";
 const disposers: Array<() => Promise<void>> = [];
 
 afterEach(async () => {
+  vi.useRealTimers();
   while (disposers.length > 0) {
     await disposers.pop()?.();
   }
@@ -82,10 +92,15 @@ async function setup(
     createWatchdog?: (opencodeService: OpenCodeService) => InteractiveChatWatchdogService;
     logger?: Logger;
     watchdogRecoveryRetryDelaysMs?: readonly number[];
+    opencodeRequestMs?: number;
+    watchdogRecoveryListActiveChats?: () => Promise<(typeof conversations.$inferSelect)[]>;
   } = {},
 ) {
   const testDb = await createTestDatabase();
   disposers.push(() => testDb.cleanup());
+  if (options.opencodeRequestMs !== undefined) {
+    testDb.config.timeouts.opencodeRequestMs = options.opencodeRequestMs;
+  }
   const opencodeService = mockOpenCode();
   const agentService = createSpecialistService({
     db: testDb.client.db,
@@ -100,6 +115,7 @@ async function setup(
     logger: options.logger,
     interactiveChatWatchdogService: options.watchdog ?? options.createWatchdog?.(opencodeService),
     watchdogRecoveryRetryDelaysMs: options.watchdogRecoveryRetryDelaysMs,
+    watchdogRecoveryListActiveChats: options.watchdogRecoveryListActiveChats,
   });
   const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
   const agent = await agentService.create({
@@ -150,16 +166,20 @@ describe("conversation-service delegating methods", () => {
     await service.resumeInteractiveChatWatchdogs();
 
     expect(watchdog.rearm).toHaveBeenCalledTimes(2);
-    expect(watchdog.rearm).toHaveBeenCalledWith({
-      conversationId: busy.current.id,
-      directory: agent.workspacePath,
-      sessionID: busy.current.opencodeSessionId,
-    });
-    expect(watchdog.rearm).toHaveBeenCalledWith({
-      conversationId: retrying.current.id,
-      directory: agent.workspacePath,
-      sessionID: retrying.current.opencodeSessionId,
-    });
+    expect(watchdog.rearm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: busy.current.id,
+        directory: agent.workspacePath,
+        sessionID: busy.current.opencodeSessionId,
+      }),
+    );
+    expect(watchdog.rearm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: retrying.current.id,
+        directory: agent.workspacePath,
+        sessionID: retrying.current.opencodeSessionId,
+      }),
+    );
     expect(opencodeService.getSessionStatus).not.toHaveBeenCalledWith(
       expect.anything(),
       "task-session",
@@ -213,11 +233,16 @@ describe("conversation-service delegating methods", () => {
     );
   });
 
-  it("stops retrying watchdog restoration after the retry schedule is exhausted", async () => {
+  it("keeps retrying watchdog restoration at the capped final delay", async () => {
     vi.useFakeTimers();
     const logger = { warn: vi.fn() } as unknown as Logger;
     const watchdog = {
-      rearm: vi.fn(() => Promise.reject(new Error("snapshot failed"))),
+      rearm: vi
+        .fn()
+        .mockRejectedValueOnce(new Error("snapshot failed"))
+        .mockRejectedValueOnce(new Error("snapshot failed"))
+        .mockRejectedValueOnce(new Error("snapshot failed"))
+        .mockResolvedValueOnce(undefined),
     } as unknown as InteractiveChatWatchdogService;
     const { service, opencodeService, agent } = await setup({
       watchdog,
@@ -228,19 +253,75 @@ describe("conversation-service delegating methods", () => {
     opencodeService.getSessionStatus = vi.fn(() => Promise.resolve({ type: "busy" as const }));
 
     const recovery = service.resumeInteractiveChatWatchdogs();
-    await vi.advanceTimersByTimeAsync(30);
+    await vi.advanceTimersByTimeAsync(50);
     await expect(recovery).resolves.toBeUndefined();
-    await vi.advanceTimersByTimeAsync(100);
 
-    expect(watchdog.rearm).toHaveBeenCalledTimes(3);
+    expect(watchdog.rearm).toHaveBeenCalledTimes(4);
     expect(logger.warn).toHaveBeenCalledWith(
       expect.objectContaining({
         conversationId: snapshot.current.id,
         sessionID: snapshot.current.opencodeSessionId,
-        attempts: 3,
+        attempt: 3,
+        nextDelayMs: 20,
       }),
-      "interactive chat watchdog restart recovery exhausted",
+      "interactive chat watchdog restart recovery failed; retrying",
     );
+  });
+
+  it("bounds restart status reads and retries after a request timeout", async () => {
+    vi.useRealTimers();
+    const watchdog = {
+      rearm: vi.fn(() => Promise.resolve()),
+    } as unknown as InteractiveChatWatchdogService;
+    const { service, opencodeService, agent } = await setup({
+      watchdog,
+      watchdogRecoveryRetryDelaysMs: [10],
+      opencodeRequestMs: 5,
+    });
+    await service.resolveCurrent(agent.id);
+    opencodeService.getSessionStatus = vi
+      .fn()
+      .mockImplementationOnce(
+        (_directory: string, _sessionID: string, signal?: AbortSignal) =>
+          new Promise((_resolve, reject) => {
+            signal?.addEventListener(
+              "abort",
+              () => reject(signal.reason instanceof Error ? signal.reason : new Error("aborted")),
+              { once: true },
+            );
+          }),
+      )
+      .mockResolvedValueOnce({ type: "busy" as const });
+
+    const recovery = service.resumeInteractiveChatWatchdogs();
+    await recovery;
+
+    expect(opencodeService.getSessionStatus).toHaveBeenCalledTimes(2);
+    expect(watchdog.rearm).toHaveBeenCalledWith(
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+  });
+
+  it("keeps retrying restart scans at the capped final delay", async () => {
+    const listActiveChats = vi.fn<() => Promise<(typeof conversations.$inferSelect)[]>>();
+    const watchdog = {
+      rearm: vi.fn(() => Promise.resolve()),
+    } as unknown as InteractiveChatWatchdogService;
+    const { testDb, service, agent } = await setup({
+      watchdog,
+      watchdogRecoveryRetryDelaysMs: [1],
+      watchdogRecoveryListActiveChats: listActiveChats,
+    });
+    await service.resolveCurrent(agent.id);
+    const activeChats = await testDb.client.db.query.conversations.findMany();
+    listActiveChats
+      .mockRejectedValueOnce(new Error("database busy"))
+      .mockRejectedValueOnce(new Error("database busy"))
+      .mockResolvedValueOnce(activeChats);
+
+    await service.resumeInteractiveChatWatchdogs();
+
+    expect(listActiveChats).toHaveBeenCalledTimes(3);
   });
 
   it("cancels pending watchdog restoration retries when disposed", async () => {
@@ -310,19 +391,66 @@ describe("conversation-service delegating methods", () => {
   it("submits an async prompt when watchdog preparation fails", async () => {
     const error = new Error("snapshot failed");
     const logger = { warn: vi.fn() } as unknown as Logger;
+    const arm = vi.fn();
+    const cancel = vi.fn();
     const watchdog = {
       prepare: vi.fn(() => Promise.reject(error)),
+      prepareFallback: vi.fn(() => Promise.resolve({ arm, cancel })),
     } as unknown as InteractiveChatWatchdogService;
     const { service, opencodeService, agent } = await setup({ watchdog, logger });
     const snapshot = await service.resolveCurrent(agent.id);
 
     await service.sendPromptAsync(snapshot.current.id, { text: "work", attachments: [] });
 
-    expect(opencodeService.promptSessionAsync).toHaveBeenCalledOnce();
+    expect(opencodeService.promptSessionAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(arm).toHaveBeenCalledOnce();
+    expect(cancel).not.toHaveBeenCalled();
     expect(logger.warn).toHaveBeenCalledWith(
       { err: error, conversationId: snapshot.current.id },
       "interactive chat watchdog preparation failed",
     );
+  });
+
+  it("arms fallback protection when prompt acceptance fails ambiguously", async () => {
+    const arm = vi.fn();
+    const cancel = vi.fn();
+    const watchdog = {
+      prepare: vi.fn(() => Promise.reject(new Error("baseline unavailable"))),
+      prepareFallback: vi.fn(() => Promise.resolve({ arm, cancel })),
+    } as unknown as InteractiveChatWatchdogService;
+    const { service, opencodeService, agent } = await setup({ watchdog });
+    const snapshot = await service.resolveCurrent(agent.id);
+    opencodeService.promptSessionAsync = vi.fn(() => Promise.reject(new TypeError("network lost")));
+
+    await expect(
+      service.sendPromptAsync(snapshot.current.id, { text: "work", attachments: [] }),
+    ).rejects.toThrow("network lost");
+
+    expect(arm).toHaveBeenCalledOnce();
+    expect(cancel).not.toHaveBeenCalled();
+  });
+
+  it("cancels fallback protection when prompt acceptance is definitively rejected", async () => {
+    const arm = vi.fn();
+    const cancel = vi.fn();
+    const watchdog = {
+      prepare: vi.fn(() => Promise.reject(new Error("baseline unavailable"))),
+      prepareFallback: vi.fn(() => Promise.resolve({ arm, cancel })),
+    } as unknown as InteractiveChatWatchdogService;
+    const { service, opencodeService, agent } = await setup({ watchdog });
+    const snapshot = await service.resolveCurrent(agent.id);
+    opencodeService.promptSessionAsync = vi.fn(() =>
+      Promise.reject(new OpenCodeRequestError("rejected", 400)),
+    );
+
+    await expect(
+      service.sendPromptAsync(snapshot.current.id, { text: "work", attachments: [] }),
+    ).rejects.toThrow("rejected");
+
+    expect(arm).not.toHaveBeenCalled();
+    expect(cancel).toHaveBeenCalledOnce();
   });
 
   it("submits an async prompt when watchdog baseline preparation times out", async () => {
@@ -426,7 +554,7 @@ describe("conversation-service delegating methods", () => {
     opencodeService.promptSessionAsync = vi
       .fn()
       .mockResolvedValueOnce(undefined)
-      .mockRejectedValueOnce(new Error("prompt rejected"));
+      .mockRejectedValueOnce(new OpenCodeRequestError("prompt rejected", 400));
 
     await service.sendPromptAsync(snapshot.current.id, { text: "first", attachments: [] });
     await expect(
@@ -607,6 +735,7 @@ describe("conversation-service delegating methods", () => {
       status: "running",
       triggerSource: "manual",
       renderedPrompt: "Run.",
+      effectivePermissions: { approvalPolicy: "auto_approve" },
     });
     const conversation = await service.createTaskRunConversation({
       agentId: agent.id,
@@ -638,6 +767,55 @@ describe("conversation-service delegating methods", () => {
     );
   });
 
+  it.each([
+    { policy: "missing", value: null },
+    { policy: "inherit", value: JSON.stringify({ approvalPolicy: "inherit" }) },
+    { policy: "deny", value: JSON.stringify({ approvalPolicy: "deny" }) },
+    { policy: "invalid", value: "not-json" },
+  ])("surfaces task permissions when the frozen policy is $policy", async ({ value }) => {
+    const { testDb, service, opencodeService, taskService, agent } = await setup();
+    const task = await taskService.create({ agentId: agent.id, title: "Task" });
+    const run = await taskService.createRun({
+      id: `run-${String(value)}`,
+      taskId: task.id,
+      agentId: agent.id,
+      status: "running",
+      triggerSource: "manual",
+      renderedPrompt: "Run.",
+      effectivePermissions: { approvalPolicy: "auto_approve" },
+    });
+    await testDb.client.db
+      .update(task_runs)
+      .set({ effective_permissions_json: value })
+      .where(eq(task_runs.id, run.id));
+    const conversation = await service.createTaskRunConversation({
+      agentId: agent.id,
+      taskId: task.id,
+      taskRunId: run.id,
+      title: "Run",
+    });
+    opencodeService.getSessionTreeIds = vi.fn(() =>
+      Promise.resolve(new Set([conversation.opencodeSessionId, "child-session"])),
+    );
+    opencodeService.listPendingPermissions = vi.fn(() =>
+      Promise.resolve([
+        {
+          id: "perm-child",
+          sessionID: "child-session",
+          permission: "external_directory",
+          patterns: ["/shared/*"],
+          always: [],
+          metadata: {},
+        },
+      ]),
+    );
+
+    const pending = await service.listTaskRunPendingInteractions(task.id, run.id);
+
+    expect(pending).toEqual([expect.objectContaining({ type: "permission", id: "perm-child" })]);
+    expect(opencodeService.replyPermission).not.toHaveBeenCalled();
+  });
+
   it("surfaces a descendant task permission when auto-approval fails", async () => {
     const { service, opencodeService, taskService, agent } = await setup();
     const task = await taskService.create({ agentId: agent.id, title: "Task" });
@@ -648,6 +826,7 @@ describe("conversation-service delegating methods", () => {
       status: "running",
       triggerSource: "manual",
       renderedPrompt: "Run.",
+      effectivePermissions: { approvalPolicy: "auto_approve" },
     });
     const conversation = await service.createTaskRunConversation({
       agentId: agent.id,
@@ -696,6 +875,7 @@ describe("conversation-service delegating methods", () => {
       status: "running",
       triggerSource: "manual",
       renderedPrompt: "Run.",
+      effectivePermissions: { approvalPolicy: "auto_approve" },
     });
     const conversation = await service.createTaskRunConversation({
       agentId: agent.id,

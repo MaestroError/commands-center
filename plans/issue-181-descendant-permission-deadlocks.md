@@ -95,6 +95,16 @@ Route direct and nested OpenCode descendant interactions through their owning ro
 - Retry only failed restart watchdog restorations with bounded backoff, independently of OpenCode startup retries, and cancel pending recovery during runtime drain.
 - Add positive direct and nested descendant manual permission/question reply coverage and an explicit disabled-auto-approve UI-path regression.
 
+### 11. Exact-head policy and recovery completion
+
+- Gate task-run permission auto-replies on the run's frozen `auto_approve` policy; preserve manual review for every other or malformed policy.
+- Keep fail-open chat submission bounded by preparing a fallback watchdog when baseline capture fails and retaining it when prompt acceptance times out ambiguously.
+- Make restart watchdog recovery reads cancellable and time-bounded, then continue failed-chat retries at a capped delay until recovery, inactivity, deletion, or runtime drain.
+- Back off repeatedly short-lived OpenCode event streams and reset the delay only after a stream demonstrates health.
+- Record successful local question replies/rejections as terminal interaction events so older pending snapshots cannot restore them.
+- Fence reconnect detail snapshots against newer SSE events and overlapping detail requests.
+- Cover all six exact-head findings with focused backend and frontend regressions.
+
 ## Verification
 
 1. Run focused backend adapter, event, conversation, monitor, route, and watchdog tests.

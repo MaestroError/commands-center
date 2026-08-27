@@ -1879,15 +1879,25 @@ describe("createTaskExecutionService", () => {
       config: testDb.config,
       opencodeService,
     });
+    const taskPermissionService = createTaskPermissionService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
     const executionService = createTaskExecutionService({
       taskService,
       conversationService,
+      taskPermissionService,
       monitor: { autoStart: false },
     });
 
     try {
       const agent = await insertAgent(testDb.client.db);
-      const task = await taskService.create({ agentId: agent.id, title: "Permission race" });
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Permission race",
+        permissionProfile: { approvalPolicy: "auto_approve" },
+      });
       const run = await executionService.queue(task.id, { triggerSource: "manual" });
       await expectRunStatus(taskService, run.id, "running");
       opencodeService.listPendingPermissions = vi.fn(() =>

@@ -47,6 +47,7 @@ import {
 } from "../lib/message-mapper.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
 import { resolveSpecialistWorkspacePath } from "./specialist-workspace.js";
+import { OpenCodeRequestError } from "./opencode-service.js";
 import type {
   OpenCodePendingPermission,
   OpenCodePendingQuestion,
@@ -143,6 +144,7 @@ export function createConversationService(options: {
   systemPromptService?: SystemPromptService;
   interactiveChatWatchdogService?: InteractiveChatWatchdogService;
   watchdogRecoveryRetryDelaysMs?: readonly number[];
+  watchdogRecoveryListActiveChats?: () => Promise<ConversationRow[]>;
 }) {
   const systemPromptService =
     options.systemPromptService ??
@@ -549,20 +551,22 @@ export function createConversationService(options: {
       const parsed = sendConversationPromptInputSchema.parse(input);
       return serializeConversationOperation(conversationId, async () => {
         const loaded = await getConversationAgent(conversationId);
+        const watchdogInput = {
+          conversationId: loaded.conversation.id,
+          directory: loaded.agent.workspace_path,
+          sessionID: loaded.conversation.opencode_session_id,
+        };
         const watchdog = await options.interactiveChatWatchdogService
-          ?.prepare({
-            conversationId: loaded.conversation.id,
-            directory: loaded.agent.workspace_path,
-            sessionID: loaded.conversation.opencode_session_id,
-          })
-          .catch((error: unknown) => {
+          ?.prepare(watchdogInput)
+          .catch(async (error: unknown) => {
             options.logger?.warn(
               { err: error, conversationId: loaded.conversation.id },
               "interactive chat watchdog preparation failed",
             );
-            return undefined;
+            return options.interactiveChatWatchdogService?.prepareFallback(watchdogInput);
           });
 
+        let promptStarted = false;
         try {
           await setCurrentConversation(loaded.agent.id, loaded.conversation.id);
           const { system, snapshot } = await composeSystem(
@@ -571,25 +575,32 @@ export function createConversationService(options: {
             loaded.conversation,
             parseOverrides(loaded.conversation),
           );
+          const model = await resolveRunModel(
+            loaded.agent.workspace_path,
+            parsed.model,
+            loaded.agent.default_model,
+          );
+          promptStarted = true;
           await options.opencodeService.promptSessionAsync({
             directory: loaded.agent.workspace_path,
             sessionID: loaded.conversation.opencode_session_id,
             agent: resolveOpenCodeAgent(loaded.agent.slug),
-            model: await resolveRunModel(
-              loaded.agent.workspace_path,
-              parsed.model,
-              loaded.agent.default_model,
-            ),
+            model,
             text: parsed.text,
             attachments: parsed.attachments,
             system,
+            signal: AbortSignal.timeout(options.config.timeouts.opencodeRequestMs),
           });
           // Streaming send does not sync here; the snapshot is attached by the next
           // syncConversation once OpenCode echoes the user message back.
           pendingSnapshots.set(loaded.conversation.id, snapshot);
           watchdog?.arm();
         } catch (error) {
-          watchdog?.cancel();
+          if (promptStarted && !(error instanceof OpenCodeRequestError)) {
+            watchdog?.arm();
+          } else {
+            watchdog?.cancel();
+          }
           throw error;
         }
       });
@@ -725,9 +736,13 @@ export function createConversationService(options: {
       }
 
       const agent = await getAgent(conversation.agent_id);
-      const [permissions, questions] = await Promise.all([
+      const [permissions, questions, run] = await Promise.all([
         options.opencodeService.listPendingPermissions(agent.workspace_path),
         options.opencodeService.listPendingQuestions(agent.workspace_path),
+        options.db.query.task_runs.findFirst({
+          where: (table, operators) => operators.eq(table.id, taskRunId),
+          columns: { effective_permissions_json: true },
+        }),
       ]);
       const sessionIDs = await options.opencodeService.getSessionTreeIds(
         agent.workspace_path,
@@ -737,6 +752,10 @@ export function createConversationService(options: {
       for (const permission of permissions.filter((candidate) =>
         sessionIDs.has(candidate.sessionID),
       )) {
+        if (!hasFrozenAutoApprovePolicy(run?.effective_permissions_json)) {
+          unresolvedPermissions.push(permission);
+          continue;
+        }
         try {
           const replied = await taskRunOperationGuard.runExclusive(taskRunId, async () => {
             if (taskRunOperationGuard.isCancellationRequested(taskRunId)) return false;
@@ -898,21 +917,19 @@ export function createConversationService(options: {
     let activeChats: Awaited<ReturnType<typeof options.db.query.conversations.findMany>>;
     for (let attempt = 0; ; attempt += 1) {
       try {
-        activeChats = await options.db.query.conversations.findMany({
-          where: (table, operators) =>
-            operators.and(operators.eq(table.status, "active"), operators.eq(table.source, "chat")),
-        });
+        activeChats = options.watchdogRecoveryListActiveChats
+          ? await options.watchdogRecoveryListActiveChats()
+          : await options.db.query.conversations.findMany({
+              where: (table, operators) =>
+                operators.and(
+                  operators.eq(table.status, "active"),
+                  operators.eq(table.source, "chat"),
+                ),
+            });
         break;
       } catch (error) {
         if (signal.aborted) return;
-        const nextDelayMs = watchdogRecoveryRetryDelaysMs[attempt];
-        if (nextDelayMs === undefined) {
-          options.logger?.warn(
-            { err: error, attempts: attempt + 1 },
-            "interactive chat watchdog restart scan exhausted",
-          );
-          return;
-        }
+        const nextDelayMs = watchdogRecoveryDelay(attempt);
         options.logger?.warn(
           { err: error, attempt: attempt + 1, nextDelayMs },
           "interactive chat watchdog restart scan failed; retrying",
@@ -923,7 +940,7 @@ export function createConversationService(options: {
 
     let pending = activeChats;
     for (let attempt = 0; pending.length > 0; attempt += 1) {
-      const nextDelayMs = watchdogRecoveryRetryDelaysMs[attempt];
+      const nextDelayMs = watchdogRecoveryDelay(attempt);
       const outcomes = await Promise.all(
         pending.map(async (conversation) => {
           let retryConversation = conversation;
@@ -946,6 +963,7 @@ export function createConversationService(options: {
             const status = await options.opencodeService.getSessionStatus(
               directory,
               currentConversation.opencode_session_id,
+              watchdogRecoveryRequestSignal(signal),
             );
             if (signal.aborted || (status.type !== "busy" && status.type !== "retry")) {
               return undefined;
@@ -954,45 +972,44 @@ export function createConversationService(options: {
               conversationId: currentConversation.id,
               directory,
               sessionID: currentConversation.opencode_session_id,
+              signal: watchdogRecoveryRequestSignal(signal),
             });
             return undefined;
           } catch (error) {
             if (signal.aborted) return undefined;
-            if (nextDelayMs !== undefined) {
-              options.logger?.warn(
-                {
-                  err: error,
-                  conversationId: conversation.id,
-                  sessionID: conversation.opencode_session_id,
-                  attempt: attempt + 1,
-                  nextDelayMs,
-                },
-                "interactive chat watchdog restart recovery failed; retrying",
-              );
-            }
+            options.logger?.warn(
+              {
+                err: error,
+                conversationId: conversation.id,
+                sessionID: conversation.opencode_session_id,
+                attempt: attempt + 1,
+                nextDelayMs,
+              },
+              "interactive chat watchdog restart recovery failed; retrying",
+            );
             return { conversation: retryConversation, error };
           }
         }),
       );
       const failures = outcomes.filter((outcome) => outcome !== undefined);
       if (failures.length === 0 || signal.aborted) return;
-      if (nextDelayMs === undefined) {
-        for (const { conversation, error } of failures) {
-          options.logger?.warn(
-            {
-              err: error,
-              conversationId: conversation.id,
-              sessionID: conversation.opencode_session_id,
-              attempts: attempt + 1,
-            },
-            "interactive chat watchdog restart recovery exhausted",
-          );
-        }
-        return;
-      }
       pending = failures.map(({ conversation }) => conversation);
       if (!(await waitForAbortableDelay(nextDelayMs, signal))) return;
     }
+  }
+
+  function watchdogRecoveryDelay(attempt: number): number {
+    return (
+      watchdogRecoveryRetryDelaysMs[Math.min(attempt, watchdogRecoveryRetryDelaysMs.length - 1)] ??
+      WATCHDOG_RECOVERY_RETRY_DELAYS_MS.at(-1)!
+    );
+  }
+
+  function watchdogRecoveryRequestSignal(signal: AbortSignal): AbortSignal {
+    return AbortSignal.any([
+      signal,
+      AbortSignal.timeout(options.config.timeouts.opencodeRequestMs),
+    ]);
   }
 
   function waitForAbortableDelay(delayMs: number, signal: AbortSignal): Promise<boolean> {
@@ -1008,6 +1025,16 @@ export function createConversationService(options: {
       timer.unref?.();
       signal.addEventListener("abort", onAbort, { once: true });
     });
+  }
+
+  function hasFrozenAutoApprovePolicy(value: string | null | undefined): boolean {
+    if (!value) return false;
+    try {
+      const parsed = taskPermissionProfileSchema.safeParse(JSON.parse(value));
+      return parsed.success && parsed.data.approvalPolicy === "auto_approve";
+    } catch {
+      return false;
+    }
   }
 
   function serializeConversationOperation(

@@ -5,6 +5,7 @@ import { createOpenCodeEventService } from "../../src/services/opencode-event-se
 
 describe("opencode-event-service", () => {
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -359,6 +360,68 @@ describe("opencode-event-service", () => {
     });
 
     await vi.waitFor(() => expect(onReady).toHaveBeenCalledTimes(2), { timeout: 1_500 });
+    controller.abort();
+  });
+
+  it("backs off repeated empty successful streams", async () => {
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(makeSseResponse([]));
+
+    subscribeForTest({ onEvent: vi.fn(), signal: controller.signal });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(500);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(999);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+
+    controller.abort();
+  });
+
+  it("resets reconnect backoff after a valid event", async () => {
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(makeSseResponse([]))
+      .mockResolvedValueOnce(makeSseResponse([]))
+      .mockResolvedValueOnce(makeSseResponse([{ type: "server.connected", properties: {} }]))
+      .mockResolvedValue(makeSseResponse([]));
+
+    subscribeForTest({ onEvent: vi.fn(), signal: controller.signal });
+    await vi.advanceTimersByTimeAsync(1_500);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    await vi.advanceTimersByTimeAsync(499);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+
+    controller.abort();
+  });
+
+  it("resets reconnect backoff after a healthy stream lifetime", async () => {
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(makeSseResponse([]))
+      .mockResolvedValueOnce(makeSseResponse([]))
+      .mockImplementationOnce(() => Promise.resolve(makeTimedSseResponse(1_001)))
+      .mockResolvedValue(makeSseResponse([]));
+
+    subscribeForTest({ onEvent: vi.fn(), signal: controller.signal });
+    await vi.advanceTimersByTimeAsync(2_501);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    await vi.advanceTimersByTimeAsync(499);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+
     controller.abort();
   });
 
@@ -736,6 +799,18 @@ function makeSseResponse(events: unknown[]): Response {
     },
   });
 
+  return new Response(stream, {
+    status: 200,
+    headers: { "Content-Type": "text/event-stream" },
+  });
+}
+
+function makeTimedSseResponse(lifetimeMs: number): Response {
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      setTimeout(() => controller.close(), lifetimeMs);
+    },
+  });
   return new Response(stream, {
     status: 200,
     headers: { "Content-Type": "text/event-stream" },
