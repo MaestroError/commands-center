@@ -469,6 +469,88 @@ describe("interactive-chat-watchdog-service", () => {
     expect(opencodeService.abortSession).not.toHaveBeenCalled();
   });
 
+  it("aborts after the no-progress deadline when every poll read times out", async () => {
+    vi.useFakeTimers();
+    let now = 0;
+    const opencodeService = createMockOpenCodeService();
+    opencodeService.getSessionTreeIds = vi.fn(() => Promise.resolve(new Set(["root"])));
+    opencodeService.listSessionMessages = vi.fn(() => Promise.resolve([]));
+    opencodeService.listSessionStatuses = vi.fn(
+      (_directory: string, signal?: AbortSignal) =>
+        new Promise<OpenCodeSessionStatusMap>((_resolve, reject) => {
+          signal?.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+        }),
+    );
+    const service = createInteractiveChatWatchdogService({
+      opencodeService,
+      logger: createLogger(),
+      noProgressMs: 100,
+      pollMs: 10,
+      pollTimeoutMs: 5,
+      now: () => now,
+    });
+    const prepared = await service.prepare({
+      conversationId: "conversation-1",
+      directory: "/work",
+      sessionID: "root",
+    });
+    prepared.arm();
+
+    now = 50;
+    await vi.advanceTimersByTimeAsync(15);
+    expect(opencodeService.abortSession).not.toHaveBeenCalled();
+
+    now = 100;
+    await vi.advanceTimersByTimeAsync(10);
+
+    expect(opencodeService.listSessionStatuses).toHaveBeenCalledTimes(2);
+    expect(opencodeService.listPendingPermissions).toHaveBeenCalledOnce();
+    expect(opencodeService.abortSession).toHaveBeenCalledOnce();
+    expect(service.getError("conversation-1")).toEqual(
+      expect.objectContaining({
+        properties: expect.objectContaining({
+          error: expect.objectContaining({ name: "ChatNoProgressError" }),
+        }),
+      }),
+    );
+  });
+
+  it("stops a re-armed watchdog when the recovered turn is already settled", async () => {
+    vi.useFakeTimers();
+    const opencodeService = createMockOpenCodeService();
+    opencodeService.getSessionTreeIds = vi.fn(() => Promise.resolve(new Set(["root"])));
+    opencodeService.listSessionMessages = vi.fn(() =>
+      Promise.resolve([
+        {
+          info: {
+            id: "assistant",
+            sessionID: "root",
+            role: "assistant" as const,
+            time: { created: 1, completed: 2 },
+          },
+          parts: [{ id: "part", type: "text", text: "done" }],
+        },
+      ]),
+    );
+    opencodeService.listSessionStatuses = vi.fn(() => Promise.resolve({}));
+    const service = createInteractiveChatWatchdogService({
+      opencodeService,
+      logger: createLogger(),
+      noProgressMs: 100,
+      pollMs: 10,
+    });
+
+    await service.rearm({
+      conversationId: "conversation-1",
+      directory: "/work",
+      sessionID: "root",
+    });
+    await vi.advanceTimersByTimeAsync(20);
+
+    expect(opencodeService.listSessionStatuses).toHaveBeenCalledOnce();
+    expect(opencodeService.abortSession).not.toHaveBeenCalled();
+  });
+
   it("stops after persistent abort failures and publishes a terminal recovery error", async () => {
     vi.useFakeTimers();
     let now = 0;

@@ -59,76 +59,21 @@ export function createInteractiveChatWatchdogService(options: {
   let disposed = false;
 
   return {
-    async prepare(input: {
+    prepare(input: {
       conversationId: string;
       directory: string;
       sessionID: string;
     }): Promise<{ arm: () => void; cancel: () => void }> {
-      const generation = generations.get(input.conversationId) ?? 0;
-      const activeAbort = handles.get(input.conversationId)?.abortPromise;
-      if (activeAbort) await activeAbort;
-      const protectedHandle = handles.get(input.conversationId);
-      if (protectedHandle) protectedHandle.replacements += 1;
-      let replacementReleased = false;
+      return prepareHandle(input, false);
+    },
 
-      function releaseReplacement(): void {
-        if (replacementReleased) return;
-        replacementReleased = true;
-        if (protectedHandle) protectedHandle.replacements -= 1;
-      }
-
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), prepareTimeoutMs);
-      let snapshot: Awaited<ReturnType<typeof readSnapshot>>;
-      try {
-        snapshot = await readSnapshot(input.directory, input.sessionID, controller.signal);
-      } catch (error) {
-        releaseReplacement();
-        throw error;
-      } finally {
-        clearTimeout(timeout);
-      }
-      controller.signal.throwIfAborted();
-      const handle: WatchdogHandle = {
-        ...input,
-        signature: snapshot.signature,
-        sawProgress: false,
-        lastProgressAt: now(),
-        abortFailures: 0,
-        replacements: 0,
-      };
-      let cancelled = false;
-
-      return {
-        arm: () => {
-          if (
-            disposed ||
-            cancelled ||
-            generation !== (generations.get(input.conversationId) ?? 0) ||
-            handle.timer
-          ) {
-            return;
-          }
-          const previous = handles.get(input.conversationId);
-          handles.set(input.conversationId, handle);
-          deactivate(previous);
-          releaseReplacement();
-          errors.delete(input.conversationId);
-          handle.timer = setInterval(() => {
-            if (handle.polling) return;
-            handle.polling = true;
-            void poll(handle).finally(() => {
-              handle.polling = false;
-            });
-          }, pollMs);
-          handle.timer.unref?.();
-        },
-        cancel: () => {
-          cancelled = true;
-          releaseReplacement();
-          if (handles.get(input.conversationId) === handle) void stop(input.conversationId);
-        },
-      };
+    async rearm(input: {
+      conversationId: string;
+      directory: string;
+      sessionID: string;
+    }): Promise<void> {
+      const prepared = await prepareHandle(input, true);
+      prepared.arm();
     },
 
     subscribe(input: {
@@ -167,6 +112,81 @@ export function createInteractiveChatWatchdogService(options: {
     },
   };
 
+  async function prepareHandle(
+    input: {
+      conversationId: string;
+      directory: string;
+      sessionID: string;
+    },
+    sawProgress: boolean,
+  ): Promise<{ arm: () => void; cancel: () => void }> {
+    const generation = generations.get(input.conversationId) ?? 0;
+    const activeAbort = handles.get(input.conversationId)?.abortPromise;
+    if (activeAbort) await activeAbort;
+    const protectedHandle = handles.get(input.conversationId);
+    if (protectedHandle) protectedHandle.replacements += 1;
+    let replacementReleased = false;
+
+    function releaseReplacement(): void {
+      if (replacementReleased) return;
+      replacementReleased = true;
+      if (protectedHandle) protectedHandle.replacements -= 1;
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), prepareTimeoutMs);
+    let snapshot: Awaited<ReturnType<typeof readSnapshot>>;
+    try {
+      snapshot = await readSnapshot(input.directory, input.sessionID, controller.signal);
+    } catch (error) {
+      releaseReplacement();
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
+    controller.signal.throwIfAborted();
+    const handle: WatchdogHandle = {
+      ...input,
+      signature: snapshot.signature,
+      sawProgress,
+      lastProgressAt: now(),
+      abortFailures: 0,
+      replacements: 0,
+    };
+    let cancelled = false;
+
+    return {
+      arm: () => {
+        if (
+          disposed ||
+          cancelled ||
+          generation !== (generations.get(input.conversationId) ?? 0) ||
+          handle.timer
+        ) {
+          return;
+        }
+        const previous = handles.get(input.conversationId);
+        handles.set(input.conversationId, handle);
+        deactivate(previous);
+        releaseReplacement();
+        errors.delete(input.conversationId);
+        handle.timer = setInterval(() => {
+          if (handle.polling) return;
+          handle.polling = true;
+          void poll(handle).finally(() => {
+            handle.polling = false;
+          });
+        }, pollMs);
+        handle.timer.unref?.();
+      },
+      cancel: () => {
+        cancelled = true;
+        releaseReplacement();
+        if (handles.get(input.conversationId) === handle) void stop(input.conversationId);
+      },
+    };
+  }
+
   async function poll(handle: WatchdogHandle): Promise<void> {
     const isCurrent = () => handles.get(handle.conversationId) === handle;
     if (!isCurrent()) return;
@@ -176,60 +196,72 @@ export function createInteractiveChatWatchdogService(options: {
     const pollTimeout = setTimeout(() => pollController.abort(), pollTimeoutMs);
 
     try {
-      try {
-        const [statuses, snapshot] = await Promise.all([
-          options.opencodeService.listSessionStatuses(handle.directory, pollController.signal),
-          readSnapshot(handle.directory, handle.sessionID, pollController.signal),
-        ]);
-        if (!isCurrent()) return;
-        if (snapshot.signature !== handle.signature) {
-          handle.signature = snapshot.signature;
-          handle.sawProgress = true;
-          handle.lastProgressAt = now();
-        }
-        const status = statuses[handle.sessionID];
-        if (
-          status?.type !== "busy" &&
-          status?.type !== "retry" &&
-          handle.sawProgress &&
-          snapshot.settled
-        ) {
-          void stop(handle.conversationId);
-          return;
-        }
-      } catch (error) {
-        if (!isCurrent()) return;
-        if (pollController.signal.aborted) return;
+      const [statuses, snapshot] = await Promise.all([
+        options.opencodeService.listSessionStatuses(handle.directory, pollController.signal),
+        readSnapshot(handle.directory, handle.sessionID, pollController.signal),
+      ]);
+      if (!isCurrent()) return;
+      if (snapshot.signature !== handle.signature) {
+        handle.signature = snapshot.signature;
+        handle.sawProgress = true;
+        handle.lastProgressAt = now();
+      }
+      const status = statuses[handle.sessionID];
+      if (
+        status?.type !== "busy" &&
+        status?.type !== "retry" &&
+        handle.sawProgress &&
+        snapshot.settled
+      ) {
+        void stop(handle.conversationId);
+        return;
+      }
+    } catch (error) {
+      if (!isCurrent()) return;
+      if (!pollController.signal.aborted) {
         options.logger.warn(
           { err: error, conversationId: handle.conversationId, sessionID: handle.sessionID },
           "interactive chat watchdog snapshot failed",
         );
       }
+    } finally {
+      clearTimeout(pollTimeout);
+      if (handle.pollController === pollController) handle.pollController = undefined;
+    }
 
-      if (now() - handle.lastProgressAt < noProgressMs) return;
+    if (now() - handle.lastProgressAt < noProgressMs) return;
+    if (!isCurrent()) return;
 
+    const reconciliationController = new AbortController();
+    handle.pollController = reconciliationController;
+    const reconciliationTimeout = setTimeout(() => reconciliationController.abort(), pollTimeoutMs);
+    try {
       try {
-        if (
-          await hasPendingInteraction(handle.directory, handle.sessionID, pollController.signal)
-        ) {
-          if (!isCurrent()) return;
+        const pendingInteraction = await hasPendingInteraction(
+          handle.directory,
+          handle.sessionID,
+          reconciliationController.signal,
+        );
+        if (!isCurrent()) return;
+        if (pendingInteraction) {
           handle.lastProgressAt = now();
           return;
         }
       } catch (error) {
         if (!isCurrent()) return;
-        if (pollController.signal.aborted) return;
-        options.logger.warn(
-          { err: error, conversationId: handle.conversationId, sessionID: handle.sessionID },
-          "interactive chat watchdog pending-interaction read failed",
-        );
+        if (!reconciliationController.signal.aborted) {
+          options.logger.warn(
+            { err: error, conversationId: handle.conversationId, sessionID: handle.sessionID },
+            "interactive chat watchdog pending-interaction read failed",
+          );
+        }
       }
 
       try {
         const finalSnapshot = await readSnapshot(
           handle.directory,
           handle.sessionID,
-          pollController.signal,
+          reconciliationController.signal,
         );
         if (!isCurrent()) return;
         if (finalSnapshot.signature !== handle.signature) {
@@ -240,12 +272,11 @@ export function createInteractiveChatWatchdogService(options: {
         }
       } catch {
         if (!isCurrent()) return;
-        if (pollController.signal.aborted) return;
         // A failed final read does not turn an already-stalled session into progress.
       }
     } finally {
-      clearTimeout(pollTimeout);
-      if (handle.pollController === pollController) handle.pollController = undefined;
+      clearTimeout(reconciliationTimeout);
+      if (handle.pollController === reconciliationController) handle.pollController = undefined;
     }
 
     if (!isCurrent()) return;
