@@ -92,7 +92,7 @@ export function RunTaskContextDialog(props: Props) {
                   className="rounded-lg border border-border bg-surface p-2 text-xs text-text-secondary"
                   key={`${attachment.filename}:${String(attachment.sizeBytes)}`}
                 >
-                  {attachment.filename} · {formatBytes(attachment.sizeBytes)}
+                  {attachment.filename} · {formatBytes(attachment.sizeBytes ?? 0)}
                 </li>
               ))}
             </ul>

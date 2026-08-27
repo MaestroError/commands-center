@@ -6,7 +6,11 @@ import { NotFoundError } from "../lib/api-error.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
 import { z } from "zod";
 
-import { resolvePromptAttachmentMimeType } from "@cc/shared/lib";
+import {
+  isTextualPayload,
+  PROMPT_TEXT_MIME_TYPE,
+  resolvePromptAttachmentMimeType,
+} from "@cc/shared/lib";
 import {
   configProvidersSchema,
   mcpAuthRemoveResultSchema,
@@ -153,6 +157,13 @@ type SessionAttachmentPart = {
   filename?: string;
   url: string;
 };
+
+type SessionTextPart = {
+  type: "text";
+  text: string;
+};
+
+type SessionPromptPart = SessionAttachmentPart | SessionTextPart;
 
 export type OpenCodeService = ReturnType<typeof createOpenCodeService>;
 
@@ -691,11 +702,21 @@ function buildPromptParts(text: string, attachments: SendConversationAttachmentI
   ];
 }
 
-function buildAttachmentParts(
-  attachments: SendConversationAttachmentInput[],
-): SessionAttachmentPart[] {
+function buildAttachmentParts(attachments: SendConversationAttachmentInput[]): SessionPromptPart[] {
   return attachments.map((attachment) => {
     const mime = resolvePromptAttachmentMimeType(attachment.filename, attachment.mimeType);
+
+    // A text/plain part is decoded and inlined into the prompt by OpenCode, so
+    // binary bytes that fell through to text (an archive, an office document,
+    // an unsupported image codec) would reach the model as replacement
+    // characters. Tell the model the file was skipped instead.
+    if (mime === PROMPT_TEXT_MIME_TYPE && !isTextualAttachment(attachment.dataUrl)) {
+      return {
+        type: "text" as const,
+        text: `[Attachment omitted: ${attachment.filename ?? "file"} (${attachment.mimeType}) is not a format this model can read.]`,
+      };
+    }
+
     return {
       type: "file" as const,
       mime,
@@ -706,6 +727,18 @@ function buildAttachmentParts(
           : rewriteDataUrlMimeType(attachment.dataUrl, mime),
     };
   });
+}
+
+// Only base64 data URLs can be inspected; anything else (a plain-text data URL,
+// a remote URL) is left alone rather than guessed at.
+function isTextualAttachment(dataUrl: string): boolean {
+  const match = /^data:[^,]*;base64,(.*)$/s.exec(dataUrl);
+
+  if (!match?.[1]) {
+    return true;
+  }
+
+  return isTextualPayload(Buffer.from(match[1], "base64"));
 }
 
 function rewriteDataUrlMimeType(dataUrl: string, mimeType: string): string {
