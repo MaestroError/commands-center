@@ -6,11 +6,15 @@ import type { Logger } from "pino";
 import { createId } from "../../src/db/ids";
 import { artifact_share_links, artifacts } from "../../src/db/schema/index";
 import { createArtifactService } from "../../src/services/artifact-service";
+import { NotFoundError } from "../../src/lib/api-error";
 import { createConversationService } from "../../src/services/conversation-service";
 import { createSpecialistService } from "../../src/services/specialist-service";
 import { createTaskService } from "../../src/services/task-service";
 import type { OpenCodeService, OpenCodeSession } from "../../src/services/opencode-service";
-import type { InteractiveChatWatchdogService } from "../../src/services/interactive-chat-watchdog-service";
+import {
+  createInteractiveChatWatchdogService,
+  type InteractiveChatWatchdogService,
+} from "../../src/services/interactive-chat-watchdog-service";
 import { createTestDatabase } from "../helpers/db";
 
 const disposers: Array<() => Promise<void>> = [];
@@ -72,7 +76,13 @@ function mockOpenCode(): OpenCodeService {
   } as unknown as OpenCodeService;
 }
 
-async function setup(options: { watchdog?: InteractiveChatWatchdogService; logger?: Logger } = {}) {
+async function setup(
+  options: {
+    watchdog?: InteractiveChatWatchdogService;
+    createWatchdog?: (opencodeService: OpenCodeService) => InteractiveChatWatchdogService;
+    logger?: Logger;
+  } = {},
+) {
   const testDb = await createTestDatabase();
   disposers.push(() => testDb.cleanup());
   const opencodeService = mockOpenCode();
@@ -87,7 +97,7 @@ async function setup(options: { watchdog?: InteractiveChatWatchdogService; logge
     config: testDb.config,
     opencodeService,
     logger: options.logger,
-    interactiveChatWatchdogService: options.watchdog,
+    interactiveChatWatchdogService: options.watchdog ?? options.createWatchdog?.(opencodeService),
   });
   const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
   const agent = await agentService.create({
@@ -137,6 +147,38 @@ describe("conversation-service delegating methods", () => {
       { err: error, conversationId: snapshot.current.id },
       "interactive chat watchdog preparation failed",
     );
+  });
+
+  it("submits an async prompt when watchdog baseline preparation times out", async () => {
+    const logger = { warn: vi.fn() } as unknown as Logger;
+    const { service, opencodeService, agent } = await setup({
+      logger,
+      createWatchdog: (service) =>
+        createInteractiveChatWatchdogService({
+          opencodeService: service,
+          logger,
+          prepareTimeoutMs: 10,
+        }),
+    });
+    const snapshot = await service.resolveCurrent(agent.id);
+    opencodeService.getSessionTreeIds = vi.fn(
+      (_directory: string, _sessionID: string, signal?: AbortSignal) =>
+        new Promise<Set<string>>((_resolve, reject) => {
+          signal?.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+        }),
+    );
+    vi.useFakeTimers();
+
+    const sending = service.sendPromptAsync(snapshot.current.id, { text: "work", attachments: [] });
+    await vi.advanceTimersByTimeAsync(10);
+    await sending;
+
+    expect(opencodeService.promptSessionAsync).toHaveBeenCalledOnce();
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ conversationId: snapshot.current.id }),
+      "interactive chat watchdog preparation failed",
+    );
+    vi.useRealTimers();
   });
 
   it("runs command, shell, async prompt, and summarize on the current session", async () => {
@@ -318,6 +360,47 @@ describe("conversation-service delegating methods", () => {
         metadata: {},
       },
     ]);
+  });
+
+  it("ignores a task permission resolved between listing and auto-approval", async () => {
+    const logger = { warn: vi.fn() } as unknown as Logger;
+    const { service, opencodeService, taskService, agent } = await setup({ logger });
+    const task = await taskService.create({ agentId: agent.id, title: "Task" });
+    const run = await taskService.createRun({
+      id: "run-stale-permission",
+      taskId: task.id,
+      agentId: agent.id,
+      status: "running",
+      triggerSource: "manual",
+      renderedPrompt: "Run.",
+    });
+    const conversation = await service.createTaskRunConversation({
+      agentId: agent.id,
+      taskId: task.id,
+      taskRunId: run.id,
+      title: "Run",
+    });
+    opencodeService.getSessionTreeIds = vi.fn(() =>
+      Promise.resolve(new Set([conversation.opencodeSessionId, "child-session"])),
+    );
+    opencodeService.listPendingPermissions = vi.fn(() =>
+      Promise.resolve([
+        {
+          id: "perm-stale",
+          sessionID: "child-session",
+          permission: "external_directory",
+          patterns: ["/shared/*"],
+          always: [],
+          metadata: {},
+        },
+      ]),
+    );
+    opencodeService.replyPermission = vi.fn(() =>
+      Promise.reject(new NotFoundError('Pending request "perm-stale" no longer exists.')),
+    );
+
+    await expect(service.listTaskRunPendingInteractions(task.id, run.id)).resolves.toEqual([]);
+    expect(logger.warn).not.toHaveBeenCalled();
   });
 
   it("updates titles, resolves the owning agent, and deletes a conversation", async () => {

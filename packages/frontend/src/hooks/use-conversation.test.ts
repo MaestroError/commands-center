@@ -947,6 +947,46 @@ describe("HYDRATE_PENDING", () => {
     expect(next.pendingPermissions.map((permission) => permission.id)).toEqual(["sse-perm"]);
     expect(next.pendingQuestion?.id).toBe("sse-q");
   });
+
+  it("removes interactions absent from an authoritative reconnect snapshot", () => {
+    const stateWithDisconnectedInteractions: ConversationState = {
+      ...initialState,
+      pendingPermissions: [
+        {
+          id: "stale-permission",
+          sessionID: "s",
+          permission: "read",
+          patterns: [],
+          metadata: {},
+          always: [],
+        },
+      ],
+      pendingQuestion: { id: "stale-question", sessionID: "s", questions: [] },
+      liveRequests: [
+        {
+          id: "stale-live-request",
+          conversationId: "conversation-1",
+          kind: "add_secret",
+          presentation: { title: "Secret", cancelLabel: "Cancel" },
+          fields: [],
+          actions: [],
+          metadata: {},
+          closable: false,
+          createdAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    };
+
+    const next = conversationReducer(stateWithDisconnectedInteractions, {
+      type: "HYDRATE_PENDING",
+      pending: { permissions: [], question: null, liveRequests: [] },
+      authoritative: true,
+    });
+
+    expect(next.pendingPermissions).toEqual([]);
+    expect(next.pendingQuestion).toBeNull();
+    expect(next.liveRequests).toEqual([]);
+  });
 });
 
 describe("DISCARD_STALE_PERMISSION", () => {

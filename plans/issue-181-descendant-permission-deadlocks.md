@@ -49,6 +49,14 @@ Route direct and nested OpenCode descendant interactions through their owning ro
 - Dispose watchdog handles during runtime shutdown.
 - Test root/direct/nested progress, timeout, final reconciliation, abort failure, replay, replacement by a new prompt, and disposal.
 
+### 5. Exact-head review maintenance
+
+- Serialize watchdog replacement with an in-flight root abort so an older timeout cannot abort a newer prompt.
+- Bound watchdog baseline reads with the configured OpenCode request timeout and fail open for prompt submission when preparation times out.
+- Treat task-run permission auto-reply `NotFoundError` responses as resolved list/reply races while continuing to surface transient failures.
+- Reconcile pending interactions authoritatively after SSE reconnect while preserving union semantics for the initial fetch/SSE race.
+- Cover each race with focused backend or frontend regression tests.
+
 ## Verification
 
 1. Run focused backend adapter, event, conversation, monitor, route, and watchdog tests.

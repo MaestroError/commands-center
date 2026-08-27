@@ -25,6 +25,8 @@ type WatchdogHandle = {
   lastProgressAt: number;
   timer?: ReturnType<typeof setInterval>;
   polling?: boolean;
+  abortController?: AbortController;
+  abortPromise?: Promise<void>;
 };
 
 export type InteractiveChatWatchdogService = ReturnType<
@@ -36,10 +38,12 @@ export function createInteractiveChatWatchdogService(options: {
   logger: Logger;
   noProgressMs?: number;
   pollMs?: number;
+  prepareTimeoutMs?: number;
   now?: () => number;
 }) {
   const noProgressMs = options.noProgressMs ?? 30 * 60 * 1_000;
   const pollMs = options.pollMs ?? 30_000;
+  const prepareTimeoutMs = options.prepareTimeoutMs ?? 30_000;
   const now = options.now ?? Date.now;
   const handles = new Map<string, WatchdogHandle>();
   const errors = new Map<string, WatchdogEvent>();
@@ -51,9 +55,17 @@ export function createInteractiveChatWatchdogService(options: {
       directory: string;
       sessionID: string;
     }): Promise<{ arm: () => void; cancel: () => void }> {
-      stop(input.conversationId);
+      await stop(input.conversationId);
       errors.delete(input.conversationId);
-      const snapshot = await readSnapshot(input.directory, input.sessionID);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), prepareTimeoutMs);
+      let snapshot: Awaited<ReturnType<typeof readSnapshot>>;
+      try {
+        snapshot = await readSnapshot(input.directory, input.sessionID, controller.signal);
+      } finally {
+        clearTimeout(timeout);
+      }
+      controller.signal.throwIfAborted();
       const handle: WatchdogHandle = {
         ...input,
         signature: snapshot.signature,
@@ -75,7 +87,7 @@ export function createInteractiveChatWatchdogService(options: {
           handle.timer.unref?.();
         },
         cancel: () => {
-          if (handles.get(input.conversationId) === handle) stop(input.conversationId);
+          if (handles.get(input.conversationId) === handle) void stop(input.conversationId);
         },
       };
     },
@@ -103,12 +115,12 @@ export function createInteractiveChatWatchdogService(options: {
     },
 
     cancel(conversationId: string): void {
-      stop(conversationId);
+      void stop(conversationId);
       errors.delete(conversationId);
     },
 
     dispose(): void {
-      for (const conversationId of handles.keys()) stop(conversationId);
+      for (const conversationId of handles.keys()) void stop(conversationId);
       listeners.clear();
       errors.clear();
     },
@@ -136,7 +148,7 @@ export function createInteractiveChatWatchdogService(options: {
         handle.sawProgress &&
         snapshot.settled
       ) {
-        stop(handle.conversationId);
+        void stop(handle.conversationId);
         return;
       }
     } catch (error) {
@@ -178,20 +190,30 @@ export function createInteractiveChatWatchdogService(options: {
     }
 
     if (!isCurrent()) return;
-    try {
-      await options.opencodeService.abortSession(
-        handle.directory,
-        handle.sessionID,
-        AbortSignal.timeout(30_000),
-      );
-    } catch (error) {
-      if (!isCurrent()) return;
-      options.logger.warn(
-        { err: error, conversationId: handle.conversationId, sessionID: handle.sessionID },
-        "interactive chat watchdog abort failed",
-      );
-      return;
-    }
+    const abortController = new AbortController();
+    handle.abortController = abortController;
+    const abortTimeout = setTimeout(() => abortController.abort(), 30_000);
+    const abortRequest = options.opencodeService
+      .abortSession(handle.directory, handle.sessionID, abortController.signal)
+      .then(
+        () => true,
+        (error: unknown) => {
+          if (isCurrent()) {
+            options.logger.warn(
+              { err: error, conversationId: handle.conversationId, sessionID: handle.sessionID },
+              "interactive chat watchdog abort failed",
+            );
+          }
+          return false;
+        },
+      )
+      .finally(() => {
+        clearTimeout(abortTimeout);
+        if (handle.abortController === abortController) handle.abortController = undefined;
+      });
+    handle.abortPromise = abortRequest.then(() => undefined);
+    const aborted = await abortRequest;
+    if (!aborted) return;
     if (!isCurrent()) return;
 
     const event: WatchdogEvent = {
@@ -208,21 +230,30 @@ export function createInteractiveChatWatchdogService(options: {
     };
     errors.set(handle.conversationId, event);
     for (const listener of listeners.get(handle.conversationId) ?? []) listener(event);
-    stop(handle.conversationId);
+    void stop(handle.conversationId);
   }
 
   async function readSnapshot(
     directory: string,
     rootSessionID: string,
+    signal?: AbortSignal,
   ): Promise<{ signature: string; settled: boolean }> {
-    const sessionIDs = await options.opencodeService.getSessionTreeIds(directory, rootSessionID);
+    const sessionIDs = await options.opencodeService.getSessionTreeIds(
+      directory,
+      rootSessionID,
+      signal,
+    );
     const sessions = [...sessionIDs].sort();
     const hash = createHash("sha256");
     let latestRootMessage:
       | Awaited<ReturnType<OpenCodeService["listSessionMessages"]>>[number]
       | undefined;
     for (const sessionID of sessions) {
-      const messages = await options.opencodeService.listSessionMessages(directory, sessionID);
+      const messages = await options.opencodeService.listSessionMessages(
+        directory,
+        sessionID,
+        signal,
+      );
       hash.update(sessionID);
       for (const message of messages) hash.update(JSON.stringify(message));
       if (sessionID === rootSessionID) latestRootMessage = messages.at(-1);
@@ -247,9 +278,11 @@ export function createInteractiveChatWatchdogService(options: {
     );
   }
 
-  function stop(conversationId: string): void {
+  function stop(conversationId: string): Promise<void> | undefined {
     const handle = handles.get(conversationId);
     if (handle?.timer) clearInterval(handle.timer);
     handles.delete(conversationId);
+    handle?.abortController?.abort();
+    return handle?.abortPromise;
   }
 }

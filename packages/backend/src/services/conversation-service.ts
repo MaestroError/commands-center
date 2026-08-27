@@ -716,6 +716,7 @@ export function createConversationService(options: {
             "once",
           );
         } catch (error) {
+          if (error instanceof NotFoundError) continue;
           options.logger?.warn(
             {
               err: error,

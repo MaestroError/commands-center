@@ -227,6 +227,7 @@ export async function startServerRuntime(
   const interactiveChatWatchdogService = createInteractiveChatWatchdogService({
     opencodeService,
     logger,
+    prepareTimeoutMs: config.timeouts.opencodeRequestMs,
   });
   const workspaceWatchService = createWorkspaceWatchService({ logger });
   const liveRequestService = createLiveRequestService();

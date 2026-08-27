@@ -420,6 +420,58 @@ describe("useConversation", () => {
     expect(connectConversationEvents).toHaveBeenCalledTimes(2);
   });
 
+  it("removes interactions resolved while the event stream was disconnected", async () => {
+    let closeFirstStream: (() => void) | undefined;
+    const firstStreamClosed = new Promise<void>((resolve) => {
+      closeFirstStream = resolve;
+    });
+    let connectionAttempt = 0;
+    vi.mocked(connectConversationEvents).mockImplementation((_conversationId, signal) => {
+      connectionAttempt += 1;
+      if (connectionAttempt === 1) {
+        return (async function* (): AsyncGenerator<ChatEvent> {
+          yield {
+            type: "permission.asked",
+            properties: {
+              id: "resolved-permission",
+              sessionID: "sess-1",
+              permission: "bash",
+              patterns: [],
+              metadata: {},
+              always: [],
+            },
+          };
+          yield {
+            type: "question.asked",
+            properties: {
+              id: "resolved-question",
+              sessionID: "sess-1",
+              questions: [{ question: "Proceed?", options: [{ label: "Yes" }] }],
+            },
+          };
+          await firstStreamClosed;
+        })();
+      }
+
+      return oneEvent({ type: "connected", properties: {} }, signal);
+    });
+    vi.mocked(getPendingInteractions).mockResolvedValue(noPendingInteractions());
+    vi.mocked(getConversation).mockResolvedValue(makeConversation());
+    const queryClient = createQueryClient();
+    const { result } = renderHook(() => useConversation("writer"), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    await waitFor(() => expect(result.current.pendingPermission?.id).toBe("resolved-permission"));
+    expect(result.current.pendingQuestion?.id).toBe("resolved-question");
+
+    closeFirstStream?.();
+
+    await waitFor(() => expect(connectConversationEvents).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(result.current.pendingPermission).toBeNull());
+    expect(result.current.pendingQuestion).toBeNull();
+  });
+
   it("forwards conversation actions to the API layer", async () => {
     const queryClient = createQueryClient();
     const { result } = renderHook(() => useConversation("writer"), {

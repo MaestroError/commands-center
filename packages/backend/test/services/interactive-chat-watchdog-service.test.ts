@@ -175,6 +175,92 @@ describe("interactive-chat-watchdog-service", () => {
     expect(listener).not.toHaveBeenCalled();
   });
 
+  it("waits for an in-flight abort before preparing a replacement prompt", async () => {
+    vi.useFakeTimers();
+    let now = 0;
+    let resolveAbort: (() => void) | undefined;
+    const abortPending = new Promise<void>((resolve) => {
+      resolveAbort = resolve;
+    });
+    const opencodeService = createMockOpenCodeService();
+    opencodeService.getSessionTreeIds = vi.fn(() => Promise.resolve(new Set(["root"])));
+    opencodeService.listSessionMessages = vi.fn(() => Promise.resolve([]));
+    opencodeService.listSessionStatuses = vi.fn(() =>
+      Promise.resolve({ root: { type: "busy" as const } }),
+    );
+    opencodeService.abortSession = vi.fn(() => abortPending);
+    const service = createInteractiveChatWatchdogService({
+      opencodeService,
+      logger: createLogger(),
+      noProgressMs: 1,
+      pollMs: 1,
+      now: () => now,
+    });
+    const listener = vi.fn();
+    service.subscribe({
+      conversationId: "conversation-1",
+      signal: AbortSignal.timeout(1_000),
+      onEvent: listener,
+    });
+    const prepared = await service.prepare({
+      conversationId: "conversation-1",
+      directory: "/work",
+      sessionID: "root",
+    });
+    prepared.arm();
+
+    now = 1;
+    void vi.advanceTimersByTimeAsync(1);
+    await vi.waitFor(() => expect(opencodeService.abortSession).toHaveBeenCalledOnce());
+    const abortSignal = vi.mocked(opencodeService.abortSession).mock.calls[0]?.[2];
+    let replacementReady = false;
+    const replacement = service
+      .prepare({
+        conversationId: "conversation-1",
+        directory: "/work",
+        sessionID: "root",
+      })
+      .then((value) => {
+        replacementReady = true;
+        return value;
+      });
+
+    await Promise.resolve();
+    expect(abortSignal?.aborted).toBe(true);
+    expect(replacementReady).toBe(false);
+
+    resolveAbort?.();
+    await replacement;
+
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it("bounds preparation when a baseline session-tree read never settles", async () => {
+    vi.useFakeTimers();
+    const opencodeService = createMockOpenCodeService();
+    opencodeService.getSessionTreeIds = vi.fn(
+      (_directory: string, _sessionID: string, signal?: AbortSignal) =>
+        new Promise<Set<string>>((_resolve, reject) => {
+          signal?.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+        }),
+    );
+    const service = createInteractiveChatWatchdogService({
+      opencodeService,
+      logger: createLogger(),
+      prepareTimeoutMs: 10,
+    });
+
+    const preparation = service.prepare({
+      conversationId: "conversation-1",
+      directory: "/work",
+      sessionID: "root",
+    });
+    const rejection = expect(preparation).rejects.toThrow();
+    await vi.advanceTimersByTimeAsync(10);
+
+    await rejection;
+  });
+
   it("does not abort while a verified descendant interaction is actionable", async () => {
     vi.useFakeTimers();
     let now = 0;

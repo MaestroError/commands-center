@@ -171,12 +171,14 @@ export function createOpenCodeService(options: {
   async function listSessionChildren(
     directory: string,
     sessionID: string,
+    signal?: AbortSignal,
   ): Promise<OpenCodeSession[]> {
     const result = await requestSessionJson({
       config: options.config,
       directory,
       method: "GET",
       path: `/session/${encodeURIComponent(sessionID)}/children`,
+      signal,
     });
     return z.array(openCodeSessionSchema).parse(result);
   }
@@ -407,7 +409,11 @@ export function createOpenCodeService(options: {
 
     listSessionChildren,
 
-    async getSessionTreeIds(directory: string, rootSessionID: string): Promise<Set<string>> {
+    async getSessionTreeIds(
+      directory: string,
+      rootSessionID: string,
+      signal?: AbortSignal,
+    ): Promise<Set<string>> {
       const sessionIDs = new Set([rootSessionID]);
       const pending = [rootSessionID];
 
@@ -415,7 +421,7 @@ export function createOpenCodeService(options: {
         const parentID = pending.shift();
         if (!parentID) break;
 
-        const children = await listSessionChildren(directory, parentID);
+        const children = await listSessionChildren(directory, parentID, signal);
         for (const child of children) {
           if (child.parentID !== parentID || sessionIDs.has(child.id)) continue;
           if (sessionIDs.size >= MAX_SESSION_TREE_SIZE) {
@@ -434,12 +440,14 @@ export function createOpenCodeService(options: {
     async listSessionMessages(
       directory: string,
       sessionID: string,
+      signal?: AbortSignal,
     ): Promise<OpenCodeSessionMessage[]> {
       const result = await requestSessionJson({
         config: options.config,
         directory,
         method: "GET",
         path: `/session/${encodeURIComponent(sessionID)}/message`,
+        signal,
       });
       return z.array(openCodeMessageSchema).parse(result);
     },

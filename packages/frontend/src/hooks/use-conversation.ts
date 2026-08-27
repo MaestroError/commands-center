@@ -88,7 +88,7 @@ export type Action =
   | { type: "SEND_FAILED"; message: string }
   | { type: "CLEAR_SEND_ERROR" }
   | { type: "SSE_EVENT"; event: ChatEvent }
-  | { type: "HYDRATE_PENDING"; pending: PendingInteractions }
+  | { type: "HYDRATE_PENDING"; pending: PendingInteractions; authoritative?: boolean }
   | { type: "DISCARD_STALE_PERMISSION"; requestId: string }
   | { type: "DISCARD_STALE_QUESTION"; requestId: string };
 
@@ -219,6 +219,18 @@ export function conversationReducer(state: ConversationState, action: Action): C
       return applySseEvent(state, action.event);
 
     case "HYDRATE_PENDING": {
+      const hydratedQuestions =
+        action.pending.questions ?? (action.pending.question ? [action.pending.question] : []);
+      if (action.authoritative) {
+        return {
+          ...state,
+          pendingPermissions: action.pending.permissions,
+          pendingQuestion: hydratedQuestions[0] ?? null,
+          queuedQuestions: hydratedQuestions.slice(1),
+          liveRequests: action.pending.liveRequests,
+        };
+      }
+
       // Merge (union by id) rather than replace. The pending-interactions fetch
       // is async and runs alongside the SSE stream, so a live event can add a
       // NEWER interaction before the fetch resolves; a wholesale replace with
@@ -238,8 +250,6 @@ export function conversationReducer(state: ConversationState, action: Action): C
 
       let pendingQuestion = state.pendingQuestion;
       let queuedQuestions = state.queuedQuestions;
-      const hydratedQuestions =
-        action.pending.questions ?? (action.pending.question ? [action.pending.question] : []);
       for (const question of hydratedQuestions) {
         if (!pendingQuestion) {
           pendingQuestion = question;
@@ -579,7 +589,10 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
     const controller = new AbortController();
     sseAbortRef.current = controller;
 
-    const hydratePendingInteractions = (pending: PendingInteractions): void => {
+    const hydratePendingInteractions = (
+      pending: PendingInteractions,
+      authoritative = false,
+    ): void => {
       if (controller.signal.aborted) return;
 
       const permissionsToSurface: typeof pending.permissions = [];
@@ -601,6 +614,7 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
       dispatch({
         type: "HYDRATE_PENDING",
         pending: { ...pending, permissions: permissionsToSurface },
+        authoritative,
       });
     };
 
@@ -640,7 +654,7 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
 
                   if (controller.signal.aborted) return;
                   dispatch({ type: "HYDRATE_DETAIL", detail });
-                  hydratePendingInteractions(pending);
+                  hydratePendingInteractions(pending, true);
                 } catch {
                   if (controller.signal.aborted) return;
                 }
