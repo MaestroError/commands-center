@@ -221,8 +221,8 @@ export async function startServerRuntime(
   const openCodeEventService = createOpenCodeEventService({
     config,
     logger,
-    resolveSessionTree: (directory, rootSessionID) =>
-      opencodeService.getSessionTreeIds(directory, rootSessionID),
+    resolveSessionTree: (directory, rootSessionID, signal) =>
+      opencodeService.getSessionTreeIds(directory, rootSessionID, signal),
   });
   const interactiveChatWatchdogService = createInteractiveChatWatchdogService({
     opencodeService,

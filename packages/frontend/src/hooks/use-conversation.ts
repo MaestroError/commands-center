@@ -588,12 +588,52 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
 
     const controller = new AbortController();
     sseAbortRef.current = controller;
+    let terminalSequence = 0;
+    const terminalPermissions = new Map<string, number>();
+    const terminalQuestions = new Map<string, number>();
+    const terminalLiveRequests = new Map<string, number>();
+
+    const recordTerminalInteraction = (event: ChatEvent): void => {
+      terminalSequence += 1;
+      if (event.type === "permission.replied") {
+        terminalPermissions.set(event.properties.requestID, terminalSequence);
+      } else if (event.type === "question.replied" || event.type === "question.rejected") {
+        terminalQuestions.set(event.properties.requestID, terminalSequence);
+      } else if (
+        event.type === "cc.live_request.resolved" ||
+        event.type === "cc.live_request.cancelled"
+      ) {
+        terminalLiveRequests.set(event.properties.requestId, terminalSequence);
+      }
+    };
+
+    const filterTerminatedInteractions = (
+      pending: PendingInteractions,
+      requestSequence: number,
+    ): PendingInteractions => {
+      const questions = (pending.questions ?? (pending.question ? [pending.question] : [])).filter(
+        (question) => (terminalQuestions.get(question.id) ?? 0) <= requestSequence,
+      );
+      return {
+        ...pending,
+        permissions: pending.permissions.filter(
+          (permission) => (terminalPermissions.get(permission.id) ?? 0) <= requestSequence,
+        ),
+        question: questions[0] ?? null,
+        questions,
+        liveRequests: pending.liveRequests.filter(
+          (request) => (terminalLiveRequests.get(request.id) ?? 0) <= requestSequence,
+        ),
+      };
+    };
 
     const hydratePendingInteractions = (
       pending: PendingInteractions,
       authoritative = false,
+      requestSequence = terminalSequence,
     ): void => {
       if (controller.signal.aborted) return;
+      pending = filterTerminatedInteractions(pending, requestSequence);
 
       const permissionsToSurface: typeof pending.permissions = [];
       if (autoApproveRef.current) {
@@ -619,8 +659,9 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
     };
 
     void (async () => {
+      const initialHydrationSequence = terminalSequence;
       void getPendingInteractions(activeConversationId)
-        .then(hydratePendingInteractions)
+        .then((pending) => hydratePendingInteractions(pending, false, initialHydrationSequence))
         .catch(() => {
           // The live stream remains the fallback for interactions raised after this point.
         });
@@ -647,6 +688,7 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
 
               if (connectionAttempt > 1) {
                 try {
+                  const reconnectHydrationSequence = terminalSequence;
                   const [detail, pending] = await Promise.all([
                     getConversation(activeAgentId, activeConversationId),
                     getPendingInteractions(activeConversationId),
@@ -654,7 +696,7 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
 
                   if (controller.signal.aborted) return;
                   dispatch({ type: "HYDRATE_DETAIL", detail });
-                  hydratePendingInteractions(pending, true);
+                  hydratePendingInteractions(pending, true, reconnectHydrationSequence);
                 } catch {
                   if (controller.signal.aborted) return;
                 }
@@ -675,6 +717,7 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
               }
             }
 
+            recordTerminalInteraction(event);
             dispatch({ type: "SSE_EVENT", event });
           }
         } catch {

@@ -152,6 +152,20 @@ async function* oneEvent(event: ChatEvent, signal: AbortSignal): AsyncGenerator<
   await waitForAbort(signal);
 }
 
+function createDeferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((promiseResolve) => {
+    resolve = promiseResolve;
+  });
+  return { promise, resolve };
+}
+
+async function* connectedThen(event: ChatEvent, signal: AbortSignal): AsyncGenerator<ChatEvent> {
+  yield { type: "connected", properties: {} };
+  yield event;
+  await waitForAbort(signal);
+}
+
 describe("useConversation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -679,6 +693,96 @@ describe("useConversation", () => {
       expect(result.current.pendingQuestion?.id).toBe("q-1");
       expect(result.current.liveRequests).toHaveLength(1);
       expect(result.current.liveRequests[0]?.id).toBe("live-1");
+    });
+
+    it("does not resurrect a permission resolved during initial hydration", async () => {
+      const pending = createDeferred<PendingInteractions>();
+      vi.mocked(getPendingInteractions).mockReturnValueOnce(pending.promise);
+      vi.mocked(connectConversationEvents).mockImplementation((_conversationId, signal) =>
+        connectedThen(
+          {
+            type: "permission.replied",
+            properties: { sessionID: "sess-1", requestID: "perm-race", reply: "once" },
+          },
+          signal,
+        ),
+      );
+      const queryClient = createQueryClient();
+      const { result } = renderHook(() => useConversation("writer"), {
+        wrapper: createWrapper(queryClient),
+      });
+      await waitFor(() => expect(connectConversationEvents).toHaveBeenCalled());
+
+      pending.resolve({
+        permissions: [
+          {
+            id: "perm-race",
+            sessionID: "sess-1",
+            permission: "bash",
+            patterns: [],
+            metadata: {},
+            always: [],
+          },
+        ],
+        question: null,
+        liveRequests: [],
+      });
+
+      await waitFor(() => expect(getPendingInteractions).toHaveBeenCalled());
+      expect(result.current.pendingPermission).toBeNull();
+    });
+
+    it("does not resurrect a question rejected during initial hydration", async () => {
+      const pending = createDeferred<PendingInteractions>();
+      vi.mocked(getPendingInteractions).mockReturnValueOnce(pending.promise);
+      vi.mocked(connectConversationEvents).mockImplementation((_conversationId, signal) =>
+        connectedThen(
+          {
+            type: "question.rejected",
+            properties: { sessionID: "sess-1", requestID: "question-race" },
+          },
+          signal,
+        ),
+      );
+      const queryClient = createQueryClient();
+      const { result } = renderHook(() => useConversation("writer"), {
+        wrapper: createWrapper(queryClient),
+      });
+      await waitFor(() => expect(connectConversationEvents).toHaveBeenCalled());
+
+      const question = {
+        id: "question-race",
+        sessionID: "sess-1",
+        questions: [{ question: "Proceed?", options: [{ label: "Yes" }] }],
+      };
+      pending.resolve({ permissions: [], question, questions: [question], liveRequests: [] });
+
+      await waitFor(() => expect(getPendingInteractions).toHaveBeenCalled());
+      expect(result.current.pendingQuestion).toBeNull();
+    });
+
+    it("does not resurrect a live request resolved during initial hydration", async () => {
+      const pending = createDeferred<PendingInteractions>();
+      vi.mocked(getPendingInteractions).mockReturnValueOnce(pending.promise);
+      vi.mocked(connectConversationEvents).mockImplementation((_conversationId, signal) =>
+        connectedThen(
+          {
+            type: "cc.live_request.resolved",
+            properties: { requestId: "live-1" },
+          },
+          signal,
+        ),
+      );
+      const queryClient = createQueryClient();
+      const { result } = renderHook(() => useConversation("writer"), {
+        wrapper: createWrapper(queryClient),
+      });
+      await waitFor(() => expect(connectConversationEvents).toHaveBeenCalled());
+
+      pending.resolve({ permissions: [], question: null, liveRequests: [makeLiveRequest()] });
+
+      await waitFor(() => expect(getPendingInteractions).toHaveBeenCalled());
+      expect(result.current.liveRequests).toEqual([]);
     });
 
     it("auto-replies to rehydrated permissions when auto approve is enabled, without surfacing them", async () => {

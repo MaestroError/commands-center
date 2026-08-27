@@ -293,6 +293,31 @@ describe("opencode-event-service", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("cancels initial ancestry resolution when the subscription closes", async () => {
+    const controller = new AbortController();
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    let ancestrySignal: AbortSignal | undefined;
+
+    subscribeForTest({
+      onEvent: vi.fn(),
+      signal: controller.signal,
+      resolveSessionTree: (_directory, _sessionID, signal) => {
+        ancestrySignal = signal;
+        return new Promise((_resolve, reject) => {
+          signal.addEventListener("abort", () => reject(new Error("ancestry aborted")), {
+            once: true,
+          });
+        });
+      },
+    });
+    await vi.waitFor(() => expect(ancestrySignal).toBeDefined());
+
+    controller.abort();
+    await vi.waitFor(() => expect(ancestrySignal?.aborted).toBe(true));
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("cancels the event reader when ancestry refresh fails", async () => {
     const cancel = vi.fn();
     const encoder = new TextEncoder();
@@ -320,6 +345,44 @@ describe("opencode-event-service", () => {
       resolveSessionTree,
     });
 
+    await vi.waitFor(() => expect(cancel).toHaveBeenCalledOnce());
+  });
+
+  it("cancels ancestry refresh and the event reader when the subscription closes", async () => {
+    const controller = new AbortController();
+    const cancel = vi.fn();
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(streamController) {
+        streamController.enqueue(
+          encoder.encode(
+            'data: {"type":"permission.asked","properties":{"id":"perm-1","sessionID":"child"}}\n\n',
+          ),
+        );
+      },
+      cancel,
+    });
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(stream, { status: 200, headers: { "Content-Type": "text/event-stream" } }),
+    );
+    let refreshSignal: AbortSignal | undefined;
+    const resolveSessionTree = vi
+      .fn<(directory: string, rootSessionID: string, signal: AbortSignal) => Promise<Set<string>>>()
+      .mockResolvedValueOnce(new Set(["sess-1"]))
+      .mockImplementationOnce((_directory, _sessionID, signal) => {
+        refreshSignal = signal;
+        return new Promise((_resolve, reject) => {
+          signal.addEventListener("abort", () => reject(new Error("ancestry aborted")), {
+            once: true,
+          });
+        });
+      });
+
+    subscribeForTest({ onEvent: vi.fn(), signal: controller.signal, resolveSessionTree });
+    await vi.waitFor(() => expect(refreshSignal).toBeDefined());
+
+    controller.abort();
+    await vi.waitFor(() => expect(refreshSignal?.aborted).toBe(true));
     await vi.waitFor(() => expect(cancel).toHaveBeenCalledOnce());
   });
 
@@ -651,11 +714,18 @@ function subscribeForTest(options: {
   onEvent: (event: unknown) => void;
   signal: AbortSignal;
   onTitleUpdate?: (title: string) => void;
-  resolveSessionTree?: (directory: string, rootSessionID: string) => Promise<Set<string>>;
+  resolveSessionTree?: (
+    directory: string,
+    rootSessionID: string,
+    signal: AbortSignal,
+  ) => Promise<Set<string>>;
   logger?: Logger;
 }) {
   createOpenCodeEventService({
-    config: { opencode: { baseUrl: "http://opencode.test:1234" } } as never,
+    config: {
+      opencode: { baseUrl: "http://opencode.test:1234" },
+      timeouts: { opencodeRequestMs: 30_000 },
+    } as never,
     logger: options.logger ?? createLogger(),
     resolveSessionTree: options.resolveSessionTree,
   }).subscribe({

@@ -26,7 +26,11 @@ export type OpenCodeEventService = ReturnType<typeof createOpenCodeEventService>
 export function createOpenCodeEventService(options: {
   config: RuntimeConfig;
   logger: Logger;
-  resolveSessionTree?: (directory: string, rootSessionID: string) => Promise<Set<string>>;
+  resolveSessionTree?: (
+    directory: string,
+    rootSessionID: string,
+    signal: AbortSignal,
+  ) => Promise<Set<string>>;
 }) {
   return {
     subscribe(subscribeOptions: SubscribeOptions): void {
@@ -67,7 +71,11 @@ const DESCENDANT_INTERACTION_EVENTS = new Set([
 async function runSubscription(
   config: RuntimeConfig,
   logger: Logger,
-  resolveSessionTree: (directory: string, rootSessionID: string) => Promise<Set<string>>,
+  resolveSessionTree: (
+    directory: string,
+    rootSessionID: string,
+    signal: AbortSignal,
+  ) => Promise<Set<string>>,
   options: SubscribeOptions,
 ): Promise<void> {
   const { directory, sessionID, signal, onEvent, onTitleUpdate } = options;
@@ -113,12 +121,16 @@ async function consumeEventStream(
   sessionID: string,
   signal: AbortSignal,
   onEvent: (event: ChatEvent) => void,
-  resolveSessionTree: (directory: string, rootSessionID: string) => Promise<Set<string>>,
+  resolveSessionTree: (
+    directory: string,
+    rootSessionID: string,
+    signal: AbortSignal,
+  ) => Promise<Set<string>>,
   onTitleUpdate?: (title: string) => void,
 ): Promise<void> {
   const url = new URL("/event", config.opencode.baseUrl);
   url.searchParams.set("directory", directory);
-  let sessionIDs = await resolveSessionTree(directory, sessionID);
+  let sessionIDs = await resolveSessionTree(directory, sessionID, ancestrySignal(config, signal));
 
   const response = await fetch(url, {
     method: "GET",
@@ -174,7 +186,11 @@ async function consumeEventStream(
           !sessionIDs.has(eventSessionID) &&
           DESCENDANT_INTERACTION_EVENTS.has(raw.type)
         ) {
-          sessionIDs = await resolveSessionTree(directory, sessionID);
+          sessionIDs = await resolveSessionTree(
+            directory,
+            sessionID,
+            ancestrySignal(config, signal),
+          );
         }
 
         const mapped = mapEvent(sessionID, sessionIDs, raw);
@@ -494,4 +510,11 @@ function delay(ms: number, signal: AbortSignal): Promise<void> {
       { once: true },
     );
   });
+}
+
+function ancestrySignal(config: RuntimeConfig, subscriptionSignal: AbortSignal): AbortSignal {
+  return AbortSignal.any([
+    subscriptionSignal,
+    AbortSignal.timeout(config.timeouts?.opencodeRequestMs ?? 30_000),
+  ]);
 }
