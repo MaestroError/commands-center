@@ -280,6 +280,74 @@ describe("HYDRATE_DETAIL", () => {
   });
 });
 
+describe("MERGE_RECONNECT_DETAIL", () => {
+  it("unions hydrated and live-only messages by id", () => {
+    const shared = makeMessage({ id: "shared", content: "live" });
+    const liveOnly = makeMessage({ id: "live-only" });
+    const state = stateWithConversation([shared, liveOnly]);
+
+    const next = conversationReducer(state, {
+      type: "MERGE_RECONNECT_DETAIL",
+      detail: makeConversation({
+        messages: [
+          makeMessage({ id: "missed" }),
+          makeMessage({ id: "shared", content: "persisted" }),
+        ],
+      }),
+    });
+
+    expect(next.conversation?.messages.map((message) => message.id)).toEqual([
+      "missed",
+      "shared",
+      "live-only",
+    ]);
+    expect(next.conversation?.messages[1]?.content).toBe("persisted");
+  });
+
+  it("uses persisted parts for shared messages and keeps parts for live-only messages", () => {
+    const livePart = makePart({ id: "part-shared", text: "partial live text" });
+    const liveOnlyPart = makePart({ id: "part-live-only" });
+    const state = stateWithConversation([makeMessage({ id: "shared" })], { shared: [livePart] });
+    state.parts["live-only"] = [liveOnlyPart];
+
+    const next = conversationReducer(state, {
+      type: "MERGE_RECONNECT_DETAIL",
+      detail: makeConversation({
+        messages: [
+          makeMessage({
+            id: "shared",
+            parts: [makePart({ id: "part-shared", text: "completed persisted text" })],
+          }),
+        ],
+      }),
+    });
+
+    expect(next.parts["shared"]?.[0]).toEqual(
+      expect.objectContaining({ text: "completed persisted text" }),
+    );
+    expect(next.parts["live-only"]).toEqual([liveOnlyPart]);
+  });
+
+  it("preserves live interaction and session state", () => {
+    const liveRequest = makeLiveRequest();
+    const state: ConversationState = {
+      ...stateWithConversation(),
+      sessionStatus: { type: "busy" },
+      liveRequests: [liveRequest],
+      pendingQuestion: { id: "question-1", sessionID: "sess-1", questions: [] },
+    };
+
+    const next = conversationReducer(state, {
+      type: "MERGE_RECONNECT_DETAIL",
+      detail: makeConversation({ title: "Refreshed" }),
+    });
+
+    expect(next.sessionStatus).toEqual({ type: "busy" });
+    expect(next.liveRequests).toEqual([liveRequest]);
+    expect(next.pendingQuestion?.id).toBe("question-1");
+  });
+});
+
 // ---------------------------------------------------------------------------
 // OPTIMISTIC_USER_MESSAGE
 // ---------------------------------------------------------------------------

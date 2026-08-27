@@ -214,9 +214,30 @@ describe("opencode-event-service", () => {
     ]);
 
     expect(onEvent.mock.calls.map((call) => call[0] as unknown)).toEqual([
-      { type: "connected", properties: {} },
+      { type: "upstream.connected", properties: { reconnected: false } },
       { type: "heartbeat", properties: {} },
     ]);
+  });
+
+  it("distinguishes a reconnected upstream event stream", async () => {
+    const controller = new AbortController();
+    const onEvent = vi.fn();
+    vi.spyOn(globalThis, "fetch").mockImplementation(() =>
+      Promise.resolve(makeSseResponse([{ type: "server.connected", properties: {} }])),
+    );
+
+    subscribeForTest({ onEvent, signal: controller.signal });
+
+    await vi.waitFor(
+      () => {
+        expect(onEvent).toHaveBeenCalledWith({
+          type: "upstream.connected",
+          properties: { reconnected: true },
+        });
+      },
+      { timeout: 2_000 },
+    );
+    controller.abort();
   });
 
   it("ignores events for another session", async () => {
@@ -465,7 +486,10 @@ describe("opencode-event-service", () => {
     subscribeForTest({ onEvent, signal: AbortSignal.timeout(25) });
 
     await vi.waitFor(() => {
-      expect(onEvent).toHaveBeenCalledWith({ type: "connected", properties: {} });
+      expect(onEvent).toHaveBeenCalledWith({
+        type: "upstream.connected",
+        properties: { reconnected: false },
+      });
     });
   });
 

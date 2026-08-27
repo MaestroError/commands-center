@@ -83,11 +83,12 @@ export type ConversationState = {
 export type Action =
   | { type: "HYDRATE"; snapshot: { current: ConversationDetail; previous: ConversationSummary[] } }
   | { type: "HYDRATE_DETAIL"; detail: ConversationDetail; previous?: ConversationSummary[] }
+  | { type: "MERGE_RECONNECT_DETAIL"; detail: ConversationDetail }
   | { type: "OPTIMISTIC_USER_MESSAGE"; message: ConversationMessage }
   | { type: "SEND_FAILED"; message: string }
   | { type: "CLEAR_SEND_ERROR" }
   | { type: "SSE_EVENT"; event: ChatEvent }
-  | { type: "HYDRATE_PENDING"; pending: PendingInteractions }
+  | { type: "HYDRATE_PENDING"; pending: PendingInteractions; replace?: boolean }
   | { type: "DISCARD_STALE_PERMISSION"; requestId: string }
   | { type: "DISCARD_STALE_QUESTION"; requestId: string };
 
@@ -169,6 +170,17 @@ export function conversationReducer(state: ConversationState, action: Action): C
         sendError: null,
       };
 
+    case "MERGE_RECONNECT_DETAIL":
+      return {
+        ...state,
+        conversation: {
+          ...action.detail,
+          messages: mergeWithLiveOnly(action.detail.messages, state.conversation?.messages ?? []),
+        },
+        parts: mergeReconnectParts(action.detail.messages, state.parts),
+        sendError: null,
+      };
+
     case "OPTIMISTIC_USER_MESSAGE": {
       if (!state.conversation) return state;
       const msg = action.message;
@@ -207,6 +219,15 @@ export function conversationReducer(state: ConversationState, action: Action): C
       return applySseEvent(state, action.event);
 
     case "HYDRATE_PENDING": {
+      if (action.replace) {
+        return {
+          ...state,
+          pendingPermissions: action.pending.permissions,
+          pendingQuestion: action.pending.question,
+          liveRequests: action.pending.liveRequests,
+        };
+      }
+
       // Merge (union by id) rather than replace. The pending-interactions fetch
       // is async and runs alongside the SSE stream, so a live event can add a
       // NEWER interaction before the fetch resolves; a wholesale replace with
@@ -249,6 +270,28 @@ export function conversationReducer(state: ConversationState, action: Action): C
     default:
       return state;
   }
+}
+
+function mergeWithLiveOnly<T extends { id: string }>(persisted: T[], live: T[]): T[] {
+  const persistedIds = new Set(persisted.map((item) => item.id));
+
+  return [...persisted, ...live.filter((item) => !persistedIds.has(item.id))];
+}
+
+function mergeReconnectParts(
+  persistedMessages: ConversationMessage[],
+  live: Record<string, ConversationPart[]>,
+): Record<string, ConversationPart[]> {
+  const persistedMessageIds = new Set(persistedMessages.map((message) => message.id));
+  const merged = buildPartsMap(persistedMessages);
+
+  for (const [messageId, parts] of Object.entries(live)) {
+    if (!persistedMessageIds.has(messageId)) {
+      merged[messageId] = parts;
+    }
+  }
+
+  return merged;
 }
 
 function applySseEvent(state: ConversationState, event: ChatEvent): ConversationState {
@@ -527,8 +570,15 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
     const controller = new AbortController();
     sseAbortRef.current = controller;
 
-    const hydratePendingInteractions = (pending: PendingInteractions): void => {
+    let pendingHydrationGeneration = 0;
+
+    const hydratePendingInteractions = (
+      pending: PendingInteractions,
+      replace: boolean,
+      generation: number,
+    ): void => {
       if (controller.signal.aborted) return;
+      if (generation !== pendingHydrationGeneration) return;
 
       const permissionsToSurface: typeof pending.permissions = [];
       if (autoApproveRef.current) {
@@ -548,12 +598,31 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
       dispatch({
         type: "HYDRATE_PENDING",
         pending: { ...pending, permissions: permissionsToSurface },
+        replace,
       });
     };
 
+    const rehydrateConversation = async (mergeDetail: boolean): Promise<void> => {
+      const generation = ++pendingHydrationGeneration;
+
+      try {
+        const [detail, pending] = await Promise.all([
+          getConversation(activeAgentId, activeConversationId),
+          getPendingInteractions(activeConversationId),
+        ]);
+
+        if (controller.signal.aborted) return;
+        dispatch({ type: mergeDetail ? "MERGE_RECONNECT_DETAIL" : "HYDRATE_DETAIL", detail });
+        hydratePendingInteractions(pending, true, generation);
+      } catch {
+        if (controller.signal.aborted) return;
+      }
+    };
+
     void (async () => {
+      const initialPendingGeneration = ++pendingHydrationGeneration;
       void getPendingInteractions(activeConversationId)
-        .then(hydratePendingInteractions)
+        .then((pending) => hydratePendingInteractions(pending, false, initialPendingGeneration))
         .catch(() => {
           // The live stream remains the fallback for interactions raised after this point.
         });
@@ -579,20 +648,16 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
               reconnectDelay = INITIAL_SSE_RECONNECT_DELAY_MS;
 
               if (connectionAttempt > 1) {
-                try {
-                  const [detail, pending] = await Promise.all([
-                    getConversation(activeAgentId, activeConversationId),
-                    getPendingInteractions(activeConversationId),
-                  ]);
-
-                  if (controller.signal.aborted) return;
-                  dispatch({ type: "HYDRATE_DETAIL", detail });
-                  hydratePendingInteractions(pending);
-                } catch {
-                  if (controller.signal.aborted) return;
-                }
+                await rehydrateConversation(false);
               }
 
+              continue;
+            }
+
+            if (event.type === "upstream.connected") {
+              if (event.properties.reconnected) {
+                await rehydrateConversation(true);
+              }
               continue;
             }
 
