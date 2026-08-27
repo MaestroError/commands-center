@@ -105,6 +105,14 @@ Route direct and nested OpenCode descendant interactions through their owning ro
 - Fence reconnect detail snapshots against newer SSE events and overlapping detail requests.
 - Cover all six exact-head findings with focused backend and frontend regressions.
 
+### 12. Exact-head operation and hydration completion
+
+- Give each task-run pending-interaction cycle one configured OpenCode request budget and pass its signal through permission/question listing, ancestry traversal, and descendant permission replies so cancellation cannot wait forever on the task-run guard.
+- Apply the configured OpenCode request timeout to serialized manual abort and best-effort remote deletion so a stalled mutation releases the conversation operation queue.
+- Fence pending-interaction hydration by the newest successful request rather than the newest started request, allowing an older successful snapshot to reconcile state when a newer request fails.
+- Record successful and stale manual permission replies as terminal interaction events so in-flight snapshots cannot restore an already-resolved permission.
+- Cover unresolved task-run replies, stalled abort/delete requests, newer-failure/older-success hydration, and manual permission reply/reconnect ordering.
+
 ## Verification
 
 1. Run focused backend adapter, event, conversation, monitor, route, and watchdog tests.

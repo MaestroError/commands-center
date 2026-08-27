@@ -706,6 +706,7 @@ export function createConversationService(options: {
         await options.opencodeService.abortSession(
           loaded.agent.workspace_path,
           loaded.conversation.opencode_session_id,
+          openCodeRequestSignal(),
         );
         options.interactiveChatWatchdogService?.cancel(loaded.conversation.id);
       });
@@ -736,9 +737,10 @@ export function createConversationService(options: {
       }
 
       const agent = await getAgent(conversation.agent_id);
+      const signal = openCodeRequestSignal();
       const [permissions, questions, run] = await Promise.all([
-        options.opencodeService.listPendingPermissions(agent.workspace_path),
-        options.opencodeService.listPendingQuestions(agent.workspace_path),
+        options.opencodeService.listPendingPermissions(agent.workspace_path, signal),
+        options.opencodeService.listPendingQuestions(agent.workspace_path, signal),
         options.db.query.task_runs.findFirst({
           where: (table, operators) => operators.eq(table.id, taskRunId),
           columns: { effective_permissions_json: true },
@@ -747,6 +749,7 @@ export function createConversationService(options: {
       const sessionIDs = await options.opencodeService.getSessionTreeIds(
         agent.workspace_path,
         conversation.opencode_session_id,
+        signal,
       );
       const unresolvedPermissions: OpenCodePendingPermission[] = [];
       for (const permission of permissions.filter((candidate) =>
@@ -776,6 +779,7 @@ export function createConversationService(options: {
               agent.workspace_path,
               permission.id,
               "once",
+              signal,
             );
             return true;
           });
@@ -872,6 +876,7 @@ export function createConversationService(options: {
           await options.opencodeService.deleteSession(
             agent.workspace_path,
             conversation.opencode_session_id,
+            openCodeRequestSignal(),
           );
         } catch {
           // ignore
@@ -1010,6 +1015,10 @@ export function createConversationService(options: {
       signal,
       AbortSignal.timeout(options.config.timeouts.opencodeRequestMs),
     ]);
+  }
+
+  function openCodeRequestSignal(): AbortSignal {
+    return AbortSignal.timeout(options.config.timeouts.opencodeRequestMs);
   }
 
   function waitForAbortableDelay(delayMs: number, signal: AbortSignal): Promise<boolean> {

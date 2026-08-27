@@ -1108,6 +1108,47 @@ describe("useConversation", () => {
       expect(result.current.liveRequests).toEqual([]);
     });
 
+    it("applies an older successful snapshot when a newer reconnect snapshot fails", async () => {
+      const initialPending = createDeferred<PendingInteractions>();
+      const reconnect = createDeferred<void>();
+      vi.mocked(getPendingInteractions)
+        .mockReturnValueOnce(initialPending.promise)
+        .mockRejectedValueOnce(new Error("reconnect failed"));
+      vi.mocked(getConversation).mockResolvedValue(makeConversation());
+      vi.mocked(connectConversationEvents).mockImplementation(
+        async function* (_conversationId, signal): AsyncGenerator<ChatEvent> {
+          yield { type: "connected", properties: {} };
+          await reconnect.promise;
+          yield { type: "connected", properties: { reconnected: true } };
+          await waitForAbort(signal);
+        },
+      );
+      const queryClient = createQueryClient();
+      const { result } = renderHook(() => useConversation("writer"), {
+        wrapper: createWrapper(queryClient),
+      });
+      await waitFor(() => expect(getPendingInteractions).toHaveBeenCalledOnce());
+
+      reconnect.resolve();
+      await waitFor(() => expect(getPendingInteractions).toHaveBeenCalledTimes(2));
+      initialPending.resolve({
+        permissions: [
+          {
+            id: "initial-permission",
+            sessionID: "sess-1",
+            permission: "bash",
+            patterns: [],
+            metadata: {},
+            always: [],
+          },
+        ],
+        question: null,
+        liveRequests: [],
+      });
+
+      await waitFor(() => expect(result.current.pendingPermission?.id).toBe("initial-permission"));
+    });
+
     it("keeps the newest of overlapping reconnect snapshots", async () => {
       const firstReconnectPending = createDeferred<PendingInteractions>();
       const secondReconnectPending = createDeferred<PendingInteractions>();
@@ -1690,6 +1731,56 @@ describe("useConversation", () => {
 
       expect(result.current.pendingQuestion?.id).toBe("q-next");
     });
+
+    it.each([
+      { outcome: "successful", error: undefined },
+      {
+        outcome: "stale",
+        error: new ApiRequestError('Pending request "perm-replied" no longer exists.', 410),
+      },
+    ])(
+      "does not resurrect a $outcome permission reply from an in-flight reconnect snapshot",
+      async ({ error }) => {
+        const reconnect = createDeferred<void>();
+        const reconnectPending = createDeferred<PendingInteractions>();
+        const permission = {
+          id: "perm-replied",
+          sessionID: "sess-1",
+          permission: "bash",
+          patterns: [],
+          metadata: {},
+          always: [],
+        };
+        const pending = { permissions: [permission], question: null, liveRequests: [] };
+        vi.mocked(getPendingInteractions)
+          .mockResolvedValueOnce(pending)
+          .mockReturnValueOnce(reconnectPending.promise);
+        vi.mocked(getConversation).mockResolvedValue(makeConversation());
+        if (error) vi.mocked(replyPermission).mockRejectedValueOnce(error);
+        vi.mocked(connectConversationEvents).mockImplementation(
+          async function* (_conversationId, signal): AsyncGenerator<ChatEvent> {
+            yield { type: "connected", properties: {} };
+            await reconnect.promise;
+            yield { type: "connected", properties: { reconnected: true } };
+            await waitForAbort(signal);
+          },
+        );
+        const queryClient = createQueryClient();
+        const { result } = renderHook(() => useConversation("writer"), {
+          wrapper: createWrapper(queryClient),
+        });
+        await waitFor(() => expect(result.current.pendingPermission?.id).toBe("perm-replied"));
+
+        reconnect.resolve();
+        await waitFor(() => expect(getPendingInteractions).toHaveBeenCalledTimes(2));
+        act(() => result.current.replyPermission("perm-replied", "once"));
+        await waitFor(() => expect(result.current.pendingPermission).toBeNull());
+        reconnectPending.resolve(pending);
+        await act(async () => Promise.resolve());
+
+        expect(result.current.pendingPermission).toBeNull();
+      },
+    );
 
     it("keeps a question actionable when its reply fails transiently", async () => {
       vi.mocked(getPendingInteractions).mockResolvedValue({

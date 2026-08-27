@@ -729,13 +729,15 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
       });
     };
     let pendingHydrationGeneration = 0;
+    let latestSuccessfulPendingHydrationGeneration = 0;
 
     const requestPendingInteractions = (authoritative: boolean): void => {
       const requestSequence = ++interactionSequence;
       const requestGeneration = ++pendingHydrationGeneration;
       void getPendingInteractions(activeConversationId)
         .then((pending) => {
-          if (requestGeneration !== pendingHydrationGeneration) return;
+          if (requestGeneration < latestSuccessfulPendingHydrationGeneration) return;
+          latestSuccessfulPendingHydrationGeneration = requestGeneration;
           hydratePendingInteractions(pending, authoritative, requestSequence);
         })
         .catch(() => {
@@ -918,15 +920,37 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
   const replyPerm = useCallback(
     (requestId: string, reply: "once" | "always" | "reject") => {
       if (!state.conversation) return;
-      void apiReplyPermission(state.conversation.id, requestId, reply).catch((error: unknown) => {
-        // The permission was already resolved or timed out server-side —
-        // drop it locally so the dock can't wedge on a dead prompt.
-        if (isStaleRequestError(error)) {
+      const conversationId = state.conversation.id;
+      const sessionID = state.pendingPermissions.find(
+        (permission) => permission.id === requestId,
+      )?.sessionID;
+      const terminalEvent: ChatEvent = {
+        type: "permission.replied",
+        properties: {
+          sessionID: sessionID ?? state.conversation.opencodeSessionId,
+          requestID: requestId,
+          reply,
+        },
+      };
+      const recordTerminal = interactionEventRecorderRef.current;
+      const finish = (): void => {
+        if (recordTerminal) {
+          recordTerminal(terminalEvent);
+        } else {
           dispatch({ type: "DISCARD_STALE_PERMISSION", requestId });
         }
-      });
+      };
+      void apiReplyPermission(conversationId, requestId, reply)
+        .then(() => {
+          finish();
+        })
+        .catch((error: unknown) => {
+          if (isStaleRequestError(error)) {
+            finish();
+          }
+        });
     },
-    [state.conversation],
+    [state.conversation, state.pendingPermissions],
   );
 
   const replyQ = useCallback(

@@ -606,6 +606,7 @@ export function createOpenCodeService(options: {
       directory: string,
       requestId: string,
       reply: "once" | "always" | "reject",
+      signal?: AbortSignal,
     ): Promise<void> {
       await withNotFoundRemap(requestId, () =>
         requestSessionJson({
@@ -614,6 +615,7 @@ export function createOpenCodeService(options: {
           method: "POST",
           path: `/permission/${encodeURIComponent(requestId)}/reply`,
           body: { reply },
+          signal,
         }),
       );
     },
@@ -681,12 +683,13 @@ export function createOpenCodeService(options: {
       });
     },
 
-    async deleteSession(directory: string, sessionID: string): Promise<void> {
+    async deleteSession(directory: string, sessionID: string, signal?: AbortSignal): Promise<void> {
       await requestSessionJson({
         config: options.config,
         directory,
         method: "DELETE",
         path: `/session/${encodeURIComponent(sessionID)}`,
+        signal,
       });
     },
 

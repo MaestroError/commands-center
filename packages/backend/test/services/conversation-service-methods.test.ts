@@ -538,6 +538,27 @@ describe("conversation-service delegating methods", () => {
     expect(opencodeService.abortSession).toHaveBeenCalledOnce();
   });
 
+  it("releases serialized conversation operations when abort stalls", async () => {
+    const { service, opencodeService, agent } = await setup({ opencodeRequestMs: 10 });
+    const snapshot = await service.resolveCurrent(agent.id);
+    opencodeService.abortSession = vi.fn(
+      (_directory: string, _sessionID: string, signal?: AbortSignal) =>
+        neverSettlesUntilAborted(signal),
+    );
+
+    const aborting = service.abortConversation(snapshot.current.id);
+    const abortResult = expect(aborting).rejects.toBeDefined();
+    await vi.waitFor(() => expect(opencodeService.abortSession).toHaveBeenCalledOnce());
+    const sending = service.sendPromptAsync(snapshot.current.id, {
+      text: "work after timeout",
+      attachments: [],
+    });
+
+    await abortResult;
+    await expect(sending).resolves.toBeUndefined();
+    expect(opencodeService.promptSessionAsync).toHaveBeenCalledOnce();
+  });
+
   it("cancels only a failed replacement candidate", async () => {
     const firstArm = vi.fn();
     const firstCancel = vi.fn();
@@ -764,7 +785,59 @@ describe("conversation-service delegating methods", () => {
       agent.workspacePath,
       "perm-child",
       "once",
+      expect.any(AbortSignal),
     );
+  });
+
+  it("releases task-run cancellation when a permission reply stalls", async () => {
+    const { service, opencodeService, taskService, agent } = await setup({ opencodeRequestMs: 10 });
+    const task = await taskService.create({ agentId: agent.id, title: "Task" });
+    const run = await taskService.createRun({
+      id: "run-stalled-reply",
+      taskId: task.id,
+      agentId: agent.id,
+      status: "running",
+      triggerSource: "manual",
+      renderedPrompt: "Run.",
+      effectivePermissions: { approvalPolicy: "auto_approve" },
+    });
+    const conversation = await service.createTaskRunConversation({
+      agentId: agent.id,
+      taskId: task.id,
+      taskRunId: run.id,
+      title: "Run",
+    });
+    opencodeService.getSessionTreeIds = vi.fn(() =>
+      Promise.resolve(new Set([conversation.opencodeSessionId, "child-session"])),
+    );
+    opencodeService.listPendingPermissions = vi.fn(() =>
+      Promise.resolve([
+        {
+          id: "perm-stalled",
+          sessionID: "child-session",
+          permission: "external_directory",
+          patterns: ["/shared/*"],
+          always: [],
+          metadata: {},
+        },
+      ]),
+    );
+    opencodeService.replyPermission = vi.fn(
+      (_directory: string, _requestId: string, _reply: string, signal?: AbortSignal) =>
+        neverSettlesUntilAborted(signal),
+    );
+
+    const listing = service.listTaskRunPendingInteractions(task.id, run.id);
+    await vi.waitFor(() => expect(opencodeService.replyPermission).toHaveBeenCalledOnce());
+    service.taskRunOperationGuard.requestCancellation(run.id);
+    const cancelling = service.taskRunOperationGuard.runExclusive(run.id, () =>
+      Promise.resolve(true),
+    );
+
+    await expect(listing).resolves.toEqual([
+      expect.objectContaining({ type: "permission", id: "perm-stalled" }),
+    ]);
+    await expect(cancelling).resolves.toBe(true);
   });
 
   it.each([
@@ -946,6 +1019,22 @@ describe("conversation-service delegating methods", () => {
     expect(opencodeService.promptSessionAsync).not.toHaveBeenCalled();
   });
 
+  it("completes local deletion when the OpenCode delete request stalls", async () => {
+    const { service, opencodeService, agent } = await setup({ opencodeRequestMs: 10 });
+    const snapshot = await service.resolveCurrent(agent.id);
+    opencodeService.deleteSession = vi.fn(
+      (_directory: string, _sessionID: string, signal?: AbortSignal) =>
+        neverSettlesUntilAborted(signal),
+    );
+
+    await expect(
+      service.deleteConversation(agent.id, snapshot.current.id),
+    ).resolves.toBeUndefined();
+    await expect(
+      service.sendPromptAsync(snapshot.current.id, { text: "stale work", attachments: [] }),
+    ).rejects.toThrow("Conversation not found.");
+  });
+
   it("deletes a conversation that owns artifacts and share links", async () => {
     const { testDb, service, agent } = await setup();
     const snapshot = await service.resolveCurrent(agent.id);
@@ -1125,4 +1214,14 @@ function createDeferred<T>(): { promise: Promise<T>; resolve: (value: T) => void
     resolve = promiseResolve;
   });
   return { promise, resolve };
+}
+
+function neverSettlesUntilAborted(signal?: AbortSignal): Promise<void> {
+  return new Promise<void>((_resolve, reject) => {
+    signal?.addEventListener(
+      "abort",
+      () => reject(signal.reason instanceof Error ? signal.reason : new Error("aborted")),
+      { once: true },
+    );
+  });
 }
