@@ -535,6 +535,24 @@ describe("opencode-event-service", () => {
     });
   });
 
+  it("skips SSE events without object properties", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      makeSseResponse([
+        { type: "session.status" },
+        { type: "session.status", properties: null },
+        { type: "server.connected", properties: {} },
+      ]),
+    );
+    const onEvent = vi.fn();
+
+    subscribeForTest({ onEvent, signal: AbortSignal.timeout(25) });
+
+    await vi.waitFor(() => {
+      expect(onEvent).toHaveBeenCalledOnce();
+      expect(onEvent).toHaveBeenCalledWith({ type: "connected", properties: {} });
+    });
+  });
+
   it("logs and retries failed SSE responses until aborted", async () => {
     const logger = createLogger();
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("unavailable", { status: 503 }));

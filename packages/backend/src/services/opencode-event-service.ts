@@ -219,7 +219,7 @@ function extractSseEvents(buffer: string): ExtractResult {
     try {
       const event = JSON.parse(json) as unknown;
 
-      if (event && typeof event === "object" && "type" in event && typeof event.type === "string") {
+      if (isRecord(event) && typeof event["type"] === "string" && isRecord(event["properties"])) {
         parsed.push(event as SseEvent);
       }
     } catch {
