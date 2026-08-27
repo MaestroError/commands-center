@@ -672,6 +672,9 @@ function createBaseOpenCodeService() {
       }),
     completeOauth: () => Promise.resolve(true),
     disconnectProvider: () => Promise.resolve(true),
+    listSessionChildren: () => Promise.resolve([]),
+    getSessionTreeIds: (_directory: string, sessionID: string) =>
+      Promise.resolve(new Set([sessionID])),
     listSessionStatuses: () => Promise.resolve({}),
     getSessionStatus: () => Promise.resolve({ type: "idle" as const }),
     replyPermission: async () => {},

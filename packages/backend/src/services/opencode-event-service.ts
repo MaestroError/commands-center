@@ -23,10 +23,20 @@ export type SubscribeOptions = {
 
 export type OpenCodeEventService = ReturnType<typeof createOpenCodeEventService>;
 
-export function createOpenCodeEventService(options: { config: RuntimeConfig; logger: Logger }) {
+export function createOpenCodeEventService(options: {
+  config: RuntimeConfig;
+  logger: Logger;
+  resolveSessionTree?: (directory: string, rootSessionID: string) => Promise<Set<string>>;
+}) {
   return {
     subscribe(subscribeOptions: SubscribeOptions): void {
-      void runSubscription(options.config, options.logger, subscribeOptions);
+      void runSubscription(
+        options.config,
+        options.logger,
+        options.resolveSessionTree ??
+          ((_directory, rootSessionID) => Promise.resolve(new Set([rootSessionID]))),
+        subscribeOptions,
+      );
     },
   };
 }
@@ -46,10 +56,18 @@ const SESSION_EVENTS = new Set([
   "question.rejected",
   "session.error",
 ]);
+const DESCENDANT_INTERACTION_EVENTS = new Set([
+  "permission.asked",
+  "permission.replied",
+  "question.asked",
+  "question.replied",
+  "question.rejected",
+]);
 
 async function runSubscription(
   config: RuntimeConfig,
   logger: Logger,
+  resolveSessionTree: (directory: string, rootSessionID: string) => Promise<Set<string>>,
   options: SubscribeOptions,
 ): Promise<void> {
   const { directory, sessionID, signal, onEvent, onTitleUpdate } = options;
@@ -58,7 +76,15 @@ async function runSubscription(
 
   while (!signal.aborted) {
     try {
-      await consumeEventStream(config, directory, sessionID, signal, onEvent, onTitleUpdate);
+      await consumeEventStream(
+        config,
+        directory,
+        sessionID,
+        signal,
+        onEvent,
+        resolveSessionTree,
+        onTitleUpdate,
+      );
       // Stream ended normally (server closed) — reconnect
       retryDelay = 500;
     } catch (error) {
@@ -87,6 +113,7 @@ async function consumeEventStream(
   sessionID: string,
   signal: AbortSignal,
   onEvent: (event: ChatEvent) => void,
+  resolveSessionTree: (directory: string, rootSessionID: string) => Promise<Set<string>>,
   onTitleUpdate?: (title: string) => void,
 ): Promise<void> {
   const url = new URL("/event", config.opencode.baseUrl);
@@ -107,6 +134,7 @@ async function consumeEventStream(
   }
 
   const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+  let sessionIDs = await resolveSessionTree(directory, sessionID);
   let buffer = "";
 
   try {
@@ -140,7 +168,16 @@ async function consumeEventStream(
           }
         }
 
-        const mapped = mapEvent(sessionID, raw);
+        const eventSessionID = readEventSessionID(raw);
+        if (
+          eventSessionID &&
+          !sessionIDs.has(eventSessionID) &&
+          DESCENDANT_INTERACTION_EVENTS.has(raw.type)
+        ) {
+          sessionIDs = await resolveSessionTree(directory, sessionID);
+        }
+
+        const mapped = mapEvent(sessionID, sessionIDs, raw);
 
         if (mapped) {
           onEvent(mapped);
@@ -193,7 +230,11 @@ function extractSseEvents(buffer: string): ExtractResult {
   return { parsed, remainder };
 }
 
-function mapEvent(sessionID: string, raw: SseEvent): ChatEvent | null {
+function mapEvent(
+  rootSessionID: string,
+  sessionIDs: ReadonlySet<string>,
+  raw: SseEvent,
+): ChatEvent | null {
   // Server-level events
   if (raw.type === "server.connected") {
     return { type: "connected", properties: {} };
@@ -209,11 +250,16 @@ function mapEvent(sessionID: string, raw: SseEvent): ChatEvent | null {
   }
 
   const props = raw.properties;
-  const eventSessionID = typeof props["sessionID"] === "string" ? props["sessionID"] : undefined;
+  const eventSessionID = readEventSessionID(raw);
 
-  if (eventSessionID !== sessionID) {
+  if (
+    !eventSessionID ||
+    !sessionIDs.has(eventSessionID) ||
+    (eventSessionID !== rootSessionID && !DESCENDANT_INTERACTION_EVENTS.has(raw.type))
+  ) {
     return null;
   }
+  const sessionID = eventSessionID;
 
   // Map specific event types
   switch (raw.type) {
@@ -383,6 +429,10 @@ function mapEvent(sessionID: string, raw: SseEvent): ChatEvent | null {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function readEventSessionID(raw: SseEvent): string | undefined {
+  return typeof raw.properties["sessionID"] === "string" ? raw.properties["sessionID"] : undefined;
 }
 
 function sanitizeToolLink(value: unknown): Record<string, unknown> | undefined {

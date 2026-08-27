@@ -707,10 +707,13 @@ describe("opencode-service", () => {
     });
 
     it("gets a session and lists messages", async () => {
-      fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "sess-1", time: { created: 1 } }));
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(200, { id: "sess-1", parentID: "root", time: { created: 1 } }),
+      );
       const service = makeService();
       await expect(service.getSession("/work/a", "sess-1")).resolves.toMatchObject({
         id: "sess-1",
+        parentID: "root",
       });
 
       fetchMock.mockResolvedValueOnce(
@@ -723,6 +726,58 @@ describe("opencode-service", () => {
       );
       const messages = await service.listSessionMessages("/work/a", "sess-1");
       expect(messages).toHaveLength(1);
+    });
+
+    it("resolves direct and nested descendants from verified parent relationships", async () => {
+      fetchMock
+        .mockResolvedValueOnce(
+          jsonResponse(200, [
+            { id: "child", parentID: "root", time: { created: 2 } },
+            { id: "unrelated", parentID: "other", time: { created: 3 } },
+          ]),
+        )
+        .mockResolvedValueOnce(
+          jsonResponse(200, [{ id: "nested", parentID: "child", time: { created: 4 } }]),
+        )
+        .mockResolvedValueOnce(
+          jsonResponse(200, [{ id: "child", parentID: "nested", time: { created: 2 } }]),
+        );
+      const service = makeService();
+
+      await expect(service.getSessionTreeIds("/work/a", "root")).resolves.toEqual(
+        new Set(["root", "child", "nested"]),
+      );
+
+      expect(fetchMock.mock.calls.map((call) => (call[0] as URL).pathname)).toEqual([
+        "/session/root/children",
+        "/session/child/children",
+        "/session/nested/children",
+      ]);
+    });
+
+    it("rejects malformed child session payloads", async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, [{ id: "child", parentID: "root" }]));
+      const service = makeService();
+
+      await expect(service.listSessionChildren("/work/a", "root")).rejects.toThrow();
+    });
+
+    it("fails closed when a session tree exceeds the traversal limit", async () => {
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(
+          200,
+          Array.from({ length: 1_000 }, (_, index) => ({
+            id: `child-${String(index)}`,
+            parentID: "root",
+            time: { created: index + 1 },
+          })),
+        ),
+      );
+      const service = makeService();
+
+      await expect(service.getSessionTreeIds("/work/a", "root")).rejects.toThrow(
+        "OpenCode session tree exceeds 1000 sessions.",
+      );
     });
 
     it("prompts a session synchronously and returns the assistant message", async () => {

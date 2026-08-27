@@ -514,6 +514,35 @@ describe("useConversation", () => {
     expect(result.current.pendingPermission).toBeNull();
   });
 
+  it("surfaces a live permission when its auto-approve reply fails", async () => {
+    window.localStorage.setItem("cc-specialist-auto-approve-writer", "true");
+    vi.mocked(replyPermission).mockRejectedValue(new Error("network down"));
+    vi.mocked(connectConversationEvents).mockImplementation((_conversationId, signal) =>
+      oneEvent(
+        {
+          type: "permission.asked",
+          properties: {
+            id: "perm-descendant",
+            sessionID: "child-session",
+            permission: "external_directory",
+            patterns: ["/shared/*"],
+            metadata: {},
+            always: [],
+          },
+        },
+        signal,
+      ),
+    );
+    const queryClient = createQueryClient();
+    const { result } = renderHook(() => useConversation("writer"), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    await waitFor(() => {
+      expect(result.current.pendingPermission?.id).toBe("perm-descendant");
+    });
+  });
+
   it("persists auto approve changes per specialist slug", async () => {
     const queryClient = createQueryClient();
     const { result } = renderHook(() => useConversation("writer"), {

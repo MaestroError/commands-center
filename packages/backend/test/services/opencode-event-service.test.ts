@@ -236,6 +236,72 @@ describe("opencode-event-service", () => {
     expect(onEvent).not.toHaveBeenCalled();
   });
 
+  it("forwards interactions from verified nested descendants", async () => {
+    const onEvent = vi.fn();
+    const resolveSessionTree = vi
+      .fn<() => Promise<Set<string>>>()
+      .mockResolvedValueOnce(new Set(["sess-1", "child-session"]))
+      .mockResolvedValueOnce(new Set(["sess-1", "child-session", "nested-session"]));
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      makeSseResponse([
+        {
+          type: "permission.asked",
+          properties: {
+            id: "perm-1",
+            sessionID: "nested-session",
+            permission: "external_directory",
+            patterns: ["/shared/*"],
+          },
+        },
+      ]),
+    );
+
+    subscribeForTest({
+      onEvent,
+      signal: AbortSignal.timeout(50),
+      resolveSessionTree,
+    });
+
+    await vi.waitFor(() => {
+      expect(onEvent).toHaveBeenCalledWith({
+        type: "permission.asked",
+        properties: {
+          id: "perm-1",
+          sessionID: "nested-session",
+          permission: "external_directory",
+          patterns: ["/shared/*"],
+          metadata: {},
+          always: [],
+        },
+      });
+    });
+    expect(resolveSessionTree).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not merge descendant message events into the root timeline", async () => {
+    const onEvent = vi.fn();
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      makeSseResponse([
+        {
+          type: "message.updated",
+          properties: {
+            sessionID: "child-session",
+            info: { id: "child-message", role: "assistant" },
+          },
+        },
+      ]),
+    );
+
+    subscribeForTest({
+      onEvent,
+      signal: AbortSignal.timeout(25),
+      resolveSessionTree: () => Promise.resolve(new Set(["sess-1", "child-session"])),
+    });
+    await wait(40);
+
+    expect(onEvent).not.toHaveBeenCalled();
+  });
+
   it("ignores unsupported session-scoped event types", async () => {
     const onEvent = vi.fn();
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
@@ -522,10 +588,12 @@ function subscribeForTest(options: {
   onEvent: (event: unknown) => void;
   signal: AbortSignal;
   onTitleUpdate?: (title: string) => void;
+  resolveSessionTree?: (directory: string, rootSessionID: string) => Promise<Set<string>>;
 }) {
   createOpenCodeEventService({
     config: { opencode: { baseUrl: "http://opencode.test:1234" } } as never,
     logger: createLogger(),
+    resolveSessionTree: options.resolveSessionTree,
   }).subscribe({
     directory: "/work/agent-a",
     sessionID: "sess-1",

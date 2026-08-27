@@ -11,6 +11,10 @@ import { createOpenCodeClient } from "./opencode-client.js";
 import { createOpenCodeService, type OpenCodeService } from "../services/opencode-service.js";
 import { createConversationService } from "../services/conversation-service.js";
 import {
+  createInteractiveChatWatchdogService,
+  type InteractiveChatWatchdogService,
+} from "../services/interactive-chat-watchdog-service.js";
+import {
   createOpenCodeEventService,
   type OpenCodeEventService,
 } from "../services/opencode-event-service.js";
@@ -116,6 +120,7 @@ export type RuntimeContext = {
   orchestrator: OpenCodeOrchestrator;
   opencodeService: OpenCodeService;
   openCodeEventService: OpenCodeEventService;
+  interactiveChatWatchdogService?: InteractiveChatWatchdogService;
   workspaceWatchService?: WorkspaceWatchService;
   secretService: SecretService;
   apiTokenService: ApiTokenService;
@@ -213,7 +218,16 @@ export async function startServerRuntime(
 
   const opencodeClient = createOpenCodeClient(config);
   const opencodeService = createOpenCodeService({ client: opencodeClient, config, logger });
-  const openCodeEventService = createOpenCodeEventService({ config, logger });
+  const openCodeEventService = createOpenCodeEventService({
+    config,
+    logger,
+    resolveSessionTree: (directory, rootSessionID) =>
+      opencodeService.getSessionTreeIds(directory, rootSessionID),
+  });
+  const interactiveChatWatchdogService = createInteractiveChatWatchdogService({
+    opencodeService,
+    logger,
+  });
   const workspaceWatchService = createWorkspaceWatchService({ logger });
   const liveRequestService = createLiveRequestService();
   const taskService = createTaskService({ db: database.db, config });
@@ -236,6 +250,7 @@ export async function startServerRuntime(
     archiveService: sessionArchiveService,
     archiveSettingsService: sessionArchiveSettingsService,
     systemPromptService,
+    interactiveChatWatchdogService,
   });
   const taskPermissionService = createTaskPermissionService({
     db: database.db,
@@ -287,6 +302,7 @@ export async function startServerRuntime(
     orchestrator,
     opencodeService,
     openCodeEventService,
+    interactiveChatWatchdogService,
     workspaceWatchService,
     secretService,
     apiTokenService,
@@ -331,6 +347,7 @@ export async function startServerRuntime(
         }
         openCodeStartupRef.current?.dispose();
         taskExecutionService.dispose();
+        interactiveChatWatchdogService.dispose();
         systemVersionService.stop();
         taskSchedulerService.stop();
         sessionArchiveScheduler.stop();

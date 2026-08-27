@@ -764,6 +764,8 @@ function createMockOpenCodeService(
 
       return Promise.resolve(session);
     },
+    listSessionChildren: () => Promise.resolve([]),
+    getSessionTreeIds: (_directory, sessionID) => Promise.resolve(new Set([sessionID])),
     listSessionStatuses: () => Promise.resolve({}),
     getSessionStatus: () => Promise.resolve({ type: "idle" as const }),
     listSessionMessages: (_directory, sessionID) => Promise.resolve(messages.get(sessionID) ?? []),

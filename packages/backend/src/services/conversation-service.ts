@@ -56,6 +56,7 @@ import type {
 } from "./opencode-service.js";
 import type { SessionArchiveService } from "./session-archive-service.js";
 import type { SessionArchiveSettingsService } from "./session-archive-settings-service.js";
+import type { InteractiveChatWatchdogService } from "./interactive-chat-watchdog-service.js";
 import { APP_NAME } from "../system-prompts/constants.js";
 import {
   createSystemPromptService,
@@ -136,6 +137,7 @@ export function createConversationService(options: {
   archiveService?: SessionArchiveService;
   archiveSettingsService?: SessionArchiveSettingsService;
   systemPromptService?: SystemPromptService;
+  interactiveChatWatchdogService?: InteractiveChatWatchdogService;
 }) {
   const systemPromptService =
     options.systemPromptService ??
@@ -521,30 +523,41 @@ export function createConversationService(options: {
     ): Promise<void> {
       const parsed = sendConversationPromptInputSchema.parse(input);
       const loaded = await getConversationAgent(conversationId);
-
-      await setCurrentConversation(loaded.agent.id, loaded.conversation.id);
-      const { system, snapshot } = await composeSystem(
-        "chat",
-        loaded.agent,
-        loaded.conversation,
-        parseOverrides(loaded.conversation),
-      );
-      await options.opencodeService.promptSessionAsync({
+      const watchdog = await options.interactiveChatWatchdogService?.prepare({
+        conversationId: loaded.conversation.id,
         directory: loaded.agent.workspace_path,
         sessionID: loaded.conversation.opencode_session_id,
-        agent: resolveOpenCodeAgent(loaded.agent.slug),
-        model: await resolveRunModel(
-          loaded.agent.workspace_path,
-          parsed.model,
-          loaded.agent.default_model,
-        ),
-        text: parsed.text,
-        attachments: parsed.attachments,
-        system,
       });
-      // Streaming send does not sync here; the snapshot is attached by the next
-      // syncConversation once OpenCode echoes the user message back.
-      pendingSnapshots.set(loaded.conversation.id, snapshot);
+
+      try {
+        await setCurrentConversation(loaded.agent.id, loaded.conversation.id);
+        const { system, snapshot } = await composeSystem(
+          "chat",
+          loaded.agent,
+          loaded.conversation,
+          parseOverrides(loaded.conversation),
+        );
+        await options.opencodeService.promptSessionAsync({
+          directory: loaded.agent.workspace_path,
+          sessionID: loaded.conversation.opencode_session_id,
+          agent: resolveOpenCodeAgent(loaded.agent.slug),
+          model: await resolveRunModel(
+            loaded.agent.workspace_path,
+            parsed.model,
+            loaded.agent.default_model,
+          ),
+          text: parsed.text,
+          attachments: parsed.attachments,
+          system,
+        });
+        // Streaming send does not sync here; the snapshot is attached by the next
+        // syncConversation once OpenCode echoes the user message back.
+        pendingSnapshots.set(loaded.conversation.id, snapshot);
+        watchdog?.arm();
+      } catch (error) {
+        watchdog?.cancel();
+        throw error;
+      }
     },
 
     async resolveConversationAgent(conversationId: string) {
@@ -611,6 +624,17 @@ export function createConversationService(options: {
       reply: "once" | "always" | "reject",
     ): Promise<void> {
       const loaded = await getConversationAgent(conversationId);
+      const [permissions, sessionIDs] = await Promise.all([
+        options.opencodeService.listPendingPermissions(loaded.agent.workspace_path),
+        options.opencodeService.getSessionTreeIds(
+          loaded.agent.workspace_path,
+          loaded.conversation.opencode_session_id,
+        ),
+      ]);
+      const request = permissions.find((permission) => permission.id === requestId);
+      if (!request || !sessionIDs.has(request.sessionID)) {
+        throw new NotFoundError(`Pending request "${requestId}" no longer exists.`);
+      }
       await options.opencodeService.replyPermission(loaded.agent.workspace_path, requestId, reply);
     },
 
@@ -620,11 +644,13 @@ export function createConversationService(options: {
       answers: string[][],
     ): Promise<void> {
       const loaded = await getConversationAgent(conversationId);
+      await verifyPendingQuestion(loaded, requestId);
       await options.opencodeService.replyQuestion(loaded.agent.workspace_path, requestId, answers);
     },
 
     async rejectQuestion(conversationId: string, requestId: string): Promise<void> {
       const loaded = await getConversationAgent(conversationId);
+      await verifyPendingQuestion(loaded, requestId);
       await options.opencodeService.rejectQuestion(loaded.agent.workspace_path, requestId);
     },
 
@@ -634,6 +660,7 @@ export function createConversationService(options: {
         loaded.agent.workspace_path,
         loaded.conversation.opencode_session_id,
       );
+      options.interactiveChatWatchdogService?.cancel(loaded.conversation.id);
     },
 
     async abortTaskRunConversation(taskId: string, taskRunId: string): Promise<void> {
@@ -665,19 +692,44 @@ export function createConversationService(options: {
         options.opencodeService.listPendingPermissions(agent.workspace_path),
         options.opencodeService.listPendingQuestions(agent.workspace_path),
       ]);
-      const sessionID = conversation.opencode_session_id;
+      const sessionIDs = await options.opencodeService.getSessionTreeIds(
+        agent.workspace_path,
+        conversation.opencode_session_id,
+      );
+      const unresolvedPermissions: OpenCodePendingPermission[] = [];
+      for (const permission of permissions.filter((candidate) =>
+        sessionIDs.has(candidate.sessionID),
+      )) {
+        try {
+          await options.opencodeService.replyPermission(
+            agent.workspace_path,
+            permission.id,
+            "once",
+          );
+        } catch (error) {
+          options.logger?.warn(
+            {
+              err: error,
+              taskId,
+              taskRunId,
+              requestId: permission.id,
+              sessionID: permission.sessionID,
+            },
+            "failed to auto-approve task-run permission; surfacing for review",
+          );
+          unresolvedPermissions.push(permission);
+        }
+      }
 
       return [
-        ...permissions
-          .filter((permission) => permission.sessionID === sessionID)
-          .map(
-            (permission): TaskRunPendingInteraction => ({
-              type: "permission",
-              ...mapPendingPermission(permission),
-            }),
-          ),
+        ...unresolvedPermissions.map(
+          (permission): TaskRunPendingInteraction => ({
+            type: "permission",
+            ...mapPendingPermission(permission),
+          }),
+        ),
         ...questions
-          .filter((question) => question.sessionID === sessionID)
+          .filter((question) => sessionIDs.has(question.sessionID))
           .map(
             (question): TaskRunPendingInteraction => ({
               type: "question",
@@ -697,13 +749,16 @@ export function createConversationService(options: {
         options.opencodeService.listPendingPermissions(loaded.agent.workspace_path),
         options.opencodeService.listPendingQuestions(loaded.agent.workspace_path),
       ]);
-      const sessionID = loaded.conversation.opencode_session_id;
+      const sessionIDs = await options.opencodeService.getSessionTreeIds(
+        loaded.agent.workspace_path,
+        loaded.conversation.opencode_session_id,
+      );
 
-      const question = questions.find((candidate) => candidate.sessionID === sessionID);
+      const question = questions.find((candidate) => sessionIDs.has(candidate.sessionID));
 
       return {
         permissions: permissions
-          .filter((permission) => permission.sessionID === sessionID)
+          .filter((permission) => sessionIDs.has(permission.sessionID))
           .map(mapPendingPermission),
         question: question ? mapPendingQuestion(question) : null,
       };
@@ -769,6 +824,23 @@ export function createConversationService(options: {
       });
     },
   };
+
+  async function verifyPendingQuestion(
+    loaded: Awaited<ReturnType<typeof getConversationAgent>>,
+    requestId: string,
+  ): Promise<void> {
+    const [questions, sessionIDs] = await Promise.all([
+      options.opencodeService.listPendingQuestions(loaded.agent.workspace_path),
+      options.opencodeService.getSessionTreeIds(
+        loaded.agent.workspace_path,
+        loaded.conversation.opencode_session_id,
+      ),
+    ]);
+    const request = questions.find((question) => question.id === requestId);
+    if (!request || !sessionIDs.has(request.sessionID)) {
+      throw new NotFoundError(`Pending request "${requestId}" no longer exists.`);
+    }
+  }
 
   async function archiveConversation(
     agent: AgentRuntimeRow,

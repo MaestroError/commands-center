@@ -249,6 +249,51 @@ describe("server-sent event routes", () => {
     expect(liveRequestService.subscribe).toHaveBeenCalled();
   });
 
+  it("replays a chat watchdog error after reconnect", async () => {
+    const testDb = await createTestDatabase();
+    disposers.push(() => testDb.cleanup());
+    const agentService = createSpecialistService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: opencodeService(),
+    });
+    const agent = await agentService.create({
+      name: "Stalled",
+      role: "chat",
+      instructions: "Exist.",
+      defaultModel: "openai/gpt-4.1",
+      capabilities: {},
+    });
+    const conversationId = await insertConversation(testDb.client.db, agent.id);
+    const interactiveChatWatchdogService = {
+      subscribe: vi.fn(),
+      getError: vi.fn(() => ({
+        type: "session.error",
+        properties: {
+          sessionID: "session-root",
+          error: {
+            name: "ChatNoProgressError",
+            message: "Response stopped automatically.",
+            data: { noProgressMs: 1_800_000 },
+          },
+        },
+      })),
+    };
+    const port = await bootServer(testDb, {
+      interactiveChatWatchdogService: interactiveChatWatchdogService as never,
+    });
+
+    const chunk = await readUntilText(
+      `http://127.0.0.1:${port}/api/conversations/${conversationId}/events`,
+      "ChatNoProgressError",
+    );
+
+    expect(chunk.indexOf('"type":"connected"')).toBeLessThan(
+      chunk.indexOf('"name":"ChatNoProgressError"'),
+    );
+    expect(interactiveChatWatchdogService.subscribe).toHaveBeenCalled();
+  });
+
   // A live request is published once, to whoever is subscribed at that instant.
   // A stream that connects afterwards — first load, or any reconnect — would
   // otherwise never learn about an open form, leaving the operator on a chat with

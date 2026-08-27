@@ -62,6 +62,7 @@ const openCodeMessageSchema = z.object({
 const openCodeSessionSchema = z
   .object({
     id: z.string().min(1),
+    parentID: z.string().min(1).optional(),
     title: z.string().min(1).optional(),
     time: z
       .object({
@@ -122,6 +123,7 @@ const openCodePendingQuestionSchema = z
 
 const openCodePendingPermissionListSchema = z.array(openCodePendingPermissionSchema);
 const openCodePendingQuestionListSchema = z.array(openCodePendingQuestionSchema);
+const MAX_SESSION_TREE_SIZE = 1_000;
 
 export type OpenCodeSession = z.infer<typeof openCodeSessionSchema>;
 export type OpenCodeSessionMessage = z.infer<typeof openCodeMessageSchema>;
@@ -165,6 +167,19 @@ export function createOpenCodeService(options: {
   // in-flight request so rapid invocations (e.g. double-click Refresh, React
   // Query re-invalidations) don't restart the opencode instance graph twice.
   let pendingDisposeGlobal: Promise<void> | null = null;
+
+  async function listSessionChildren(
+    directory: string,
+    sessionID: string,
+  ): Promise<OpenCodeSession[]> {
+    const result = await requestSessionJson({
+      config: options.config,
+      directory,
+      method: "GET",
+      path: `/session/${encodeURIComponent(sessionID)}/children`,
+    });
+    return z.array(openCodeSessionSchema).parse(result);
+  }
 
   return {
     async dispose(directory: string): Promise<void> {
@@ -390,6 +405,32 @@ export function createOpenCodeService(options: {
       return openCodeSessionSchema.parse(result);
     },
 
+    listSessionChildren,
+
+    async getSessionTreeIds(directory: string, rootSessionID: string): Promise<Set<string>> {
+      const sessionIDs = new Set([rootSessionID]);
+      const pending = [rootSessionID];
+
+      while (pending.length > 0) {
+        const parentID = pending.shift();
+        if (!parentID) break;
+
+        const children = await listSessionChildren(directory, parentID);
+        for (const child of children) {
+          if (child.parentID !== parentID || sessionIDs.has(child.id)) continue;
+          if (sessionIDs.size >= MAX_SESSION_TREE_SIZE) {
+            throw new Error(
+              `OpenCode session tree exceeds ${String(MAX_SESSION_TREE_SIZE)} sessions.`,
+            );
+          }
+          sessionIDs.add(child.id);
+          pending.push(child.id);
+        }
+      }
+
+      return sessionIDs;
+    },
+
     async listSessionMessages(
       directory: string,
       sessionID: string,
@@ -600,13 +641,14 @@ export function createOpenCodeService(options: {
       );
     },
 
-    async abortSession(directory: string, sessionID: string): Promise<void> {
+    async abortSession(directory: string, sessionID: string, signal?: AbortSignal): Promise<void> {
       await requestSessionJson({
         config: options.config,
         directory,
         method: "POST",
         path: `/session/${encodeURIComponent(sessionID)}/abort`,
         body: {},
+        signal,
       });
     },
 
@@ -757,6 +799,7 @@ async function requestSessionJson(options: {
   method: "GET" | "POST" | "DELETE";
   path: string;
   body?: Record<string, unknown>;
+  signal?: AbortSignal;
 }): Promise<unknown> {
   return requestOpenCodeJson(options);
 }
@@ -768,6 +811,7 @@ async function requestOpenCodeJson(options: {
   path: string;
   body?: Record<string, unknown>;
   query?: Record<string, string | number | boolean | undefined>;
+  signal?: AbortSignal;
 }): Promise<unknown> {
   const url = new URL(options.path, options.config.opencode.baseUrl);
   url.searchParams.set("directory", options.directory);
@@ -786,6 +830,7 @@ async function requestOpenCodeJson(options: {
     method: options.method,
     headers: options.body ? { "Content-Type": "application/json" } : undefined,
     body: options.body ? JSON.stringify(options.body) : undefined,
+    signal: options.signal,
   });
 
   if (!response.ok) {

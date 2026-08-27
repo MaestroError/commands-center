@@ -7,7 +7,9 @@ import { artifact_share_links, artifacts } from "../../src/db/schema/index";
 import { createArtifactService } from "../../src/services/artifact-service";
 import { createConversationService } from "../../src/services/conversation-service";
 import { createSpecialistService } from "../../src/services/specialist-service";
+import { createTaskService } from "../../src/services/task-service";
 import type { OpenCodeService, OpenCodeSession } from "../../src/services/opencode-service";
+import type { InteractiveChatWatchdogService } from "../../src/services/interactive-chat-watchdog-service";
 import { createTestDatabase } from "../helpers/db";
 
 const disposers: Array<() => Promise<void>> = [];
@@ -44,6 +46,8 @@ function mockOpenCode(): OpenCodeService {
     getSession: vi.fn((_dir: string, id: string) =>
       Promise.resolve(sessions.get(id) ?? { id, time: { created: 1 } }),
     ),
+    listSessionChildren: vi.fn(() => Promise.resolve([])),
+    getSessionTreeIds: vi.fn((_dir: string, id: string) => Promise.resolve(new Set([id]))),
     listSessionMessages: vi.fn(() => Promise.resolve([])),
     listSessionStatuses: vi.fn(() => Promise.resolve({})),
     getSessionStatus: vi.fn(() => Promise.resolve({ type: "idle" as const })),
@@ -67,7 +71,7 @@ function mockOpenCode(): OpenCodeService {
   } as unknown as OpenCodeService;
 }
 
-async function setup() {
+async function setup(options: { watchdog?: InteractiveChatWatchdogService } = {}) {
   const testDb = await createTestDatabase();
   disposers.push(() => testDb.cleanup());
   const opencodeService = mockOpenCode();
@@ -81,7 +85,9 @@ async function setup() {
     db: testDb.client.db,
     config: testDb.config,
     opencodeService,
+    interactiveChatWatchdogService: options.watchdog,
   });
+  const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
   const agent = await agentService.create({
     name: "Chat Specialist",
     role: "help",
@@ -89,10 +95,30 @@ async function setup() {
     defaultModel: "openai/gpt-4.1",
     capabilities: { builtInSkills: [], customTools: [], mcpServers: [], toolPermissions: [] },
   });
-  return { testDb, service, opencodeService, agent };
+  return { testDb, service, opencodeService, taskService, agent };
 }
 
 describe("conversation-service delegating methods", () => {
+  it("arms the chat watchdog only after an async prompt is accepted", async () => {
+    const arm = vi.fn();
+    const cancel = vi.fn();
+    const watchdog = {
+      prepare: vi.fn(() => Promise.resolve({ arm, cancel })),
+    } as unknown as InteractiveChatWatchdogService;
+    const { service, agent } = await setup({ watchdog });
+    const snapshot = await service.resolveCurrent(agent.id);
+
+    await service.sendPromptAsync(snapshot.current.id, { text: "work", attachments: [] });
+
+    expect(watchdog.prepare).toHaveBeenCalledWith({
+      conversationId: snapshot.current.id,
+      directory: agent.workspacePath,
+      sessionID: snapshot.current.opencodeSessionId,
+    });
+    expect(arm).toHaveBeenCalledOnce();
+    expect(cancel).not.toHaveBeenCalled();
+  });
+
   it("runs command, shell, async prompt, and summarize on the current session", async () => {
     const { service, opencodeService, agent } = await setup();
     const snapshot = await service.resolveCurrent(agent.id);
@@ -117,6 +143,24 @@ describe("conversation-service delegating methods", () => {
     const { service, opencodeService, agent } = await setup();
     const snapshot = await service.resolveCurrent(agent.id);
     const conversationId = snapshot.current.id;
+    const sessionID = snapshot.current.opencodeSessionId;
+    opencodeService.listPendingPermissions = vi.fn(() =>
+      Promise.resolve([
+        {
+          id: "perm-1",
+          sessionID,
+          permission: "read",
+          patterns: ["*"],
+          always: [],
+          metadata: {},
+        },
+      ]),
+    );
+    opencodeService.listPendingQuestions = vi.fn(() =>
+      Promise.resolve([
+        { id: "q-1", sessionID, questions: [{ question: "Proceed?", options: [] }] },
+      ]),
+    );
 
     await service.replyPermission(conversationId, "perm-1", "once");
     await service.replyQuestion(conversationId, "q-1", [["yes"]]);
@@ -127,6 +171,133 @@ describe("conversation-service delegating methods", () => {
     expect(opencodeService.replyQuestion).toHaveBeenCalled();
     expect(opencodeService.rejectQuestion).toHaveBeenCalled();
     expect(opencodeService.abortSession).toHaveBeenCalled();
+  });
+
+  it("rejects replies for pending requests owned by an unrelated session", async () => {
+    const { service, opencodeService, agent } = await setup();
+    const snapshot = await service.resolveCurrent(agent.id);
+    opencodeService.listPendingPermissions = vi.fn(() =>
+      Promise.resolve([
+        {
+          id: "perm-other",
+          sessionID: "unrelated",
+          permission: "read",
+          patterns: ["*"],
+          always: [],
+          metadata: {},
+        },
+      ]),
+    );
+    opencodeService.listPendingQuestions = vi.fn(() =>
+      Promise.resolve([
+        {
+          id: "question-other",
+          sessionID: "unrelated",
+          questions: [{ question: "Proceed?", options: [] }],
+        },
+      ]),
+    );
+
+    await expect(
+      service.replyPermission(snapshot.current.id, "perm-other", "once"),
+    ).rejects.toThrow('Pending request "perm-other" no longer exists.');
+    await expect(
+      service.replyQuestion(snapshot.current.id, "question-other", [["yes"]]),
+    ).rejects.toThrow('Pending request "question-other" no longer exists.');
+    await expect(service.rejectQuestion(snapshot.current.id, "question-other")).rejects.toThrow(
+      'Pending request "question-other" no longer exists.',
+    );
+    expect(opencodeService.replyPermission).not.toHaveBeenCalled();
+    expect(opencodeService.replyQuestion).not.toHaveBeenCalled();
+    expect(opencodeService.rejectQuestion).not.toHaveBeenCalled();
+  });
+
+  it("auto-approves verified descendant permissions for task runs", async () => {
+    const { service, opencodeService, taskService, agent } = await setup();
+    const task = await taskService.create({ agentId: agent.id, title: "Task" });
+    const run = await taskService.createRun({
+      id: "run-1",
+      taskId: task.id,
+      agentId: agent.id,
+      status: "running",
+      triggerSource: "manual",
+      renderedPrompt: "Run.",
+    });
+    const conversation = await service.createTaskRunConversation({
+      agentId: agent.id,
+      taskId: task.id,
+      taskRunId: run.id,
+      title: "Run",
+    });
+    opencodeService.getSessionTreeIds = vi.fn(() =>
+      Promise.resolve(new Set([conversation.opencodeSessionId, "child-session"])),
+    );
+    opencodeService.listPendingPermissions = vi.fn(() =>
+      Promise.resolve([
+        {
+          id: "perm-child",
+          sessionID: "child-session",
+          permission: "external_directory",
+          patterns: ["/shared/*"],
+          always: [],
+          metadata: {},
+        },
+      ]),
+    );
+
+    await expect(service.listTaskRunPendingInteractions(task.id, run.id)).resolves.toEqual([]);
+    expect(opencodeService.replyPermission).toHaveBeenCalledWith(
+      agent.workspacePath,
+      "perm-child",
+      "once",
+    );
+  });
+
+  it("surfaces a descendant task permission when auto-approval fails", async () => {
+    const { service, opencodeService, taskService, agent } = await setup();
+    const task = await taskService.create({ agentId: agent.id, title: "Task" });
+    const run = await taskService.createRun({
+      id: "run-2",
+      taskId: task.id,
+      agentId: agent.id,
+      status: "running",
+      triggerSource: "manual",
+      renderedPrompt: "Run.",
+    });
+    const conversation = await service.createTaskRunConversation({
+      agentId: agent.id,
+      taskId: task.id,
+      taskRunId: run.id,
+      title: "Run",
+    });
+    opencodeService.getSessionTreeIds = vi.fn(() =>
+      Promise.resolve(new Set([conversation.opencodeSessionId, "child-session"])),
+    );
+    opencodeService.listPendingPermissions = vi.fn(() =>
+      Promise.resolve([
+        {
+          id: "perm-child",
+          sessionID: "child-session",
+          permission: "external_directory",
+          patterns: ["/shared/*"],
+          always: [],
+          metadata: {},
+        },
+      ]),
+    );
+    opencodeService.replyPermission = vi.fn(() => Promise.reject(new Error("reply failed")));
+
+    await expect(service.listTaskRunPendingInteractions(task.id, run.id)).resolves.toEqual([
+      {
+        type: "permission",
+        id: "perm-child",
+        sessionID: "child-session",
+        permission: "external_directory",
+        patterns: ["/shared/*"],
+        always: [],
+        metadata: {},
+      },
+    ]);
   });
 
   it("updates titles, resolves the owning agent, and deletes a conversation", async () => {
@@ -229,6 +400,9 @@ describe("conversation-service delegating methods", () => {
     const snapshot = await service.resolveCurrent(agent.id);
     const conversationId = snapshot.current.id;
     const sessionID = snapshot.current.opencodeSessionId;
+    opencodeService.getSessionTreeIds = vi.fn(() =>
+      Promise.resolve(new Set([sessionID, "child-session", "nested-session"])),
+    );
 
     opencodeService.listPendingPermissions = vi.fn(() =>
       Promise.resolve([
@@ -243,6 +417,14 @@ describe("conversation-service delegating methods", () => {
         },
         {
           id: "perm-2",
+          sessionID: "child-session",
+          permission: "bash",
+          patterns: ["pwd"],
+          always: [],
+          metadata: {},
+        },
+        {
+          id: "perm-3",
           sessionID: "other-session",
           permission: "bash",
           patterns: [],
@@ -260,7 +442,7 @@ describe("conversation-service delegating methods", () => {
         },
         {
           id: "q-2",
-          sessionID,
+          sessionID: "nested-session",
           questions: [{ question: "Proceed?", options: [{ label: "Yes" }, { label: "No" }] }],
           tool: { messageID: "msg-2", callID: "call-2" },
         },
@@ -279,10 +461,18 @@ describe("conversation-service delegating methods", () => {
         metadata: {},
         tool: { messageID: "msg-1", callID: "call-1" },
       },
+      {
+        id: "perm-2",
+        sessionID: "child-session",
+        permission: "bash",
+        patterns: ["pwd"],
+        always: [],
+        metadata: {},
+      },
     ]);
     expect(result.question).toEqual({
       id: "q-2",
-      sessionID,
+      sessionID: "nested-session",
       questions: [{ question: "Proceed?", options: [{ label: "Yes" }, { label: "No" }] }],
       tool: { messageID: "msg-2", callID: "call-2" },
     });

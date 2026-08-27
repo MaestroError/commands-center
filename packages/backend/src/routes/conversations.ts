@@ -46,6 +46,7 @@ export function registerConversationRoutes(server: AppServer, context: RuntimeCo
     archiveService: context.sessionArchiveService,
     archiveSettingsService: context.sessionArchiveSettingsService,
     systemPromptService: context.systemPromptService,
+    interactiveChatWatchdogService: context.interactiveChatWatchdogService,
   });
   const artifactService = createArtifactService({
     db: context.database.db,

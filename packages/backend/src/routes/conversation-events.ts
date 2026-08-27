@@ -77,8 +77,20 @@ export function registerConversationEventRoutes(server: AppServer, context: Runt
           }
         },
       });
+      context.interactiveChatWatchdogService?.subscribe({
+        conversationId: loaded.conversation.id,
+        signal: abortController.signal,
+        onEvent: (event) => {
+          if (!raw.destroyed) writeSseEvent(raw, event);
+        },
+      });
 
       writeSseEvent(raw, { type: "connected", properties: {} });
+
+      const watchdogError = context.interactiveChatWatchdogService?.getError(
+        loaded.conversation.id,
+      );
+      if (watchdogError && !raw.destroyed) writeSseEvent(raw, watchdogError);
 
       // Subscribe to OpenCode events
       context.openCodeEventService.subscribe({

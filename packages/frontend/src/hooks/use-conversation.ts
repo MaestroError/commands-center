@@ -599,7 +599,10 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
             if (event.type === "permission.asked" && autoApproveRef.current) {
               const requestId = (event.properties as { id?: string }).id;
               if (requestId) {
-                void apiReplyPermission(activeConversationId, requestId, "once");
+                void apiReplyPermission(activeConversationId, requestId, "once").catch(() => {
+                  if (controller.signal.aborted) return;
+                  dispatch({ type: "SSE_EVENT", event });
+                });
                 continue;
               }
             }
