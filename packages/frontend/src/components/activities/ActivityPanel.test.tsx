@@ -144,6 +144,36 @@ describe("ActivityPanel", () => {
     await waitFor(() => expect(api.archiveAllActivities).toHaveBeenCalledOnce());
   });
 
+  it("cancels marking all activity read without submitting", async () => {
+    renderPanel();
+    await screen.findByText("Digest completed");
+    fireEvent.click(screen.getByRole("button", { name: "Mark all as read" }));
+
+    fireEvent.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", { name: "Cancel" }),
+    );
+
+    expect(api.archiveAllActivities).not.toHaveBeenCalled();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("shows archive-all failure inside its confirmation", async () => {
+    vi.mocked(api.archiveAllActivities).mockRejectedValueOnce(new Error("offline"));
+    renderPanel();
+    await screen.findByText("Digest completed");
+    fireEvent.click(screen.getByRole("button", { name: "Mark all as read" }));
+
+    fireEvent.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", {
+        name: "Mark all as read",
+      }),
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Could not mark all notifications as read",
+    );
+  });
+
   it("opens the mobile full-screen notification feed from its teaser", async () => {
     renderPanel();
     await screen.findByText("Digest completed");
@@ -152,6 +182,87 @@ describe("ActivityPanel", () => {
 
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Close notifications" })).toBeInTheDocument();
+  });
+
+  it("shows the confirmed counts in the mobile filters", async () => {
+    renderPanel();
+    await screen.findByText("Digest completed");
+    fireEvent.click(screen.getByRole("button", { name: /Notifications/ }));
+    const dialog = await screen.findByRole("dialog");
+
+    expect(within(dialog).getByTestId("activity-mobile-tab-all")).toHaveTextContent("All2");
+    expect(within(dialog).getByTestId("activity-mobile-tab-attention")).toHaveTextContent(
+      "Needs attention1",
+    );
+    expect(within(dialog).getByTestId("activity-mobile-tab-resolved")).toHaveTextContent(
+      "Resolved1",
+    );
+  });
+
+  it("resets the mobile feed position when its filter changes", async () => {
+    renderPanel();
+    await screen.findByText("Digest completed");
+    fireEvent.click(screen.getByRole("button", { name: /Notifications/ }));
+    const dialog = await screen.findByRole("dialog");
+    const feed = within(dialog).getByTestId("activity-mobile-feed");
+    Object.defineProperty(feed, "clientHeight", { configurable: true, value: 500 });
+    Object.defineProperty(feed, "scrollTop", { configurable: true, value: 500 });
+    fireEvent.scroll(feed);
+    expect(within(dialog).getByText("2 of 2")).toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByTestId("activity-mobile-tab-attention"));
+
+    expect(within(dialog).getByText("1 of 1")).toBeInTheDocument();
+    expect(within(dialog).getByTestId("activity-mobile-feed")).not.toBe(feed);
+    expect(within(dialog).getByTestId("activity-mobile-feed")).toHaveProperty("scrollTop", 0);
+  });
+
+  it("reopens the mobile feed at its first card", async () => {
+    renderPanel();
+    await screen.findByText("Digest completed");
+    fireEvent.click(screen.getByRole("button", { name: /Notifications/ }));
+    let dialog = await screen.findByRole("dialog");
+    const feed = within(dialog).getByTestId("activity-mobile-feed");
+    Object.defineProperty(feed, "clientHeight", { configurable: true, value: 500 });
+    Object.defineProperty(feed, "scrollTop", { configurable: true, value: 500 });
+    fireEvent.scroll(feed);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close notifications" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /Notifications/ }));
+    dialog = await screen.findByRole("dialog");
+
+    expect(within(dialog).getByText("1 of 2")).toBeInTheDocument();
+  });
+
+  it("shows mark-read failure inside the mobile feed", async () => {
+    vi.mocked(api.archiveActivity).mockRejectedValueOnce(new Error("offline"));
+    renderPanel();
+    await screen.findByText("Digest completed");
+    fireEvent.click(screen.getByRole("button", { name: /Notifications/ }));
+    const dialog = await screen.findByRole("dialog");
+
+    fireEvent.click(within(dialog).getAllByRole("button", { name: "Mark read" })[0]!);
+
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+      "Could not update the notification",
+    );
+  });
+
+  it("shows mark-unread failure inside the mobile feed", async () => {
+    vi.mocked(api.unarchiveActivity).mockRejectedValueOnce(new Error("offline"));
+    renderPanel();
+    await screen.findByText("Digest completed");
+    fireEvent.click(screen.getByRole("button", { name: /Notifications/ }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByTestId("activity-mobile-tab-resolved"));
+    await within(dialog).findByText("Earlier update");
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Mark unread" }));
+
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+      "Could not update the notification",
+    );
   });
 });
 

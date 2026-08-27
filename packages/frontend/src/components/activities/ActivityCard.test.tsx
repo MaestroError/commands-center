@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Activity, Task } from "@cc/shared/schemas";
 
@@ -10,6 +10,11 @@ import { makeTabKey, parseTabsParam } from "@/hooks/use-editor-tabs";
 import { ActivityCard } from "./ActivityCard";
 
 const { updateMutate } = vi.hoisted(() => ({ updateMutate: vi.fn() }));
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
 
 const task: Task = {
   id: "t1",
@@ -475,10 +480,188 @@ describe("ActivityCard acceptance criteria", () => {
     expect(card).toHaveStyle({ transform: "translateX(-110%)" });
     await waitFor(() => expect(onMarkRead).toHaveBeenCalledWith("a1"));
   });
+
+  it("waits for the exit duration before resolving a clicked card", () => {
+    vi.useFakeTimers();
+    mockReducedMotion(false);
+    const onMarkRead = vi.fn();
+    renderCard(activity({ id: "a1", kind: "specialist_info" }), { onMarkRead });
+
+    fireEvent.click(screen.getByRole("button", { name: "Mark read" }));
+    void act(() => vi.advanceTimersByTime(179));
+    expect(onMarkRead).not.toHaveBeenCalled();
+
+    void act(() => vi.advanceTimersByTime(1));
+    expect(onMarkRead).toHaveBeenCalledOnce();
+  });
+
+  it("resolves immediately when reduced motion is requested", () => {
+    vi.useFakeTimers();
+    mockReducedMotion(true);
+    const onMarkRead = vi.fn();
+    renderCard(activity({ id: "a1", kind: "specialist_info" }), { onMarkRead });
+
+    fireEvent.click(screen.getByRole("button", { name: "Mark read" }));
+    void act(() => vi.runAllTimers());
+
+    expect(onMarkRead).toHaveBeenCalledOnce();
+  });
+
+  it("snaps back after a below-threshold swipe", () => {
+    vi.useFakeTimers();
+    const onMarkRead = vi.fn();
+    renderCard(activity({ id: "a1", kind: "specialist_info" }), { onMarkRead });
+    const card = screen.getByTestId("activity-card-a1");
+
+    dispatchPointer(card, "pointerdown", 200, 20);
+    dispatchPointer(card, "pointermove", 120, 22);
+    dispatchPointer(card, "pointerup", 120, 22);
+    void act(() => vi.runAllTimers());
+
+    expect(card).toHaveStyle({ transform: "translateX(0px)" });
+    expect(onMarkRead).not.toHaveBeenCalled();
+  });
+
+  it("ignores a primarily vertical gesture", () => {
+    vi.useFakeTimers();
+    const onMarkRead = vi.fn();
+    renderCard(activity({ id: "a1", kind: "specialist_info" }), { onMarkRead });
+    const card = screen.getByTestId("activity-card-a1");
+
+    dispatchPointer(card, "pointerdown", 200, 20);
+    dispatchPointer(card, "pointermove", 180, 100);
+    dispatchPointer(card, "pointerup", 180, 100);
+    void act(() => vi.runAllTimers());
+
+    expect(onMarkRead).not.toHaveBeenCalled();
+  });
+
+  it("keeps vertical mobile body scrolling separate from swipe-to-read", () => {
+    vi.useFakeTimers();
+    const onMarkRead = vi.fn();
+    renderCard(activity({ id: "a1", kind: "specialist_info", body: "Scrollable body" }), {
+      mobile: true,
+      onMarkRead,
+    });
+    const body = screen.getByText("Scrollable body");
+    const card = screen.getByTestId("activity-card-a1");
+
+    dispatchPointer(body, "pointerdown", 200, 20);
+    dispatchPointer(body, "pointermove", 20, 22);
+    dispatchPointer(body, "pointerup", 20, 22);
+    fireEvent.scroll(body);
+    void act(() => vi.runAllTimers());
+
+    expect(onMarkRead).not.toHaveBeenCalled();
+    expect(card).toHaveStyle({ transform: "translateX(0px)" });
+  });
+
+  it("does not submit duplicate mark-read requests while exiting", () => {
+    vi.useFakeTimers();
+    const onMarkRead = vi.fn();
+    renderCard(activity({ id: "a1", kind: "specialist_info" }), { onMarkRead });
+    const button = screen.getByRole("button", { name: "Mark read" });
+
+    fireEvent.click(button);
+    fireEvent.click(button);
+    void act(() => vi.runAllTimers());
+
+    expect(onMarkRead).toHaveBeenCalledOnce();
+  });
+
+  it("does not submit a second mark-read request from another swipe while exiting", () => {
+    vi.useFakeTimers();
+    const onMarkRead = vi.fn();
+    renderCard(activity({ id: "a1", kind: "specialist_info" }), { onMarkRead });
+    const card = screen.getByTestId("activity-card-a1");
+
+    dispatchPointer(card, "pointerdown", 200, 20);
+    dispatchPointer(card, "pointermove", 40, 22);
+    dispatchPointer(card, "pointerup", 40, 22);
+    dispatchPointer(card, "pointerdown", 200, 20);
+    dispatchPointer(card, "pointermove", 40, 22);
+    dispatchPointer(card, "pointerup", 40, 22);
+    void act(() => vi.runAllTimers());
+
+    expect(onMarkRead).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ["button", () => screen.getByRole("button", { name: "Mark read" })],
+    ["link", () => screen.getByRole("link", { name: "Runbook" })],
+    ["textarea", () => screen.getByRole("textbox", { name: "Review reply" })],
+  ])("does not start a swipe from an interactive %s", (_label, getTarget) => {
+    vi.useFakeTimers();
+    const onMarkRead = vi.fn();
+    renderCard(
+      activity({
+        id: "a1",
+        kind: "task_needs_review",
+        body: "[Runbook](https://example.com/runbook)",
+        payload: { taskId: "t1", taskRunId: "run-1", question: "Ship it?" },
+      }),
+      { onMarkRead },
+    );
+    const card = screen.getByTestId("activity-card-a1");
+
+    dispatchPointer(getTarget(), "pointerdown", 200, 20);
+    dispatchPointer(card, "pointermove", 20, 22);
+    dispatchPointer(card, "pointerup", 20, 22);
+    void act(() => vi.runAllTimers());
+
+    expect(onMarkRead).not.toHaveBeenCalled();
+  });
+
+  it("does not start a swipe from an acceptance-criteria checkbox", () => {
+    vi.useFakeTimers();
+    const onMarkRead = vi.fn();
+    renderCard(activity({ id: "a1", kind: "task_needs_review", payload: { taskId: "t1" } }), {
+      onMarkRead,
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Acceptance criteria/ }));
+    const card = screen.getByTestId("activity-card-a1");
+
+    dispatchPointer(screen.getAllByRole("checkbox")[0]!, "pointerdown", 200, 20);
+    dispatchPointer(card, "pointermove", 20, 22);
+    dispatchPointer(card, "pointerup", 20, 22);
+    void act(() => vi.runAllTimers());
+
+    expect(onMarkRead).not.toHaveBeenCalled();
+  });
+
+  it("does not start a swipe from a label", () => {
+    vi.useFakeTimers();
+    const onMarkRead = vi.fn();
+    renderCard(activity({ id: "a1", kind: "specialist_info" }), { onMarkRead });
+    const card = screen.getByTestId("activity-card-a1");
+    const label = document.createElement("label");
+    label.textContent = "Future field";
+    card.append(label);
+
+    dispatchPointer(label, "pointerdown", 200, 20);
+    dispatchPointer(card, "pointermove", 20, 22);
+    dispatchPointer(card, "pointerup", 20, 22);
+    void act(() => vi.runAllTimers());
+
+    expect(onMarkRead).not.toHaveBeenCalled();
+  });
 });
 
 function dispatchPointer(element: Element, type: string, clientX: number, clientY: number): void {
   const event = new MouseEvent(type, { bubbles: true, clientX, clientY });
   Object.defineProperty(event, "pointerId", { value: 1 });
   fireEvent(element, event);
+}
+
+function mockReducedMotion(matches: boolean): void {
+  vi.spyOn(window, "matchMedia").mockReturnValue({
+    matches,
+    media: "(prefers-reduced-motion: reduce)",
+    onchange: null,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  });
 }

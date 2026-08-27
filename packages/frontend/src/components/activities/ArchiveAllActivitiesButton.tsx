@@ -12,6 +12,16 @@ type ArchiveAllActivitiesButtonProps = {
 export function ArchiveAllActivitiesButton({ count, compact }: ArchiveAllActivitiesButtonProps) {
   const [confirming, setConfirming] = useState(false);
   const archiveAll = useArchiveAllActivitiesMutation();
+  const description = archiveAll.isError ? (
+    <p
+      className="rounded-lg border border-danger/30 bg-danger/5 px-3 py-2 text-danger"
+      role="alert"
+    >
+      Could not mark all notifications as read. Their previous state has been restored.
+    </p>
+  ) : (
+    "All pending notifications, including items needing attention, will move to Resolved. Nothing will be deleted."
+  );
 
   if (count === 0) {
     return null;
@@ -27,7 +37,10 @@ export function ArchiveAllActivitiesButton({ count, compact }: ArchiveAllActivit
         className={
           compact ? "text-xs text-accent hover:underline" : buttonVariants({ variant: "secondary" })
         }
-        onClick={() => setConfirming(true)}
+        onClick={() => {
+          archiveAll.reset();
+          setConfirming(true);
+        }}
         type="button"
       >
         Mark all as read
@@ -36,9 +49,10 @@ export function ArchiveAllActivitiesButton({ count, compact }: ArchiveAllActivit
         <ConfirmDialog
           confirmDisabled={archiveAll.isPending}
           confirmLabel={archiveAll.isPending ? "Marking…" : "Mark all as read"}
-          description="All pending notifications, including items needing attention, will move to Resolved. Nothing will be deleted."
+          description={description}
           onCancel={() => {
             if (!archiveAll.isPending) {
+              archiveAll.reset();
               setConfirming(false);
             }
           }}

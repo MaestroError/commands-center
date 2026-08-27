@@ -65,6 +65,7 @@ export function ActivityPanel() {
   const error = activeFilter === "resolved" ? resolvedQuery.error : pendingQuery.error;
   const latest = pending.at(-1);
   const emptyState = EMPTY_STATES[activeFilter];
+  const readStateError = archiveMutation.isError || unarchiveMutation.isError;
 
   function changeFilter(filter: ActivityFilter): void {
     setActiveFilter(filter);
@@ -108,8 +109,11 @@ export function ActivityPanel() {
           ) : null}
         </div>
         <div className="my-5 h-px bg-border" />
-        {archiveMutation.isError || unarchiveMutation.isError ? (
-          <p className="mb-4 rounded-lg border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
+        {readStateError ? (
+          <p
+            className="mb-4 rounded-lg border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger"
+            role="alert"
+          >
             Could not update the notification. Its previous state has been restored.
           </p>
         ) : null}
@@ -181,6 +185,14 @@ export function ActivityPanel() {
               testIdPrefix="activity-mobile-tab"
             />
           </div>
+          {readStateError ? (
+            <p
+              className="shrink-0 border-b border-danger/30 bg-danger/5 px-4 py-2 text-sm text-danger"
+              role="alert"
+            >
+              Could not update the notification. Its previous state has been restored.
+            </p>
+          ) : null}
           <div className="min-h-0 flex-1 bg-app-bg">
             {loading ? (
               <div className="p-4">
@@ -199,6 +211,7 @@ export function ActivityPanel() {
                 archivingId={archiveMutation.isPending ? archiveMutation.variables : undefined}
                 emptyDescription={emptyState.description}
                 emptyTitle={emptyState.title}
+                key={activeFilter}
                 mobile
                 mode={activeFilter === "resolved" ? "resolved" : "pending"}
                 onMarkRead={(id) => archiveMutation.mutate(id)}

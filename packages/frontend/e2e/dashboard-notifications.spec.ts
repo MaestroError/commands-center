@@ -119,6 +119,100 @@ test("keeps mobile notification actions in one proportional row", async ({ page 
   expect(primaryBox?.width ?? 0).toBeGreaterThan(markReadBox?.width ?? 0);
 });
 
+test("filters and repositions a multi-card mobile notification feed", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const activities = [
+    createActivity("specialist_info", 1, { level: "info", title: "Digest ready" }),
+    createActivity("specialist_warning", 2, {
+      level: "action_required",
+      title: "Review blocked",
+    }),
+    createActivity("task_completed", 3, { level: "info", title: "Task complete" }),
+    createActivity("feedback_resolved", 4, {
+      level: "info",
+      status: "archived",
+      title: "Earlier update",
+      archivedAt: NOW,
+    }),
+  ];
+  await mockActivitiesApi(page, activities, []);
+
+  await page.goto("/");
+  await page.getByRole("button", { name: /Notifications/ }).click();
+  let dialog = page.getByRole("dialog");
+
+  await expect(dialog.getByTestId("activity-mobile-tab-all")).toContainText("3");
+  await expect(dialog.getByTestId("activity-mobile-tab-attention")).toContainText("1");
+  await expect(dialog.getByTestId("activity-mobile-tab-resolved")).toContainText("1");
+  await expect(dialog.getByText("1 of 3")).toBeVisible();
+
+  await dialog.getByTestId("activity-mobile-feed").evaluate((feed) => {
+    feed.scrollTop = feed.clientHeight;
+    feed.dispatchEvent(new Event("scroll"));
+  });
+  await expect(dialog.getByText("2 of 3")).toBeVisible();
+
+  await dialog.getByTestId("activity-mobile-tab-attention").click();
+  await expect(dialog.getByText("1 of 1")).toBeVisible();
+  await expect(dialog.getByText("Review blocked")).toBeVisible();
+  expect(await dialog.getByTestId("activity-mobile-feed").evaluate((feed) => feed.scrollTop)).toBe(
+    0,
+  );
+
+  await dialog.getByTestId("activity-mobile-tab-all").click();
+  await dialog.getByTestId("activity-mobile-feed").evaluate((feed) => {
+    feed.scrollTop = feed.clientHeight;
+    feed.dispatchEvent(new Event("scroll"));
+  });
+  await expect(dialog.getByText("2 of 3")).toBeVisible();
+  await dialog.getByRole("button", { name: "Close notifications" }).click();
+  await expect(dialog).toHaveCount(0);
+
+  await page.getByRole("button", { name: /Notifications/ }).click();
+  dialog = page.getByRole("dialog");
+  await expect(dialog.getByText("1 of 3")).toBeVisible();
+});
+
+test("marks a mobile notification read", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const activities = [createActivity("specialist_info", 1, { level: "info" })];
+  const archivedIds: string[] = [];
+  await mockActivitiesApi(page, activities, archivedIds);
+
+  await page.goto("/");
+  await page.getByRole("button", { name: /Notifications/ }).click();
+  const dialog = page.getByRole("dialog");
+
+  await dialog.getByRole("button", { name: "Mark read" }).click();
+
+  await expect(dialog.getByText("0 of 0")).toBeVisible();
+  expect(archivedIds).toEqual(["activity-1"]);
+});
+
+test("marks a resolved mobile notification unread", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const activities = [
+    createActivity("feedback_resolved", 1, {
+      level: "info",
+      status: "archived",
+      title: "Earlier update",
+      archivedAt: NOW,
+    }),
+  ];
+  await mockActivitiesApi(page, activities, []);
+
+  await page.goto("/");
+  await page.getByRole("button", { name: /Notifications/ }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByTestId("activity-mobile-tab-resolved").click();
+
+  await dialog.getByRole("button", { name: "Mark unread" }).click();
+
+  await expect(dialog.getByText("0 of 0")).toBeVisible();
+  await dialog.getByTestId("activity-mobile-tab-all").click();
+  await expect(dialog.getByText("Earlier update")).toBeVisible();
+});
+
 test("contains long notification content within the desktop panel", async ({ page }) => {
   const activities = [
     createActivity("run_command_proposal", 1, {

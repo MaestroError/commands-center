@@ -51,6 +51,7 @@ export function ActivityFeed({
 
   return (
     <div
+      data-testid={mobile ? "activity-mobile-feed" : undefined}
       className={cn(
         mobile
           ? "h-full min-w-0 max-w-full snap-y snap-mandatory overflow-y-auto [scrollbar-width:thin]"
