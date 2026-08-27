@@ -682,11 +682,13 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
             if (controller.signal.aborted) return;
 
             if (event.type === "connected") {
-              if (connectionReady) continue;
+              const upstreamReconnected = event.properties["reconnected"] === true;
+              if (connectionReady && !upstreamReconnected) continue;
+              const initialConnection = connectionAttempt === 1 && !connectionReady;
               connectionReady = true;
               reconnectDelay = INITIAL_SSE_RECONNECT_DELAY_MS;
 
-              if (connectionAttempt === 1) {
+              if (initialConnection) {
                 const initialHydrationSequence = terminalSequence;
                 void getPendingInteractions(activeConversationId)
                   .then((pending) =>
@@ -696,19 +698,18 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
                     // The live stream remains the fallback for later interactions.
                   });
               } else {
-                try {
-                  const reconnectHydrationSequence = terminalSequence;
-                  const [detail, pending] = await Promise.all([
-                    getConversation(activeAgentId, activeConversationId),
-                    getPendingInteractions(activeConversationId),
-                  ]);
-
-                  if (controller.signal.aborted) return;
-                  dispatch({ type: "HYDRATE_DETAIL", detail });
-                  hydratePendingInteractions(pending, true, reconnectHydrationSequence);
-                } catch {
-                  if (controller.signal.aborted) return;
-                }
+                const reconnectHydrationSequence = terminalSequence;
+                void getConversation(activeAgentId, activeConversationId)
+                  .then((detail) => {
+                    if (controller.signal.aborted) return;
+                    dispatch({ type: "HYDRATE_DETAIL", detail });
+                  })
+                  .catch(() => {});
+                void getPendingInteractions(activeConversationId)
+                  .then((pending) =>
+                    hydratePendingInteractions(pending, true, reconnectHydrationSequence),
+                  )
+                  .catch(() => {});
               }
 
               continue;

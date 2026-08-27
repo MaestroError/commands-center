@@ -744,6 +744,46 @@ describe("useConversation", () => {
     expect(result.current.pendingPermission).toBeNull();
   });
 
+  it("reconciles a live permission after an upstream reconnect when detail refresh fails", async () => {
+    window.localStorage.setItem("cc-specialist-auto-approve-writer", "true");
+    const reply = createDeferred<void>();
+    const reconnect = createDeferred<void>();
+    vi.mocked(replyPermission).mockReturnValue(reply.promise);
+    vi.mocked(getConversation).mockRejectedValue(new Error("refresh failed"));
+    vi.mocked(connectConversationEvents).mockImplementation(
+      async function* (_conversationId, signal): AsyncGenerator<ChatEvent> {
+        yield { type: "connected", properties: {} };
+        yield {
+          type: "permission.asked",
+          properties: {
+            id: "perm-live-upstream-reconnected",
+            sessionID: "child-session",
+            permission: "external_directory",
+            patterns: ["/shared/*"],
+            metadata: {},
+            always: [],
+          },
+        };
+        await reconnect.promise;
+        yield { type: "connected", properties: { reconnected: true } };
+        await waitForAbort(signal);
+      },
+    );
+    const queryClient = createQueryClient();
+    const { result } = renderHook(() => useConversation("writer"), {
+      wrapper: createWrapper(queryClient),
+    });
+    await waitFor(() => expect(replyPermission).toHaveBeenCalledTimes(1));
+
+    reconnect.resolve();
+    await waitFor(() => expect(getPendingInteractions).toHaveBeenCalledTimes(2));
+    reply.reject(new ApiRequestError("response lost", 500));
+    await act(async () => Promise.resolve());
+
+    expect(connectConversationEvents).toHaveBeenCalledTimes(1);
+    expect(result.current.pendingPermission).toBeNull();
+  });
+
   it("persists auto approve changes per specialist slug", async () => {
     const queryClient = createQueryClient();
     const { result } = renderHook(() => useConversation("writer"), {
@@ -1096,6 +1136,51 @@ describe("useConversation", () => {
       reply.reject(new ApiRequestError("response lost", 500));
       await act(async () => Promise.resolve());
 
+      expect(result.current.pendingPermission).toBeNull();
+    });
+
+    it("reconciles a hydrated permission after an upstream reconnect when detail refresh fails", async () => {
+      window.localStorage.setItem("cc-specialist-auto-approve-writer", "true");
+      const reply = createDeferred<void>();
+      const reconnect = createDeferred<void>();
+      vi.mocked(replyPermission).mockReturnValue(reply.promise);
+      vi.mocked(getConversation).mockRejectedValue(new Error("refresh failed"));
+      vi.mocked(getPendingInteractions)
+        .mockResolvedValueOnce({
+          permissions: [
+            {
+              id: "perm-hydrated-upstream-reconnected",
+              sessionID: "child-session",
+              permission: "external_directory",
+              patterns: ["/shared/*"],
+              metadata: {},
+              always: [],
+            },
+          ],
+          question: null,
+          liveRequests: [],
+        })
+        .mockResolvedValueOnce(noPendingInteractions());
+      vi.mocked(connectConversationEvents).mockImplementation(
+        async function* (_conversationId, signal): AsyncGenerator<ChatEvent> {
+          yield { type: "connected", properties: {} };
+          await reconnect.promise;
+          yield { type: "connected", properties: { reconnected: true } };
+          await waitForAbort(signal);
+        },
+      );
+      const queryClient = createQueryClient();
+      const { result } = renderHook(() => useConversation("writer"), {
+        wrapper: createWrapper(queryClient),
+      });
+      await waitFor(() => expect(replyPermission).toHaveBeenCalledTimes(1));
+
+      reconnect.resolve();
+      await waitFor(() => expect(getPendingInteractions).toHaveBeenCalledTimes(2));
+      reply.reject(new ApiRequestError("response lost", 500));
+      await act(async () => Promise.resolve());
+
+      expect(connectConversationEvents).toHaveBeenCalledTimes(1);
       expect(result.current.pendingPermission).toBeNull();
     });
 

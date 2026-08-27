@@ -92,9 +92,14 @@ export function registerConversationEventRoutes(server: AppServer, context: Runt
         sessionID: loaded.conversation.opencode_session_id,
         signal: abortController.signal,
         onReady: () => {
-          if (ready || raw.destroyed) return;
+          if (raw.destroyed) return;
+          const reconnected = ready;
           ready = true;
-          writeSseEvent(raw, { type: "connected", properties: {} });
+          writeSseEvent(raw, {
+            type: "connected",
+            properties: reconnected ? { reconnected: true } : {},
+          });
+          if (reconnected) return;
 
           const watchdogError = context.interactiveChatWatchdogService?.getError(
             loaded.conversation.id,

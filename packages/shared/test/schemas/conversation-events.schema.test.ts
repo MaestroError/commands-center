@@ -19,6 +19,19 @@ import {
 } from "../../src/schemas/live-requests.js";
 
 describe("conversation and event schemas", () => {
+  it("parses initial and upstream-reconnected stream readiness events", () => {
+    expect(chatEventSchema.parse({ type: "connected", properties: {} })).toEqual({
+      type: "connected",
+      properties: {},
+    });
+    expect(chatEventSchema.parse({ type: "connected", properties: { reconnected: true } })).toEqual(
+      {
+        type: "connected",
+        properties: { reconnected: true },
+      },
+    );
+  });
+
   it("applies defaults for conversation attachments and command inputs", () => {
     expect(conversationAttachmentSchema.parse({ mimeType: "text/plain" })).toEqual({
       mimeType: "text/plain",

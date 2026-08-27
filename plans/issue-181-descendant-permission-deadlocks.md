@@ -73,6 +73,12 @@ Route direct and nested OpenCode descendant interactions through their owning ro
 - Preserve existing behavior for current-generation transient failures, stale 404/410 replies, and terminal SSE replies.
 - Cover older live-event and initial-hydration auto-replies whose HTTP responses fail only after an authoritative reconnect has removed the permission.
 
+### 8. Upstream reconnect reconciliation
+
+- Announce each internal OpenCode event-stream reconnection to the existing browser SSE stream so the frontend performs a new authoritative pending-interaction hydration.
+- Apply a successful authoritative pending snapshot independently of conversation-detail refresh failure.
+- Cover upstream reconnection without a browser reconnect and deferred live or initially hydrated auto-reply failures after a successful pending snapshot and failed detail refresh.
+
 ## Verification
 
 1. Run focused backend adapter, event, conversation, monitor, route, and watchdog tests.

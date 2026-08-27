@@ -54,7 +54,7 @@ const sseMessageSchema = z.object({
 
 const connectedEventSchema = z.object({
   type: z.literal("connected"),
-  properties: z.object({}),
+  properties: z.object({ reconnected: z.literal(true).optional() }),
 });
 
 const heartbeatEventSchema = z.object({

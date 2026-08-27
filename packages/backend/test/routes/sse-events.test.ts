@@ -209,6 +209,40 @@ describe("server-sent event routes", () => {
     );
   });
 
+  it("announces an upstream reconnect on the existing browser stream", async () => {
+    const testDb = await createTestDatabase();
+    disposers.push(() => testDb.cleanup());
+    const agentService = createSpecialistService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: opencodeService(),
+    });
+    const agent = await agentService.create({
+      name: "Reconnected",
+      role: "chat",
+      instructions: "Exist.",
+      defaultModel: "openai/gpt-4.1",
+      capabilities: {},
+    });
+    const conversationId = await insertConversation(testDb.client.db, agent.id);
+    const openCodeEventService = {
+      subscribe: vi.fn((opts: { onReady: () => void }) => {
+        opts.onReady();
+        queueMicrotask(() => opts.onReady());
+      }),
+    };
+    const port = await bootServer(testDb, {
+      openCodeEventService: openCodeEventService as never,
+    });
+
+    const chunk = await readUntilText(
+      `http://127.0.0.1:${port}/api/conversations/${conversationId}/events`,
+      '"reconnected":true',
+    );
+
+    expect(chunk.match(/"type":"connected"/g)).toHaveLength(2);
+  });
+
   it("streams opencode and live-request events for a conversation", async () => {
     const testDb = await createTestDatabase();
     disposers.push(() => testDb.cleanup());

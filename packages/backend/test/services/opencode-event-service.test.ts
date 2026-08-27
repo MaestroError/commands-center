@@ -339,6 +339,29 @@ describe("opencode-event-service", () => {
     await vi.waitFor(() => expect(onReady).toHaveBeenCalledOnce());
   });
 
+  it("signals readiness again when the upstream event stream reconnects", async () => {
+    const controller = new AbortController();
+    const onReady = vi.fn();
+    const openStream = new ReadableStream<Uint8Array>();
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(makeSseResponse([]))
+      .mockResolvedValueOnce(
+        new Response(openStream, {
+          status: 200,
+          headers: { "Content-Type": "text/event-stream" },
+        }),
+      );
+
+    subscribeForTest({
+      onEvent: vi.fn(),
+      onReady,
+      signal: controller.signal,
+    });
+
+    await vi.waitFor(() => expect(onReady).toHaveBeenCalledTimes(2), { timeout: 1_500 });
+    controller.abort();
+  });
+
   it("cancels the event reader when ancestry refresh fails", async () => {
     const cancel = vi.fn();
     const encoder = new TextEncoder();
