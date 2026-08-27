@@ -1870,6 +1870,68 @@ describe("createTaskExecutionService", () => {
     }
   });
 
+  it("does not auto-approve a descendant permission after cancellation starts", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const opencodeService = createMockOpenCodeService();
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitor: { autoStart: false },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Permission race" });
+      const run = await executionService.queue(task.id, { triggerSource: "manual" });
+      await expectRunStatus(taskService, run.id, "running");
+      opencodeService.listPendingPermissions = vi.fn(() =>
+        Promise.resolve([
+          {
+            id: "perm-after-cancel",
+            sessionID: "child-session",
+            permission: "external_directory",
+            patterns: ["/shared/*"],
+            always: [],
+            metadata: {},
+          },
+        ]),
+      );
+      opencodeService.getSessionTreeIds = vi.fn(() =>
+        Promise.resolve(new Set(["session-1", "child-session"])),
+      );
+      opencodeService.replyPermission = vi.fn(() => Promise.resolve());
+      const statusRead = createDeferred<void>();
+      const releaseStatusRead = createDeferred<void>();
+      const taskRunQuery = testDb.client.db.query.task_runs;
+      const findFirst = taskRunQuery.findFirst.bind(taskRunQuery);
+      const delayedFindFirst = async (query: Parameters<typeof findFirst>[0]) => {
+        const result = await findFirst(query);
+        statusRead.resolve();
+        await releaseStatusRead.promise;
+        return result;
+      };
+      vi.spyOn(taskRunQuery, "findFirst").mockImplementationOnce(delayedFindFirst as never);
+
+      const pending = conversationService.listTaskRunPendingInteractions(task.id, run.id);
+      await statusRead.promise;
+      const cancellation = executionService.cancel(run.id, { reason: "Stop before approval." });
+      releaseStatusRead.resolve();
+
+      await expect(pending).resolves.toEqual([]);
+      await cancellation;
+      expect(opencodeService.replyPermission).not.toHaveBeenCalled();
+      await expectRunStatus(taskService, run.id, "cancelled");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("keeps the task cancelled when OpenCode abort fails", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });

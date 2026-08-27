@@ -152,12 +152,18 @@ async function* oneEvent(event: ChatEvent, signal: AbortSignal): AsyncGenerator<
   await waitForAbort(signal);
 }
 
-function createDeferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+function createDeferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject: (reason?: unknown) => void;
+} {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((promiseResolve) => {
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
     resolve = promiseResolve;
+    reject = promiseReject;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 
 async function* connectedThen(event: ChatEvent, signal: AbortSignal): AsyncGenerator<ChatEvent> {
@@ -332,6 +338,7 @@ describe("useConversation", () => {
 
       if (connectionAttempt === 1) {
         return (async function* (): AsyncGenerator<ChatEvent> {
+          yield { type: "connected", properties: {} };
           yield {
             type: "cc.live_request.opened",
             properties: { request: makeLiveRequest() },
@@ -380,9 +387,11 @@ describe("useConversation", () => {
     await waitFor(() => {
       expect(connectConversationEvents).toHaveBeenCalledTimes(2);
     });
-    expect(result.current.conversation?.messages).toContainEqual(
-      expect.objectContaining({ id: "assistant-after-apply" }),
-    );
+    await waitFor(() => {
+      expect(result.current.conversation?.messages).toContainEqual(
+        expect.objectContaining({ id: "assistant-after-apply" }),
+      );
+    });
   });
 
   it("keeps a reconnected stream active when state reconciliation fails", async () => {
@@ -640,6 +649,53 @@ describe("useConversation", () => {
     expect(result.current.pendingPermission).toBeNull();
   });
 
+  it("does not resurrect a live permission when its reply response fails after terminal SSE", async () => {
+    window.localStorage.setItem("cc-specialist-auto-approve-writer", "true");
+    const reply = createDeferred<void>();
+    const publishTerminal = createDeferred<void>();
+    const terminalConsumed = createDeferred<void>();
+    vi.mocked(replyPermission).mockReturnValue(reply.promise);
+    vi.mocked(connectConversationEvents).mockImplementation(
+      async function* (_conversationId, signal): AsyncGenerator<ChatEvent> {
+        yield { type: "connected", properties: {} };
+        yield {
+          type: "permission.asked",
+          properties: {
+            id: "perm-live-terminal",
+            sessionID: "child-session",
+            permission: "external_directory",
+            patterns: ["/shared/*"],
+            metadata: {},
+            always: [],
+          },
+        };
+        await publishTerminal.promise;
+        yield {
+          type: "permission.replied",
+          properties: {
+            sessionID: "child-session",
+            requestID: "perm-live-terminal",
+            reply: "once",
+          },
+        };
+        terminalConsumed.resolve();
+        await waitForAbort(signal);
+      },
+    );
+    const queryClient = createQueryClient();
+    const { result } = renderHook(() => useConversation("writer"), {
+      wrapper: createWrapper(queryClient),
+    });
+    await waitFor(() => expect(replyPermission).toHaveBeenCalled());
+
+    publishTerminal.resolve();
+    await terminalConsumed.promise;
+    reply.reject(new ApiRequestError("response lost", 500));
+    await act(async () => Promise.resolve());
+
+    expect(result.current.pendingPermission).toBeNull();
+  });
+
   it("persists auto approve changes per specialist slug", async () => {
     const queryClient = createQueryClient();
     const { result } = renderHook(() => useConversation("writer"), {
@@ -659,6 +715,27 @@ describe("useConversation", () => {
   });
 
   describe("pending interaction rehydration", () => {
+    it("waits for the event stream readiness before initial hydration", async () => {
+      const ready = createDeferred<void>();
+      vi.mocked(connectConversationEvents).mockImplementation(
+        async function* (_conversationId, signal): AsyncGenerator<ChatEvent> {
+          await ready.promise;
+          yield { type: "connected", properties: {} };
+          await waitForAbort(signal);
+        },
+      );
+      const queryClient = createQueryClient();
+      renderHook(() => useConversation("writer"), {
+        wrapper: createWrapper(queryClient),
+      });
+      await waitFor(() => expect(connectConversationEvents).toHaveBeenCalled());
+
+      expect(getPendingInteractions).not.toHaveBeenCalled();
+
+      ready.resolve();
+      await waitFor(() => expect(getPendingInteractions).toHaveBeenCalledWith("conv-1"));
+    });
+
     it("rehydrates a pending permission, question, and live request on open", async () => {
       vi.mocked(getPendingInteractions).mockResolvedValue({
         permissions: [
@@ -867,6 +944,56 @@ describe("useConversation", () => {
       });
 
       await waitFor(() => expect(replyPermission).toHaveBeenCalled());
+
+      expect(result.current.pendingPermission).toBeNull();
+    });
+
+    it("does not resurrect a hydrated permission when its reply response fails after terminal SSE", async () => {
+      window.localStorage.setItem("cc-specialist-auto-approve-writer", "true");
+      const reply = createDeferred<void>();
+      const publishTerminal = createDeferred<void>();
+      const terminalConsumed = createDeferred<void>();
+      vi.mocked(replyPermission).mockReturnValue(reply.promise);
+      vi.mocked(getPendingInteractions).mockResolvedValue({
+        permissions: [
+          {
+            id: "perm-hydrated-terminal",
+            sessionID: "child-session",
+            permission: "external_directory",
+            patterns: ["/shared/*"],
+            metadata: {},
+            always: [],
+          },
+        ],
+        question: null,
+        liveRequests: [],
+      });
+      vi.mocked(connectConversationEvents).mockImplementation(
+        async function* (_conversationId, signal): AsyncGenerator<ChatEvent> {
+          yield { type: "connected", properties: {} };
+          await publishTerminal.promise;
+          yield {
+            type: "permission.replied",
+            properties: {
+              sessionID: "child-session",
+              requestID: "perm-hydrated-terminal",
+              reply: "once",
+            },
+          };
+          terminalConsumed.resolve();
+          await waitForAbort(signal);
+        },
+      );
+      const queryClient = createQueryClient();
+      const { result } = renderHook(() => useConversation("writer"), {
+        wrapper: createWrapper(queryClient),
+      });
+      await waitFor(() => expect(replyPermission).toHaveBeenCalled());
+
+      publishTerminal.resolve();
+      await terminalConsumed.promise;
+      reply.reject(new ApiRequestError("response lost", 500));
+      await act(async () => Promise.resolve());
 
       expect(result.current.pendingPermission).toBeNull();
     });

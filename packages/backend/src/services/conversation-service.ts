@@ -57,6 +57,7 @@ import type {
 import type { SessionArchiveService } from "./session-archive-service.js";
 import type { SessionArchiveSettingsService } from "./session-archive-settings-service.js";
 import type { InteractiveChatWatchdogService } from "./interactive-chat-watchdog-service.js";
+import { createTaskRunOperationGuard } from "./task-run-operation-guard.js";
 import { APP_NAME } from "../system-prompts/constants.js";
 import {
   createSystemPromptService,
@@ -150,9 +151,12 @@ export function createConversationService(options: {
   // a lost pending snapshot degrades to the modal's "current configuration"
   // fallback, which is acceptable per the portable-workspace rules.
   const pendingSnapshots = new Map<string, ResolvedSystemPrompt[]>();
-  const promptSendTails = new Map<string, Promise<void>>();
+  const conversationOperationTails = new Map<string, Promise<void>>();
+  const taskRunOperationGuard = createTaskRunOperationGuard();
 
   return {
+    taskRunOperationGuard,
+
     async resolveCurrent(agentId: string): Promise<ConversationSnapshot> {
       const agent = await getAgent(agentId);
       let current = await options.db.query.conversations.findFirst({
@@ -524,8 +528,8 @@ export function createConversationService(options: {
       input: SendConversationPromptInput,
     ): Promise<void> {
       const parsed = sendConversationPromptInputSchema.parse(input);
-      const loaded = await getConversationAgent(conversationId);
-      return serializePromptSend(loaded.conversation.id, async () => {
+      return serializeConversationOperation(conversationId, async () => {
+        const loaded = await getConversationAgent(conversationId);
         const watchdog = await options.interactiveChatWatchdogService
           ?.prepare({
             conversationId: loaded.conversation.id,
@@ -667,12 +671,14 @@ export function createConversationService(options: {
     },
 
     async abortConversation(conversationId: string): Promise<void> {
-      const loaded = await getConversationAgent(conversationId);
-      await options.opencodeService.abortSession(
-        loaded.agent.workspace_path,
-        loaded.conversation.opencode_session_id,
-      );
-      options.interactiveChatWatchdogService?.cancel(loaded.conversation.id);
+      return serializeConversationOperation(conversationId, async () => {
+        const loaded = await getConversationAgent(conversationId);
+        await options.opencodeService.abortSession(
+          loaded.agent.workspace_path,
+          loaded.conversation.opencode_session_id,
+        );
+        options.interactiveChatWatchdogService?.cancel(loaded.conversation.id);
+      });
     },
 
     async abortTaskRunConversation(taskId: string, taskRunId: string): Promise<void> {
@@ -713,11 +719,29 @@ export function createConversationService(options: {
         sessionIDs.has(candidate.sessionID),
       )) {
         try {
-          await options.opencodeService.replyPermission(
-            agent.workspace_path,
-            permission.id,
-            "once",
-          );
+          const replied = await taskRunOperationGuard.runExclusive(taskRunId, async () => {
+            if (taskRunOperationGuard.isCancellationRequested(taskRunId)) return false;
+
+            const currentRun = await options.db.query.task_runs.findFirst({
+              where: (table, operators) => operators.eq(table.id, taskRunId),
+              columns: { task_id: true, status: true },
+            });
+            if (
+              taskRunOperationGuard.isCancellationRequested(taskRunId) ||
+              currentRun?.task_id !== taskId ||
+              currentRun.status !== "running"
+            ) {
+              return false;
+            }
+
+            await options.opencodeService.replyPermission(
+              agent.workspace_path,
+              permission.id,
+              "once",
+            );
+            return true;
+          });
+          if (!replied) continue;
         } catch (error) {
           if (error instanceof NotFoundError) continue;
           options.logger?.warn(
@@ -790,64 +814,74 @@ export function createConversationService(options: {
     },
 
     async deleteConversation(agentId: string, conversationId: string): Promise<void> {
-      const agent = await getAgent(agentId);
-      const conversation = await options.db.query.conversations.findFirst({
-        where: (table, ops) =>
-          ops.and(ops.eq(table.id, conversationId), ops.eq(table.agent_id, agent.id)),
-      });
+      return serializeConversationOperation(conversationId, async () => {
+        const agent = await getAgent(agentId);
+        const conversation = await options.db.query.conversations.findFirst({
+          where: (table, ops) =>
+            ops.and(ops.eq(table.id, conversationId), ops.eq(table.agent_id, agent.id)),
+        });
 
-      if (!conversation) throw new NotFoundError("Conversation not found.");
+        if (!conversation) throw new NotFoundError("Conversation not found.");
 
-      if (conversation.source === "task_run" && !conversation.converted_at) {
-        throw new BadRequestError("Task run sessions cannot be deleted from normal chat history.");
-      }
-
-      // Best-effort: delete from OpenCode (session may already be gone)
-      try {
-        await options.opencodeService.deleteSession(
-          agent.workspace_path,
-          conversation.opencode_session_id,
-        );
-      } catch {
-        // ignore
-      }
-
-      await removeConversationArchive(agent, conversation);
-
-      // Delete dependents before the conversation row. Artifacts (and their
-      // share links) carry NOT NULL foreign keys to conversations.id, so with
-      // foreign_keys=ON the conversation delete throws a constraint error unless
-      // they are removed first. Task-run sessions opened in chat commonly carry
-      // artifacts, which is why they failed to delete. The artifact ids are read
-      // inside the transaction so a concurrent insert can't slip a new dependent
-      // in between the read and the deletes.
-      options.db.transaction((tx) => {
-        const artifactIds = tx
-          .select({ id: artifacts.id })
-          .from(artifacts)
-          .where(eq(artifacts.conversation_id, conversation.id))
-          .all()
-          .map((row) => row.id);
-
-        if (artifactIds.length > 0) {
-          tx.delete(artifact_share_links)
-            .where(inArray(artifact_share_links.artifact_id, artifactIds))
-            .run();
-          tx.delete(artifacts).where(inArray(artifacts.id, artifactIds)).run();
+        if (conversation.source === "task_run" && !conversation.converted_at) {
+          throw new BadRequestError(
+            "Task run sessions cannot be deleted from normal chat history.",
+          );
         }
-        tx.delete(messages).where(eq(messages.conversation_id, conversation.id)).run();
-        tx.delete(conversations).where(eq(conversations.id, conversation.id)).run();
+
+        // Best-effort: delete from OpenCode (session may already be gone)
+        try {
+          await options.opencodeService.deleteSession(
+            agent.workspace_path,
+            conversation.opencode_session_id,
+          );
+        } catch {
+          // ignore
+        }
+
+        await removeConversationArchive(agent, conversation);
+
+        // Delete dependents before the conversation row. Artifacts (and their
+        // share links) carry NOT NULL foreign keys to conversations.id, so with
+        // foreign_keys=ON the conversation delete throws a constraint error unless
+        // they are removed first. Task-run sessions opened in chat commonly carry
+        // artifacts, which is why they failed to delete. The artifact ids are read
+        // inside the transaction so a concurrent insert can't slip a new dependent
+        // in between the read and the deletes.
+        options.db.transaction((tx) => {
+          const artifactIds = tx
+            .select({ id: artifacts.id })
+            .from(artifacts)
+            .where(eq(artifacts.conversation_id, conversation.id))
+            .all()
+            .map((row) => row.id);
+
+          if (artifactIds.length > 0) {
+            tx.delete(artifact_share_links)
+              .where(inArray(artifact_share_links.artifact_id, artifactIds))
+              .run();
+            tx.delete(artifacts).where(inArray(artifacts.id, artifactIds)).run();
+          }
+          tx.delete(messages).where(eq(messages.conversation_id, conversation.id)).run();
+          tx.delete(conversations).where(eq(conversations.id, conversation.id)).run();
+        });
+        pendingSnapshots.delete(conversation.id);
+        options.interactiveChatWatchdogService?.cancel(conversation.id);
       });
-      options.interactiveChatWatchdogService?.cancel(conversation.id);
     },
   };
 
-  function serializePromptSend(conversationId: string, send: () => Promise<void>): Promise<void> {
-    const previous = promptSendTails.get(conversationId) ?? Promise.resolve();
-    const current = previous.catch(() => {}).then(send);
-    promptSendTails.set(conversationId, current);
+  function serializeConversationOperation(
+    conversationId: string,
+    operation: () => Promise<void>,
+  ): Promise<void> {
+    const previous = conversationOperationTails.get(conversationId) ?? Promise.resolve();
+    const current = previous.catch(() => {}).then(operation);
+    conversationOperationTails.set(conversationId, current);
     const clear = () => {
-      if (promptSendTails.get(conversationId) === current) promptSendTails.delete(conversationId);
+      if (conversationOperationTails.get(conversationId) === current) {
+        conversationOperationTails.delete(conversationId);
+      }
     };
     void current.then(clear, clear);
     return current;

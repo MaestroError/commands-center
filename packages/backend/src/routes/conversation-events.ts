@@ -85,18 +85,33 @@ export function registerConversationEventRoutes(server: AppServer, context: Runt
         },
       });
 
-      writeSseEvent(raw, { type: "connected", properties: {} });
-
-      const watchdogError = context.interactiveChatWatchdogService?.getError(
-        loaded.conversation.id,
-      );
-      if (watchdogError && !raw.destroyed) writeSseEvent(raw, watchdogError);
-
       // Subscribe to OpenCode events
+      let ready = false;
       context.openCodeEventService.subscribe({
         directory: loaded.agent.workspace_path,
         sessionID: loaded.conversation.opencode_session_id,
         signal: abortController.signal,
+        onReady: () => {
+          if (ready || raw.destroyed) return;
+          ready = true;
+          writeSseEvent(raw, { type: "connected", properties: {} });
+
+          const watchdogError = context.interactiveChatWatchdogService?.getError(
+            loaded.conversation.id,
+          );
+          if (watchdogError && !raw.destroyed) writeSseEvent(raw, watchdogError);
+
+          for (const request of context.liveRequestService?.listByConversation(
+            loaded.conversation.id,
+          ) ?? []) {
+            if (!raw.destroyed) {
+              writeSseEvent(raw, {
+                type: "cc.live_request.opened",
+                properties: { request },
+              });
+            }
+          }
+        },
         onEvent: (event) => {
           if (!raw.destroyed) {
             writeSseEvent(raw, event);
@@ -106,19 +121,6 @@ export function registerConversationEventRoutes(server: AppServer, context: Runt
           void service.updateTitle(loaded.conversation.id, title);
         },
       });
-
-      // Catch this stream up on requests opened before it existed: a first load
-      // after the form opened, or any reconnect. Runs after both subscriptions so
-      // a failure here cannot cost the stream its live events. Delivery is
-      // at-least-once — a request that also arrived live is applied by id on the
-      // client, so the duplicate is a no-op.
-      for (const request of context.liveRequestService?.listByConversation(
-        loaded.conversation.id,
-      ) ?? []) {
-        if (!raw.destroyed) {
-          writeSseEvent(raw, { type: "cc.live_request.opened", properties: { request } });
-        }
-      }
     },
   );
 }

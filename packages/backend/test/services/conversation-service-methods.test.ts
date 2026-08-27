@@ -214,6 +214,26 @@ describe("conversation-service delegating methods", () => {
     expect(opencodeService.promptSessionAsync).toHaveBeenCalledTimes(2);
   });
 
+  it("serializes manual abort after deferred prompt acceptance", async () => {
+    const prompt = createDeferred<void>();
+    const { service, opencodeService, agent } = await setup();
+    const snapshot = await service.resolveCurrent(agent.id);
+    opencodeService.promptSessionAsync = vi.fn(() => prompt.promise);
+
+    const sending = service.sendPromptAsync(snapshot.current.id, {
+      text: "work",
+      attachments: [],
+    });
+    await vi.waitFor(() => expect(opencodeService.promptSessionAsync).toHaveBeenCalledOnce());
+    const aborting = service.abortConversation(snapshot.current.id);
+
+    expect(opencodeService.abortSession).not.toHaveBeenCalled();
+
+    prompt.resolve();
+    await Promise.all([sending, aborting]);
+    expect(opencodeService.abortSession).toHaveBeenCalledOnce();
+  });
+
   it("cancels only a failed replacement candidate", async () => {
     const firstArm = vi.fn();
     const firstCancel = vi.fn();
@@ -484,6 +504,27 @@ describe("conversation-service delegating methods", () => {
     expect(after.current.id).not.toBe(conversationId);
   });
 
+  it("rejects a send queued behind conversation deletion", async () => {
+    const deleting = createDeferred<void>();
+    const { service, opencodeService, agent } = await setup();
+    const snapshot = await service.resolveCurrent(agent.id);
+    opencodeService.deleteSession = vi.fn(() => deleting.promise);
+
+    const deletion = service.deleteConversation(agent.id, snapshot.current.id);
+    await vi.waitFor(() => expect(opencodeService.deleteSession).toHaveBeenCalledOnce());
+    const sending = service.sendPromptAsync(snapshot.current.id, {
+      text: "stale work",
+      attachments: [],
+    });
+
+    expect(opencodeService.promptSessionAsync).not.toHaveBeenCalled();
+
+    deleting.resolve();
+    await deletion;
+    await expect(sending).rejects.toThrow("Conversation not found.");
+    expect(opencodeService.promptSessionAsync).not.toHaveBeenCalled();
+  });
+
   it("deletes a conversation that owns artifacts and share links", async () => {
     const { testDb, service, agent } = await setup();
     const snapshot = await service.resolveCurrent(agent.id);
@@ -656,3 +697,11 @@ describe("conversation-service delegating methods", () => {
     expect(result).toEqual({ permissions: [], question: null, questions: [] });
   });
 });
+
+function createDeferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((promiseResolve) => {
+    resolve = promiseResolve;
+  });
+  return { promise, resolve };
+}

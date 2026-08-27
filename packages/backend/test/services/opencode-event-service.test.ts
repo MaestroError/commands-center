@@ -318,6 +318,27 @@ describe("opencode-event-service", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("signals readiness only after ancestry and the event stream are established", async () => {
+    const ancestry = createDeferred<Set<string>>();
+    const onReady = vi.fn();
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(makeSseResponse([]));
+
+    subscribeForTest({
+      onEvent: vi.fn(),
+      onReady,
+      signal: AbortSignal.timeout(50),
+      resolveSessionTree: () => ancestry.promise,
+    });
+    await Promise.resolve();
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(onReady).not.toHaveBeenCalled();
+
+    ancestry.resolve(new Set(["sess-1"]));
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(onReady).toHaveBeenCalledOnce());
+  });
+
   it("cancels the event reader when ancestry refresh fails", async () => {
     const cancel = vi.fn();
     const encoder = new TextEncoder();
@@ -712,6 +733,7 @@ async function collectEvents(events: unknown[]) {
 
 function subscribeForTest(options: {
   onEvent: (event: unknown) => void;
+  onReady?: () => void;
   signal: AbortSignal;
   onTitleUpdate?: (title: string) => void;
   resolveSessionTree?: (
@@ -733,8 +755,17 @@ function subscribeForTest(options: {
     sessionID: "sess-1",
     signal: options.signal,
     onEvent: options.onEvent,
+    onReady: options.onReady,
     onTitleUpdate: options.onTitleUpdate,
   });
+}
+
+function createDeferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((promiseResolve) => {
+    resolve = promiseResolve;
+  });
+  return { promise, resolve };
 }
 
 function wait(ms: number): Promise<void> {

@@ -414,6 +414,8 @@ export function createOpenCodeService(options: {
       rootSessionID: string,
       signal?: AbortSignal,
     ): Promise<Set<string>> {
+      const timeoutSignal = AbortSignal.timeout(options.config.timeouts.opencodeRequestMs);
+      const traversalSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
       const sessionIDs = new Set([rootSessionID]);
       const pending = [rootSessionID];
 
@@ -421,7 +423,7 @@ export function createOpenCodeService(options: {
         const parentID = pending.shift();
         if (!parentID) break;
 
-        const children = await listSessionChildren(directory, parentID, signal);
+        const children = await listSessionChildren(directory, parentID, traversalSignal);
         for (const child of children) {
           if (child.parentID !== parentID || sessionIDs.has(child.id)) continue;
           if (sessionIDs.size >= MAX_SESSION_TREE_SIZE) {

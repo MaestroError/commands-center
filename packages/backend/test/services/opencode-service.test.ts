@@ -14,7 +14,10 @@ vi.mock("../../src/lib/opencode-client.js", () => ({
 const BASE_URL = "http://opencode.test:1234";
 
 function createConfig(): RuntimeConfig {
-  return { opencode: { baseUrl: BASE_URL } } as unknown as RuntimeConfig;
+  return {
+    opencode: { baseUrl: BASE_URL },
+    timeouts: { opencodeRequestMs: 30_000 },
+  } as unknown as RuntimeConfig;
 }
 
 function createLogger() {
@@ -753,6 +756,58 @@ describe("opencode-service", () => {
         "/session/child/children",
         "/session/nested/children",
       ]);
+    });
+
+    it("times out session-tree traversal using the configured request timeout", async () => {
+      const hangingFetch = vi.fn((_url: URL, init: RequestInit) => {
+        return new Promise<Response>((_resolve, reject) => {
+          init.signal?.addEventListener(
+            "abort",
+            () => {
+              const reason = init.signal?.reason;
+              reject(reason instanceof Error ? reason : new Error("aborted"));
+            },
+            { once: true },
+          );
+        });
+      });
+      vi.stubGlobal("fetch", hangingFetch);
+      const service = createOpenCodeService({
+        client: FAKE_CLIENT,
+        config: {
+          ...createConfig(),
+          timeouts: { ...createConfig().timeouts, opencodeRequestMs: 5 },
+        },
+        logger: createLogger(),
+      });
+
+      await expect(service.getSessionTreeIds("/work/a", "root")).rejects.toThrow();
+      expect((hangingFetch.mock.calls[0]?.[1] as RequestInit).signal).toBeInstanceOf(AbortSignal);
+    });
+
+    it("combines the caller signal with the session-tree timeout", async () => {
+      const hangingFetch = vi.fn((_url: URL, init: RequestInit) => {
+        return new Promise<Response>((_resolve, reject) => {
+          init.signal?.addEventListener(
+            "abort",
+            () => {
+              const reason = init.signal?.reason;
+              reject(reason instanceof Error ? reason : new Error("aborted"));
+            },
+            { once: true },
+          );
+        });
+      });
+      vi.stubGlobal("fetch", hangingFetch);
+      const caller = new AbortController();
+      const service = makeService();
+      const traversal = service.getSessionTreeIds("/work/a", "root", caller.signal);
+      await vi.waitFor(() => expect(hangingFetch).toHaveBeenCalledOnce());
+
+      caller.abort(new Error("caller cancelled"));
+
+      await expect(traversal).rejects.toThrow("caller cancelled");
+      expect((hangingFetch.mock.calls[0]?.[1] as RequestInit).signal).not.toBe(caller.signal);
     });
 
     it("rejects malformed child session payloads", async () => {

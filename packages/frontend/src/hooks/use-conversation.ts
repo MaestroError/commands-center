@@ -641,6 +641,7 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
           void apiReplyPermission(activeConversationId, permission.id, "once").catch((error) => {
             if (controller.signal.aborted) return;
             if (isStaleRequestError(error)) return;
+            if (terminalPermissions.has(permission.id)) return;
             dispatch({
               type: "SSE_EVENT",
               event: { type: "permission.asked", properties: permission },
@@ -659,13 +660,6 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
     };
 
     void (async () => {
-      const initialHydrationSequence = terminalSequence;
-      void getPendingInteractions(activeConversationId)
-        .then((pending) => hydratePendingInteractions(pending, false, initialHydrationSequence))
-        .catch(() => {
-          // The live stream remains the fallback for interactions raised after this point.
-        });
-
       let connectionAttempt = 0;
       let reconnectDelay = INITIAL_SSE_RECONNECT_DELAY_MS;
 
@@ -686,7 +680,16 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
               connectionReady = true;
               reconnectDelay = INITIAL_SSE_RECONNECT_DELAY_MS;
 
-              if (connectionAttempt > 1) {
+              if (connectionAttempt === 1) {
+                const initialHydrationSequence = terminalSequence;
+                void getPendingInteractions(activeConversationId)
+                  .then((pending) =>
+                    hydratePendingInteractions(pending, false, initialHydrationSequence),
+                  )
+                  .catch(() => {
+                    // The live stream remains the fallback for later interactions.
+                  });
+              } else {
                 try {
                   const reconnectHydrationSequence = terminalSequence;
                   const [detail, pending] = await Promise.all([
@@ -711,6 +714,7 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
                 void apiReplyPermission(activeConversationId, requestId, "once").catch((error) => {
                   if (controller.signal.aborted) return;
                   if (isStaleRequestError(error)) return;
+                  if (terminalPermissions.has(requestId)) return;
                   dispatch({ type: "SSE_EVENT", event });
                 });
                 continue;

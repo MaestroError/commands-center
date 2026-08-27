@@ -63,7 +63,9 @@ async function bootServer(
     apiTokenService: createApiTokenService({ db: testDb.client.db }),
     orchestrator: orchestrator(),
     opencodeService: opencodeService(),
-    openCodeEventService: { subscribe: () => {} },
+    openCodeEventService: {
+      subscribe: (options: { onReady?: () => void }) => options.onReady?.(),
+    },
     secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
     scheduler: createSchedulerService(),
     ...extra,
@@ -188,7 +190,8 @@ describe("server-sent event routes", () => {
     });
     const conversationId = await insertConversation(testDb.client.db, agent.id);
     const openCodeEventService = {
-      subscribe: vi.fn((opts: { onEvent: (event: unknown) => void }) => {
+      subscribe: vi.fn((opts: { onReady: () => void; onEvent: (event: unknown) => void }) => {
+        opts.onReady();
         opts.onEvent({ type: "message.updated", properties: { sessionID: "s" } });
       }),
     };
@@ -224,7 +227,8 @@ describe("server-sent event routes", () => {
     const conversationId = await insertConversation(testDb.client.db, agent.id);
 
     const openCodeEventService = {
-      subscribe: vi.fn((opts: { onEvent: (event: unknown) => void }) => {
+      subscribe: vi.fn((opts: { onReady: () => void; onEvent: (event: unknown) => void }) => {
+        opts.onReady();
         queueMicrotask(() =>
           opts.onEvent({ type: "message.updated", properties: { sessionID: "s" } }),
         );

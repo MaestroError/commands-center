@@ -57,6 +57,15 @@ Route direct and nested OpenCode descendant interactions through their owning ro
 - Reconcile pending interactions authoritatively after SSE reconnect while preserving union semantics for the initial fetch/SSE race.
 - Cover each race with focused backend or frontend regression tests.
 
+### 6. Subscription, permission, and conversation lifecycle fencing
+
+- Delay the browser-facing SSE readiness signal until the OpenCode event stream is established, then begin initial pending-interaction hydration so descendant asks raised during deferred ancestry are observable by either the stream or snapshot.
+- Give each complete `getSessionTreeIds()` traversal one configured OpenCode request-timeout budget, combined with any caller signal.
+- Share a per-task-run guard between cancellation and descendant permission auto-approval, and revalidate the persisted running state immediately before replying while holding that guard.
+- Suppress live and hydrated auto-reply failure fallback when a matching terminal permission event has already been observed.
+- Generalize the per-conversation prompt queue to serialize asynchronous sends, manual aborts, and deletion; load the conversation inside the queued operation so sends behind deletion fail with the existing not-found behavior.
+- Cover deferred initial ancestry, cancellation during permission discovery, terminal-event-before-HTTP-failure ordering, abort during prompt acceptance, no-signal hanging ancestry, and deletion with queued sends.
+
 ## Verification
 
 1. Run focused backend adapter, event, conversation, monitor, route, and watchdog tests.

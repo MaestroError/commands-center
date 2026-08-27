@@ -17,6 +17,7 @@ export type SubscribeOptions = {
   directory: string;
   sessionID: string;
   signal: AbortSignal;
+  onReady?: () => void;
   onEvent: (event: ChatEvent) => void;
   onTitleUpdate?: (title: string) => void;
 };
@@ -78,7 +79,7 @@ async function runSubscription(
   ) => Promise<Set<string>>,
   options: SubscribeOptions,
 ): Promise<void> {
-  const { directory, sessionID, signal, onEvent, onTitleUpdate } = options;
+  const { directory, sessionID, signal, onReady, onEvent, onTitleUpdate } = options;
   let retryDelay = 500;
   const maxRetryDelay = 15_000;
 
@@ -91,6 +92,7 @@ async function runSubscription(
         signal,
         onEvent,
         resolveSessionTree,
+        onReady,
         onTitleUpdate,
       );
       // Stream ended normally (server closed) — reconnect
@@ -126,6 +128,7 @@ async function consumeEventStream(
     rootSessionID: string,
     signal: AbortSignal,
   ) => Promise<Set<string>>,
+  onReady?: () => void,
   onTitleUpdate?: (title: string) => void,
 ): Promise<void> {
   const url = new URL("/event", config.opencode.baseUrl);
@@ -150,6 +153,7 @@ async function consumeEventStream(
   let buffer = "";
 
   try {
+    onReady?.();
     while (true) {
       const { done, value } = await reader.read();
 
