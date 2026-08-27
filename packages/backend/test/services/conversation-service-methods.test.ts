@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { eq } from "drizzle-orm";
+import type { Logger } from "pino";
 
 import { createId } from "../../src/db/ids";
 import { artifact_share_links, artifacts } from "../../src/db/schema/index";
@@ -71,7 +72,7 @@ function mockOpenCode(): OpenCodeService {
   } as unknown as OpenCodeService;
 }
 
-async function setup(options: { watchdog?: InteractiveChatWatchdogService } = {}) {
+async function setup(options: { watchdog?: InteractiveChatWatchdogService; logger?: Logger } = {}) {
   const testDb = await createTestDatabase();
   disposers.push(() => testDb.cleanup());
   const opencodeService = mockOpenCode();
@@ -85,6 +86,7 @@ async function setup(options: { watchdog?: InteractiveChatWatchdogService } = {}
     db: testDb.client.db,
     config: testDb.config,
     opencodeService,
+    logger: options.logger,
     interactiveChatWatchdogService: options.watchdog,
   });
   const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
@@ -117,6 +119,24 @@ describe("conversation-service delegating methods", () => {
     });
     expect(arm).toHaveBeenCalledOnce();
     expect(cancel).not.toHaveBeenCalled();
+  });
+
+  it("submits an async prompt when watchdog preparation fails", async () => {
+    const error = new Error("snapshot failed");
+    const logger = { warn: vi.fn() } as unknown as Logger;
+    const watchdog = {
+      prepare: vi.fn(() => Promise.reject(error)),
+    } as unknown as InteractiveChatWatchdogService;
+    const { service, opencodeService, agent } = await setup({ watchdog, logger });
+    const snapshot = await service.resolveCurrent(agent.id);
+
+    await service.sendPromptAsync(snapshot.current.id, { text: "work", attachments: [] });
+
+    expect(opencodeService.promptSessionAsync).toHaveBeenCalledOnce();
+    expect(logger.warn).toHaveBeenCalledWith(
+      { err: error, conversationId: snapshot.current.id },
+      "interactive chat watchdog preparation failed",
+    );
   });
 
   it("runs command, shell, async prompt, and summarize on the current session", async () => {

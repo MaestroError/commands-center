@@ -523,11 +523,19 @@ export function createConversationService(options: {
     ): Promise<void> {
       const parsed = sendConversationPromptInputSchema.parse(input);
       const loaded = await getConversationAgent(conversationId);
-      const watchdog = await options.interactiveChatWatchdogService?.prepare({
-        conversationId: loaded.conversation.id,
-        directory: loaded.agent.workspace_path,
-        sessionID: loaded.conversation.opencode_session_id,
-      });
+      const watchdog = await options.interactiveChatWatchdogService
+        ?.prepare({
+          conversationId: loaded.conversation.id,
+          directory: loaded.agent.workspace_path,
+          sessionID: loaded.conversation.opencode_session_id,
+        })
+        .catch((error: unknown) => {
+          options.logger?.warn(
+            { err: error, conversationId: loaded.conversation.id },
+            "interactive chat watchdog preparation failed",
+          );
+          return undefined;
+        });
 
       try {
         await setCurrentConversation(loaded.agent.id, loaded.conversation.id);
