@@ -56,6 +56,88 @@ describe("interactive-chat-watchdog-service", () => {
     controller.abort();
   });
 
+  it("continues publishing after a watchdog subscriber throws", async () => {
+    vi.useFakeTimers();
+    let now = 0;
+    const opencodeService = createMockOpenCodeService();
+    opencodeService.getSessionTreeIds = vi.fn(() => Promise.resolve(new Set(["root"])));
+    opencodeService.listSessionMessages = vi.fn(() => Promise.resolve([]));
+    opencodeService.listSessionStatuses = vi.fn(() => Promise.resolve({}));
+    const logger = createLogger();
+    const service = createInteractiveChatWatchdogService({
+      opencodeService,
+      logger,
+      noProgressMs: 100,
+      pollMs: 10,
+      now: () => now,
+    });
+    const subscriberError = new Error("listener failed");
+    const listener = vi.fn();
+    service.subscribe({
+      conversationId: "conversation-1",
+      signal: AbortSignal.timeout(1_000),
+      onEvent: () => {
+        throw subscriberError;
+      },
+    });
+    service.subscribe({
+      conversationId: "conversation-1",
+      signal: AbortSignal.timeout(1_000),
+      onEvent: listener,
+    });
+    await service.rearm({
+      conversationId: "conversation-1",
+      directory: "/work",
+      sessionID: "root",
+    });
+
+    now = 100;
+    await vi.advanceTimersByTimeAsync(10);
+
+    expect(listener).toHaveBeenCalledOnce();
+    expect(logger.warn).toHaveBeenCalledWith(
+      {
+        err: subscriberError,
+        conversationId: "conversation-1",
+        sessionID: "root",
+      },
+      "interactive chat watchdog subscriber failed",
+    );
+  });
+
+  it("stops polling after a watchdog subscriber throws", async () => {
+    vi.useFakeTimers();
+    let now = 0;
+    const opencodeService = createMockOpenCodeService();
+    opencodeService.getSessionTreeIds = vi.fn(() => Promise.resolve(new Set(["root"])));
+    opencodeService.listSessionMessages = vi.fn(() => Promise.resolve([]));
+    opencodeService.listSessionStatuses = vi.fn(() => Promise.resolve({}));
+    const service = createInteractiveChatWatchdogService({
+      opencodeService,
+      logger: createLogger(),
+      noProgressMs: 100,
+      pollMs: 10,
+      now: () => now,
+    });
+    service.subscribe({
+      conversationId: "conversation-1",
+      signal: AbortSignal.timeout(1_000),
+      onEvent: () => {
+        throw new Error("listener failed");
+      },
+    });
+    await service.rearm({
+      conversationId: "conversation-1",
+      directory: "/work",
+      sessionID: "root",
+    });
+
+    now = 100;
+    await vi.advanceTimersByTimeAsync(100);
+
+    expect(opencodeService.abortSession).toHaveBeenCalledOnce();
+  });
+
   it("counts nested descendant message changes as progress", async () => {
     vi.useFakeTimers();
     let now = 0;

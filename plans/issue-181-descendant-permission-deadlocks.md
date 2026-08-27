@@ -87,6 +87,14 @@ Route direct and nested OpenCode descendant interactions through their owning ro
 - Keep restart recovery best-effort per conversation, exclude task-run and idle sessions, and do not let recovery failure consume the OpenCode startup retry budget.
 - Cover repeated timed-out polls after the deadline, initial-after-reconnect and overlapping-reconnect completion order, recovered settled turns, and startup recovery failure isolation.
 
+### 10. Exact-head hydration, notification, and restart hardening
+
+- Preserve permission, question, and live-request events opened after an authoritative pending snapshot begins, while retaining terminal-event and cross-snapshot ordering fences.
+- Sequence auto-approve fallback against the authoritative snapshot boundary so a newer permission remains manually actionable after a transient reply failure.
+- Isolate watchdog subscriber failures so the recovery event remains replayable, later subscribers are notified, and the stopped handle cannot poll again.
+- Retry only failed restart watchdog restorations with bounded backoff, independently of OpenCode startup retries, and cancel pending recovery during runtime drain.
+- Add positive direct and nested descendant manual permission/question reply coverage and an explicit disabled-auto-approve UI-path regression.
+
 ## Verification
 
 1. Run focused backend adapter, event, conversation, monitor, route, and watchdog tests.

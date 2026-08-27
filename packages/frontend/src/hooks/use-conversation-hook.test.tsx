@@ -1058,6 +1058,167 @@ describe("useConversation", () => {
       expect(result.current.liveRequests[0]?.id).toBe("new-live");
     });
 
+    it("keeps a descendant permission opened after reconnect hydration began", async () => {
+      const reconnectPending = createDeferred<PendingInteractions>();
+      const reconnect = createDeferred<void>();
+      vi.mocked(getPendingInteractions)
+        .mockResolvedValueOnce(noPendingInteractions())
+        .mockReturnValueOnce(reconnectPending.promise);
+      vi.mocked(connectConversationEvents).mockImplementation(
+        async function* (_conversationId, signal): AsyncGenerator<ChatEvent> {
+          yield { type: "connected", properties: {} };
+          await reconnect.promise;
+          yield { type: "connected", properties: { reconnected: true } };
+          yield {
+            type: "permission.asked",
+            properties: {
+              id: "permission-newer-than-snapshot",
+              sessionID: "nested-session",
+              permission: "external_directory",
+              patterns: ["/shared/*"],
+              metadata: {},
+              always: [],
+            },
+          };
+          await waitForAbort(signal);
+        },
+      );
+      const queryClient = createQueryClient();
+      const { result } = renderHook(() => useConversation("writer"), {
+        wrapper: createWrapper(queryClient),
+      });
+      await waitFor(() => expect(getPendingInteractions).toHaveBeenCalledOnce());
+
+      reconnect.resolve();
+      await waitFor(() =>
+        expect(result.current.pendingPermission?.id).toBe("permission-newer-than-snapshot"),
+      );
+      reconnectPending.resolve(noPendingInteractions());
+      await act(async () => Promise.resolve());
+
+      expect(result.current.autoApprove).toBe(false);
+      expect(result.current.pendingPermission?.id).toBe("permission-newer-than-snapshot");
+      expect(replyPermission).not.toHaveBeenCalled();
+    });
+
+    it("keeps a question opened after reconnect hydration began", async () => {
+      const reconnectPending = createDeferred<PendingInteractions>();
+      const reconnect = createDeferred<void>();
+      vi.mocked(getPendingInteractions)
+        .mockResolvedValueOnce(noPendingInteractions())
+        .mockReturnValueOnce(reconnectPending.promise);
+      vi.mocked(connectConversationEvents).mockImplementation(
+        async function* (_conversationId, signal): AsyncGenerator<ChatEvent> {
+          yield { type: "connected", properties: {} };
+          await reconnect.promise;
+          yield { type: "connected", properties: { reconnected: true } };
+          yield {
+            type: "question.asked",
+            properties: {
+              id: "question-newer-than-snapshot",
+              sessionID: "nested-session",
+              questions: [{ question: "Proceed?", options: [{ label: "Yes" }] }],
+            },
+          };
+          await waitForAbort(signal);
+        },
+      );
+      const queryClient = createQueryClient();
+      const { result } = renderHook(() => useConversation("writer"), {
+        wrapper: createWrapper(queryClient),
+      });
+      await waitFor(() => expect(getPendingInteractions).toHaveBeenCalledOnce());
+
+      reconnect.resolve();
+      await waitFor(() =>
+        expect(result.current.pendingQuestion?.id).toBe("question-newer-than-snapshot"),
+      );
+      reconnectPending.resolve(noPendingInteractions());
+      await act(async () => Promise.resolve());
+
+      expect(result.current.pendingQuestion?.id).toBe("question-newer-than-snapshot");
+    });
+
+    it("keeps a live request opened after reconnect hydration began", async () => {
+      const reconnectPending = createDeferred<PendingInteractions>();
+      const reconnect = createDeferred<void>();
+      vi.mocked(getPendingInteractions)
+        .mockResolvedValueOnce(noPendingInteractions())
+        .mockReturnValueOnce(reconnectPending.promise);
+      vi.mocked(connectConversationEvents).mockImplementation(
+        async function* (_conversationId, signal): AsyncGenerator<ChatEvent> {
+          yield { type: "connected", properties: {} };
+          await reconnect.promise;
+          yield { type: "connected", properties: { reconnected: true } };
+          yield {
+            type: "cc.live_request.opened",
+            properties: { request: makeLiveRequest({ id: "live-newer-than-snapshot" }) },
+          };
+          await waitForAbort(signal);
+        },
+      );
+      const queryClient = createQueryClient();
+      const { result } = renderHook(() => useConversation("writer"), {
+        wrapper: createWrapper(queryClient),
+      });
+      await waitFor(() => expect(getPendingInteractions).toHaveBeenCalledOnce());
+
+      reconnect.resolve();
+      await waitFor(() =>
+        expect(result.current.liveRequests[0]?.id).toBe("live-newer-than-snapshot"),
+      );
+      reconnectPending.resolve(noPendingInteractions());
+      await act(async () => Promise.resolve());
+
+      expect(result.current.liveRequests[0]?.id).toBe("live-newer-than-snapshot");
+    });
+
+    it("surfaces an auto-approved permission opened during reconnect after a transient failure", async () => {
+      window.localStorage.setItem("cc-specialist-auto-approve-writer", "true");
+      const reconnectPending = createDeferred<PendingInteractions>();
+      const reconnect = createDeferred<void>();
+      const reply = createDeferred<void>();
+      vi.mocked(replyPermission).mockReturnValue(reply.promise);
+      vi.mocked(getConversation).mockResolvedValue(makeConversation());
+      vi.mocked(getPendingInteractions)
+        .mockResolvedValueOnce(noPendingInteractions())
+        .mockReturnValueOnce(reconnectPending.promise);
+      vi.mocked(connectConversationEvents).mockImplementation(
+        async function* (_conversationId, signal): AsyncGenerator<ChatEvent> {
+          yield { type: "connected", properties: {} };
+          await reconnect.promise;
+          yield { type: "connected", properties: { reconnected: true } };
+          yield {
+            type: "permission.asked",
+            properties: {
+              id: "permission-auto-newer-than-snapshot",
+              sessionID: "nested-session",
+              permission: "external_directory",
+              patterns: ["/shared/*"],
+              metadata: {},
+              always: [],
+            },
+          };
+          await waitForAbort(signal);
+        },
+      );
+      const queryClient = createQueryClient();
+      const { result } = renderHook(() => useConversation("writer"), {
+        wrapper: createWrapper(queryClient),
+      });
+      await waitFor(() => expect(getPendingInteractions).toHaveBeenCalledOnce());
+
+      reconnect.resolve();
+      await waitFor(() => expect(replyPermission).toHaveBeenCalledOnce());
+      reconnectPending.resolve(noPendingInteractions());
+      await act(async () => Promise.resolve());
+      reply.reject(new ApiRequestError("response lost", 500));
+
+      await waitFor(() =>
+        expect(result.current.pendingPermission?.id).toBe("permission-auto-newer-than-snapshot"),
+      );
+    });
+
     it("auto-replies to rehydrated permissions when auto approve is enabled, without surfacing them", async () => {
       window.localStorage.setItem("cc-specialist-auto-approve-writer", "true");
       vi.mocked(getPendingInteractions).mockResolvedValue({

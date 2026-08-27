@@ -348,6 +348,7 @@ export async function startServerRuntime(
         }
         openCodeStartupRef.current?.dispose();
         taskExecutionService.dispose();
+        conversationService.dispose();
         interactiveChatWatchdogService.dispose();
         systemVersionService.stop();
         taskSchedulerService.stop();

@@ -88,7 +88,16 @@ export type Action =
   | { type: "SEND_FAILED"; message: string }
   | { type: "CLEAR_SEND_ERROR" }
   | { type: "SSE_EVENT"; event: ChatEvent }
-  | { type: "HYDRATE_PENDING"; pending: PendingInteractions; authoritative?: boolean }
+  | {
+      type: "HYDRATE_PENDING";
+      pending: PendingInteractions;
+      authoritative?: boolean;
+      openedAfterSnapshot?: {
+        permissionIds: string[];
+        questionIds: string[];
+        liveRequestIds: string[];
+      };
+    }
   | { type: "DISCARD_STALE_PERMISSION"; requestId: string }
   | { type: "DISCARD_STALE_QUESTION"; requestId: string };
 
@@ -222,12 +231,33 @@ export function conversationReducer(state: ConversationState, action: Action): C
       const hydratedQuestions =
         action.pending.questions ?? (action.pending.question ? [action.pending.question] : []);
       if (action.authoritative) {
+        const openedPermissionIds = new Set(action.openedAfterSnapshot?.permissionIds);
+        const openedQuestionIds = new Set(action.openedAfterSnapshot?.questionIds);
+        const openedLiveRequestIds = new Set(action.openedAfterSnapshot?.liveRequestIds);
+        let pendingPermissions = action.pending.permissions;
+        for (const permission of state.pendingPermissions) {
+          if (openedPermissionIds.has(permission.id)) {
+            pendingPermissions = upsertPermissionRequest(pendingPermissions, permission);
+          }
+        }
+        let questions = hydratedQuestions;
+        for (const question of [state.pendingQuestion, ...state.queuedQuestions]) {
+          if (question && openedQuestionIds.has(question.id)) {
+            questions = upsertQuestionRequest(questions, question);
+          }
+        }
+        let liveRequests = action.pending.liveRequests;
+        for (const request of state.liveRequests) {
+          if (openedLiveRequestIds.has(request.id)) {
+            liveRequests = upsertLiveRequest(liveRequests, request);
+          }
+        }
         return {
           ...state,
-          pendingPermissions: action.pending.permissions,
-          pendingQuestion: hydratedQuestions[0] ?? null,
-          queuedQuestions: hydratedQuestions.slice(1),
-          liveRequests: action.pending.liveRequests,
+          pendingPermissions,
+          pendingQuestion: questions[0] ?? null,
+          queuedQuestions: questions.slice(1),
+          liveRequests,
         };
       }
 
@@ -588,24 +618,34 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
 
     const controller = new AbortController();
     sseAbortRef.current = controller;
-    let terminalSequence = 0;
+    let interactionSequence = 0;
     const terminalPermissions = new Map<string, number>();
     const terminalQuestions = new Map<string, number>();
     const terminalLiveRequests = new Map<string, number>();
-    let permissionFallbackGeneration = 0;
+    const openedPermissions = new Map<string, number>();
+    const openedQuestions = new Map<string, number>();
+    const openedLiveRequests = new Map<string, number>();
+    let latestAuthoritativeHydrationSequence = 0;
 
-    const recordTerminalInteraction = (event: ChatEvent): void => {
-      terminalSequence += 1;
-      if (event.type === "permission.replied") {
-        terminalPermissions.set(event.properties.requestID, terminalSequence);
+    const recordInteraction = (event: ChatEvent): number => {
+      interactionSequence += 1;
+      if (event.type === "permission.asked") {
+        openedPermissions.set(event.properties.id, interactionSequence);
+      } else if (event.type === "permission.replied") {
+        terminalPermissions.set(event.properties.requestID, interactionSequence);
+      } else if (event.type === "question.asked") {
+        openedQuestions.set(event.properties.id, interactionSequence);
       } else if (event.type === "question.replied" || event.type === "question.rejected") {
-        terminalQuestions.set(event.properties.requestID, terminalSequence);
+        terminalQuestions.set(event.properties.requestID, interactionSequence);
+      } else if (event.type === "cc.live_request.opened") {
+        openedLiveRequests.set(event.properties.request.id, interactionSequence);
       } else if (
         event.type === "cc.live_request.resolved" ||
         event.type === "cc.live_request.cancelled"
       ) {
-        terminalLiveRequests.set(event.properties.requestId, terminalSequence);
+        terminalLiveRequests.set(event.properties.requestId, interactionSequence);
       }
+      return interactionSequence;
     };
 
     const filterTerminatedInteractions = (
@@ -631,23 +671,23 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
     const hydratePendingInteractions = (
       pending: PendingInteractions,
       authoritative = false,
-      requestSequence = terminalSequence,
+      requestSequence = interactionSequence,
     ): void => {
       if (controller.signal.aborted) return;
       pending = filterTerminatedInteractions(pending, requestSequence);
       if (authoritative) {
-        permissionFallbackGeneration += 1;
+        latestAuthoritativeHydrationSequence = requestSequence;
       }
 
       const permissionsToSurface: typeof pending.permissions = [];
       if (autoApproveRef.current) {
         for (const permission of pending.permissions) {
-          const fallbackGeneration = permissionFallbackGeneration;
+          const fallbackSequence = requestSequence;
           void apiReplyPermission(activeConversationId, permission.id, "once").catch((error) => {
             if (controller.signal.aborted) return;
             if (isStaleRequestError(error)) return;
             if (terminalPermissions.has(permission.id)) return;
-            if (fallbackGeneration !== permissionFallbackGeneration) return;
+            if (fallbackSequence < latestAuthoritativeHydrationSequence) return;
             dispatch({
               type: "SSE_EVENT",
               event: { type: "permission.asked", properties: permission },
@@ -662,12 +702,25 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
         type: "HYDRATE_PENDING",
         pending: { ...pending, permissions: permissionsToSurface },
         authoritative,
+        openedAfterSnapshot: authoritative
+          ? {
+              permissionIds: [...openedPermissions.entries()]
+                .filter(([, sequence]) => sequence > requestSequence)
+                .map(([id]) => id),
+              questionIds: [...openedQuestions.entries()]
+                .filter(([, sequence]) => sequence > requestSequence)
+                .map(([id]) => id),
+              liveRequestIds: [...openedLiveRequests.entries()]
+                .filter(([, sequence]) => sequence > requestSequence)
+                .map(([id]) => id),
+            }
+          : undefined,
       });
     };
     let pendingHydrationGeneration = 0;
 
     const requestPendingInteractions = (authoritative: boolean): void => {
-      const requestSequence = terminalSequence;
+      const requestSequence = ++interactionSequence;
       const requestGeneration = ++pendingHydrationGeneration;
       void getPendingInteractions(activeConversationId)
         .then((pending) => {
@@ -717,22 +770,22 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
               continue;
             }
 
+            const eventSequence = recordInteraction(event);
             if (event.type === "permission.asked" && autoApproveRef.current) {
               const requestId = (event.properties as { id?: string }).id;
               if (requestId) {
-                const fallbackGeneration = permissionFallbackGeneration;
+                const fallbackSequence = eventSequence;
                 void apiReplyPermission(activeConversationId, requestId, "once").catch((error) => {
                   if (controller.signal.aborted) return;
                   if (isStaleRequestError(error)) return;
                   if (terminalPermissions.has(requestId)) return;
-                  if (fallbackGeneration !== permissionFallbackGeneration) return;
+                  if (fallbackSequence < latestAuthoritativeHydrationSequence) return;
                   dispatch({ type: "SSE_EVENT", event });
                 });
                 continue;
               }
             }
 
-            recordTerminalInteraction(event);
             dispatch({ type: "SSE_EVENT", event });
           }
         } catch {

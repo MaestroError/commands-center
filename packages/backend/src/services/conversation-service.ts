@@ -131,6 +131,8 @@ export class TaskRunPromptError extends Error {
   }
 }
 
+const WATCHDOG_RECOVERY_RETRY_DELAYS_MS = [500, 1_000, 2_000] as const;
+
 export function createConversationService(options: {
   db: AppDb;
   config: RuntimeConfig;
@@ -140,6 +142,7 @@ export function createConversationService(options: {
   archiveSettingsService?: SessionArchiveSettingsService;
   systemPromptService?: SystemPromptService;
   interactiveChatWatchdogService?: InteractiveChatWatchdogService;
+  watchdogRecoveryRetryDelaysMs?: readonly number[];
 }) {
   const systemPromptService =
     options.systemPromptService ??
@@ -153,48 +156,24 @@ export function createConversationService(options: {
   const pendingSnapshots = new Map<string, ResolvedSystemPrompt[]>();
   const conversationOperationTails = new Map<string, Promise<void>>();
   const taskRunOperationGuard = createTaskRunOperationGuard();
+  const watchdogRecoveryController = new AbortController();
+  const watchdogRecoveryRetryDelaysMs =
+    options.watchdogRecoveryRetryDelaysMs ?? WATCHDOG_RECOVERY_RETRY_DELAYS_MS;
+  let watchdogRecoveryPromise: Promise<void> | undefined;
 
   return {
     taskRunOperationGuard,
 
-    async resumeInteractiveChatWatchdogs(): Promise<void> {
-      const watchdog = options.interactiveChatWatchdogService;
-      if (!watchdog) return;
-
-      const activeChats = await options.db.query.conversations.findMany({
-        where: (table, operators) =>
-          operators.and(operators.eq(table.status, "active"), operators.eq(table.source, "chat")),
+    resumeInteractiveChatWatchdogs(): Promise<void> {
+      if (watchdogRecoveryController.signal.aborted) return Promise.resolve();
+      watchdogRecoveryPromise ??= restoreInteractiveChatWatchdogs().finally(() => {
+        watchdogRecoveryPromise = undefined;
       });
-      await Promise.all(
-        activeChats.map(async (conversation) => {
-          try {
-            const agent = await options.db.query.agents.findFirst({
-              where: (table, operators) => operators.eq(table.id, conversation.agent_id),
-            });
-            if (!agent || agent.status !== "active") return;
-            const directory = withResolvedWorkspacePath(agent).workspace_path;
-            const status = await options.opencodeService.getSessionStatus(
-              directory,
-              conversation.opencode_session_id,
-            );
-            if (status.type !== "busy" && status.type !== "retry") return;
-            await watchdog.rearm({
-              conversationId: conversation.id,
-              directory,
-              sessionID: conversation.opencode_session_id,
-            });
-          } catch (error) {
-            options.logger?.warn(
-              {
-                err: error,
-                conversationId: conversation.id,
-                sessionID: conversation.opencode_session_id,
-              },
-              "interactive chat watchdog restart recovery failed",
-            );
-          }
-        }),
-      );
+      return watchdogRecoveryPromise;
+    },
+
+    dispose(): void {
+      watchdogRecoveryController.abort();
     },
 
     async resolveCurrent(agentId: string): Promise<ConversationSnapshot> {
@@ -910,6 +889,126 @@ export function createConversationService(options: {
       });
     },
   };
+
+  async function restoreInteractiveChatWatchdogs(): Promise<void> {
+    const watchdog = options.interactiveChatWatchdogService;
+    const signal = watchdogRecoveryController.signal;
+    if (!watchdog || signal.aborted) return;
+
+    let activeChats: Awaited<ReturnType<typeof options.db.query.conversations.findMany>>;
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        activeChats = await options.db.query.conversations.findMany({
+          where: (table, operators) =>
+            operators.and(operators.eq(table.status, "active"), operators.eq(table.source, "chat")),
+        });
+        break;
+      } catch (error) {
+        if (signal.aborted) return;
+        const nextDelayMs = watchdogRecoveryRetryDelaysMs[attempt];
+        if (nextDelayMs === undefined) {
+          options.logger?.warn(
+            { err: error, attempts: attempt + 1 },
+            "interactive chat watchdog restart scan exhausted",
+          );
+          return;
+        }
+        options.logger?.warn(
+          { err: error, attempt: attempt + 1, nextDelayMs },
+          "interactive chat watchdog restart scan failed; retrying",
+        );
+        if (!(await waitForAbortableDelay(nextDelayMs, signal))) return;
+      }
+    }
+
+    let pending = activeChats;
+    for (let attempt = 0; pending.length > 0; attempt += 1) {
+      const nextDelayMs = watchdogRecoveryRetryDelaysMs[attempt];
+      const outcomes = await Promise.all(
+        pending.map(async (conversation) => {
+          let retryConversation = conversation;
+          try {
+            const currentConversation = await options.db.query.conversations.findFirst({
+              where: (table, operators) =>
+                operators.and(
+                  operators.eq(table.id, conversation.id),
+                  operators.eq(table.status, "active"),
+                  operators.eq(table.source, "chat"),
+                ),
+            });
+            if (!currentConversation || signal.aborted) return undefined;
+            retryConversation = currentConversation;
+            const agent = await options.db.query.agents.findFirst({
+              where: (table, operators) => operators.eq(table.id, currentConversation.agent_id),
+            });
+            if (signal.aborted || !agent || agent.status !== "active") return undefined;
+            const directory = withResolvedWorkspacePath(agent).workspace_path;
+            const status = await options.opencodeService.getSessionStatus(
+              directory,
+              currentConversation.opencode_session_id,
+            );
+            if (signal.aborted || (status.type !== "busy" && status.type !== "retry")) {
+              return undefined;
+            }
+            await watchdog.rearm({
+              conversationId: currentConversation.id,
+              directory,
+              sessionID: currentConversation.opencode_session_id,
+            });
+            return undefined;
+          } catch (error) {
+            if (signal.aborted) return undefined;
+            if (nextDelayMs !== undefined) {
+              options.logger?.warn(
+                {
+                  err: error,
+                  conversationId: conversation.id,
+                  sessionID: conversation.opencode_session_id,
+                  attempt: attempt + 1,
+                  nextDelayMs,
+                },
+                "interactive chat watchdog restart recovery failed; retrying",
+              );
+            }
+            return { conversation: retryConversation, error };
+          }
+        }),
+      );
+      const failures = outcomes.filter((outcome) => outcome !== undefined);
+      if (failures.length === 0 || signal.aborted) return;
+      if (nextDelayMs === undefined) {
+        for (const { conversation, error } of failures) {
+          options.logger?.warn(
+            {
+              err: error,
+              conversationId: conversation.id,
+              sessionID: conversation.opencode_session_id,
+              attempts: attempt + 1,
+            },
+            "interactive chat watchdog restart recovery exhausted",
+          );
+        }
+        return;
+      }
+      pending = failures.map(({ conversation }) => conversation);
+      if (!(await waitForAbortableDelay(nextDelayMs, signal))) return;
+    }
+  }
+
+  function waitForAbortableDelay(delayMs: number, signal: AbortSignal): Promise<boolean> {
+    if (signal.aborted) return Promise.resolve(false);
+    return new Promise((resolve) => {
+      const finish = (completed: boolean): void => {
+        clearTimeout(timer);
+        signal.removeEventListener("abort", onAbort);
+        resolve(completed);
+      };
+      const onAbort = (): void => finish(false);
+      const timer = setTimeout(() => finish(true), delayMs);
+      timer.unref?.();
+      signal.addEventListener("abort", onAbort, { once: true });
+    });
+  }
 
   function serializeConversationOperation(
     conversationId: string,

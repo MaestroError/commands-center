@@ -987,6 +987,51 @@ describe("HYDRATE_PENDING", () => {
     expect(next.pendingQuestion).toBeNull();
     expect(next.liveRequests).toEqual([]);
   });
+
+  it("preserves interactions opened after an authoritative snapshot began", () => {
+    const stateWithNewerInteractions: ConversationState = {
+      ...initialState,
+      pendingPermissions: [
+        {
+          id: "new-permission",
+          sessionID: "child",
+          permission: "read",
+          patterns: [],
+          metadata: {},
+          always: [],
+        },
+      ],
+      pendingQuestion: { id: "new-question", sessionID: "child", questions: [] },
+      liveRequests: [
+        {
+          id: "new-live-request",
+          conversationId: "conversation-1",
+          kind: "add_secret",
+          presentation: { title: "Secret", cancelLabel: "Cancel" },
+          fields: [],
+          actions: [],
+          metadata: {},
+          closable: false,
+          createdAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    };
+
+    const next = conversationReducer(stateWithNewerInteractions, {
+      type: "HYDRATE_PENDING",
+      pending: { permissions: [], question: null, liveRequests: [] },
+      authoritative: true,
+      openedAfterSnapshot: {
+        permissionIds: ["new-permission"],
+        questionIds: ["new-question"],
+        liveRequestIds: ["new-live-request"],
+      },
+    });
+
+    expect(next.pendingPermissions.map(({ id }) => id)).toEqual(["new-permission"]);
+    expect(next.pendingQuestion?.id).toBe("new-question");
+    expect(next.liveRequests.map(({ id }) => id)).toEqual(["new-live-request"]);
+  });
 });
 
 describe("DISCARD_STALE_PERMISSION", () => {

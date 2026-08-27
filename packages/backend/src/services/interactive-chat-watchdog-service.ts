@@ -336,7 +336,16 @@ export function createInteractiveChatWatchdogService(options: {
       },
     };
     errors.set(handle.conversationId, event);
-    for (const listener of listeners.get(handle.conversationId) ?? []) listener(event);
+    for (const listener of listeners.get(handle.conversationId) ?? []) {
+      try {
+        listener(event);
+      } catch (error) {
+        options.logger.warn(
+          { err: error, conversationId: handle.conversationId, sessionID: handle.sessionID },
+          "interactive chat watchdog subscriber failed",
+        );
+      }
+    }
   }
 
   async function readSnapshot(
