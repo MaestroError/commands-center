@@ -109,6 +109,7 @@ export type PendingChatQuestion = {
 export type PendingChatInteractions = {
   permissions: PendingChatPermission[];
   question: PendingChatQuestion | null;
+  questions: PendingChatQuestion[];
 };
 
 export type TaskRunPendingInteraction =
@@ -762,13 +763,16 @@ export function createConversationService(options: {
         loaded.conversation.opencode_session_id,
       );
 
-      const question = questions.find((candidate) => sessionIDs.has(candidate.sessionID));
+      const pendingQuestions = questions
+        .filter((question) => sessionIDs.has(question.sessionID))
+        .map(mapPendingQuestion);
 
       return {
         permissions: permissions
           .filter((permission) => sessionIDs.has(permission.sessionID))
           .map(mapPendingPermission),
-        question: question ? mapPendingQuestion(question) : null,
+        question: pendingQuestions[0] ?? null,
+        questions: pendingQuestions,
       };
     },
 
@@ -830,6 +834,7 @@ export function createConversationService(options: {
         tx.delete(messages).where(eq(messages.conversation_id, conversation.id)).run();
         tx.delete(conversations).where(eq(conversations.id, conversation.id)).run();
       });
+      options.interactiveChatWatchdogService?.cancel(conversation.id);
     },
   };
 

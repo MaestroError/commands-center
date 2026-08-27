@@ -75,6 +75,7 @@ export type ConversationState = {
   previousConversations: ConversationSummary[];
   pendingPermissions: PermissionRequest[];
   pendingQuestion: QuestionRequest | null;
+  queuedQuestions: QuestionRequest[];
   liveRequests: LiveRequest[];
   todos: TodoItem[];
   sendError: string | null;
@@ -98,6 +99,7 @@ export const initialState: ConversationState = {
   previousConversations: [],
   pendingPermissions: [],
   pendingQuestion: null,
+  queuedQuestions: [],
   liveRequests: [],
   todos: [],
   sendError: null,
@@ -132,14 +134,24 @@ function buildPartsMap(messages: ConversationMessage[]): Record<string, Conversa
 function liveInteractionState(
   state: ConversationState,
   nextConversationId: string,
-): Pick<ConversationState, "pendingPermissions" | "pendingQuestion" | "liveRequests" | "todos"> {
+): Pick<
+  ConversationState,
+  "pendingPermissions" | "pendingQuestion" | "queuedQuestions" | "liveRequests" | "todos"
+> {
   if (state.conversation?.id !== nextConversationId) {
-    return { pendingPermissions: [], pendingQuestion: null, liveRequests: [], todos: [] };
+    return {
+      pendingPermissions: [],
+      pendingQuestion: null,
+      queuedQuestions: [],
+      liveRequests: [],
+      todos: [],
+    };
   }
 
   return {
     pendingPermissions: state.pendingPermissions,
     pendingQuestion: state.pendingQuestion,
+    queuedQuestions: state.queuedQuestions,
     liveRequests: state.liveRequests,
     todos: state.todos,
   };
@@ -224,10 +236,23 @@ export function conversationReducer(state: ConversationState, action: Action): C
         liveRequests = upsertLiveRequest(liveRequests, request);
       }
 
+      let pendingQuestion = state.pendingQuestion;
+      let queuedQuestions = state.queuedQuestions;
+      const hydratedQuestions =
+        action.pending.questions ?? (action.pending.question ? [action.pending.question] : []);
+      for (const question of hydratedQuestions) {
+        if (!pendingQuestion) {
+          pendingQuestion = question;
+        } else if (pendingQuestion.id !== question.id) {
+          queuedQuestions = upsertQuestionRequest(queuedQuestions, question);
+        }
+      }
+
       return {
         ...state,
         pendingPermissions,
-        pendingQuestion: state.pendingQuestion ?? action.pending.question,
+        pendingQuestion,
+        queuedQuestions,
         liveRequests,
       };
     }
@@ -241,10 +266,19 @@ export function conversationReducer(state: ConversationState, action: Action): C
       };
 
     case "DISCARD_STALE_QUESTION":
-      if (state.pendingQuestion?.id !== action.requestId) {
-        return state;
+      if (state.pendingQuestion?.id === action.requestId) {
+        return {
+          ...state,
+          pendingQuestion: state.queuedQuestions[0] ?? null,
+          queuedQuestions: state.queuedQuestions.slice(1),
+        };
       }
-      return { ...state, pendingQuestion: null };
+      return {
+        ...state,
+        queuedQuestions: state.queuedQuestions.filter(
+          (question) => question.id !== action.requestId,
+        ),
+      };
 
     default:
       return state;
@@ -374,14 +408,32 @@ function applySseEvent(state: ConversationState, event: ChatEvent): Conversation
       };
 
     case "question.asked":
+      if (!state.pendingQuestion) {
+        return {
+          ...state,
+          pendingQuestion: event.properties as unknown as QuestionRequest,
+        };
+      }
+      if (state.pendingQuestion.id === event.properties.id) {
+        return {
+          ...state,
+          pendingQuestion: event.properties as unknown as QuestionRequest,
+        };
+      }
       return {
         ...state,
-        pendingQuestion: event.properties as unknown as QuestionRequest,
+        queuedQuestions: upsertQuestionRequest(
+          state.queuedQuestions,
+          event.properties as unknown as QuestionRequest,
+        ),
       };
 
     case "question.replied":
     case "question.rejected":
-      return { ...state, pendingQuestion: null };
+      return conversationReducer(state, {
+        type: "DISCARD_STALE_QUESTION",
+        requestId: event.properties.requestID,
+      });
 
     case "todo.updated":
       return { ...state, todos: event.properties.todos };
@@ -533,8 +585,9 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
       const permissionsToSurface: typeof pending.permissions = [];
       if (autoApproveRef.current) {
         for (const permission of pending.permissions) {
-          void apiReplyPermission(activeConversationId, permission.id, "once").catch(() => {
+          void apiReplyPermission(activeConversationId, permission.id, "once").catch((error) => {
             if (controller.signal.aborted) return;
+            if (isStaleRequestError(error)) return;
             dispatch({
               type: "SSE_EVENT",
               event: { type: "permission.asked", properties: permission },
@@ -599,8 +652,9 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
             if (event.type === "permission.asked" && autoApproveRef.current) {
               const requestId = (event.properties as { id?: string }).id;
               if (requestId) {
-                void apiReplyPermission(activeConversationId, requestId, "once").catch(() => {
+                void apiReplyPermission(activeConversationId, requestId, "once").catch((error) => {
                   if (controller.signal.aborted) return;
+                  if (isStaleRequestError(error)) return;
                   dispatch({ type: "SSE_EVENT", event });
                 });
                 continue;
@@ -735,11 +789,16 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
   const replyQ = useCallback(
     (requestId: string, answers: string[][]) => {
       if (!state.conversation) return;
-      void apiReplyQuestion(state.conversation.id, requestId, answers).catch((error: unknown) => {
-        if (isStaleRequestError(error)) {
+      const conversationId = state.conversation.id;
+      void apiReplyQuestion(conversationId, requestId, answers)
+        .then(() => {
           dispatch({ type: "DISCARD_STALE_QUESTION", requestId });
-        }
-      });
+        })
+        .catch((error: unknown) => {
+          if (isStaleRequestError(error)) {
+            dispatch({ type: "DISCARD_STALE_QUESTION", requestId });
+          }
+        });
     },
     [state.conversation],
   );
@@ -747,11 +806,16 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
   const rejectQ = useCallback(
     (requestId: string) => {
       if (!state.conversation) return;
-      void apiRejectQuestion(state.conversation.id, requestId).catch((error: unknown) => {
-        if (isStaleRequestError(error)) {
+      const conversationId = state.conversation.id;
+      void apiRejectQuestion(conversationId, requestId)
+        .then(() => {
           dispatch({ type: "DISCARD_STALE_QUESTION", requestId });
-        }
-      });
+        })
+        .catch((error: unknown) => {
+          if (isStaleRequestError(error)) {
+            dispatch({ type: "DISCARD_STALE_QUESTION", requestId });
+          }
+        });
     },
     [state.conversation],
   );
@@ -845,6 +909,19 @@ function upsertPermissionRequest(
   }
 
   return [...requests, nextRequest].sort((left, right) => left.id.localeCompare(right.id));
+}
+
+function upsertQuestionRequest(
+  requests: QuestionRequest[],
+  nextRequest: QuestionRequest,
+): QuestionRequest[] {
+  const existingIndex = requests.findIndex((request) => request.id === nextRequest.id);
+
+  if (existingIndex >= 0) {
+    return requests.map((request, index) => (index === existingIndex ? nextRequest : request));
+  }
+
+  return [...requests, nextRequest];
 }
 
 // A permission/question reply targeting an id the backend no longer knows

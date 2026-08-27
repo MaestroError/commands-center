@@ -809,6 +809,39 @@ describe("SSE_EVENT: question.asked / question.replied / question.rejected", () 
     const next = conversationReducer(state, { type: "SSE_EVENT", event: rejected });
     expect(next.pendingQuestion).toBeNull();
   });
+
+  it("promotes the next pending question when the displayed question is resolved", () => {
+    const secondAsked: ChatEvent = {
+      type: "question.asked",
+      properties: {
+        id: "q-2",
+        sessionID: "child",
+        questions: [{ question: "Continue?", options: [{ label: "Yes" }] }],
+      },
+    };
+    const state = conversationReducer(
+      conversationReducer(initialState, { type: "SSE_EVENT", event: askedEvent }),
+      { type: "SSE_EVENT", event: secondAsked },
+    );
+    const replied: ChatEvent = {
+      type: "question.replied",
+      properties: { sessionID: "s", requestID: "q-1" },
+    };
+
+    const next = conversationReducer(state, { type: "SSE_EVENT", event: replied });
+
+    expect(next.pendingQuestion?.id).toBe("q-2");
+    expect(next.queuedQuestions).toEqual([]);
+  });
+
+  it("does not queue a duplicate event for the displayed question", () => {
+    const state = conversationReducer(initialState, { type: "SSE_EVENT", event: askedEvent });
+
+    const next = conversationReducer(state, { type: "SSE_EVENT", event: askedEvent });
+
+    expect(next.pendingQuestion?.id).toBe("q-1");
+    expect(next.queuedQuestions).toEqual([]);
+  });
 });
 
 // ---------------------------------------------------------------------------

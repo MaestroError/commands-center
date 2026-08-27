@@ -118,6 +118,7 @@ async function consumeEventStream(
 ): Promise<void> {
   const url = new URL("/event", config.opencode.baseUrl);
   url.searchParams.set("directory", directory);
+  let sessionIDs = await resolveSessionTree(directory, sessionID);
 
   const response = await fetch(url, {
     method: "GET",
@@ -134,7 +135,6 @@ async function consumeEventStream(
   }
 
   const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
-  let sessionIDs = await resolveSessionTree(directory, sessionID);
   let buffer = "";
 
   try {
@@ -184,6 +184,9 @@ async function consumeEventStream(
         }
       }
     }
+  } catch (error) {
+    await reader.cancel().catch(() => {});
+    throw error;
   } finally {
     reader.releaseLock();
   }

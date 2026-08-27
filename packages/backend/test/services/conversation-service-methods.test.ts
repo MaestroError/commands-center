@@ -321,7 +321,8 @@ describe("conversation-service delegating methods", () => {
   });
 
   it("updates titles, resolves the owning agent, and deletes a conversation", async () => {
-    const { service, agent } = await setup();
+    const watchdog = { cancel: vi.fn() } as unknown as InteractiveChatWatchdogService;
+    const { service, agent } = await setup({ watchdog });
     const snapshot = await service.resolveCurrent(agent.id);
     const conversationId = snapshot.current.id;
 
@@ -332,6 +333,7 @@ describe("conversation-service delegating methods", () => {
     expect(await service.getMedia(conversationId)).toEqual([]);
 
     await service.deleteConversation(agent.id, conversationId);
+    expect(watchdog.cancel).toHaveBeenCalledWith(conversationId);
     // A fresh resolveCurrent creates a new conversation since the old one is gone.
     const after = await service.resolveCurrent(agent.id);
     expect(after.current.id).not.toBe(conversationId);
@@ -490,12 +492,14 @@ describe("conversation-service delegating methods", () => {
         metadata: {},
       },
     ]);
-    expect(result.question).toEqual({
+    const expectedQuestion = {
       id: "q-2",
       sessionID: "nested-session",
       questions: [{ question: "Proceed?", options: [{ label: "Yes" }, { label: "No" }] }],
       tool: { messageID: "msg-2", callID: "call-2" },
-    });
+    };
+    expect(result.question).toEqual(expectedQuestion);
+    expect(result.questions).toEqual([expectedQuestion]);
   });
 
   it("returns no pending question when none match the conversation's session", async () => {
@@ -504,6 +508,6 @@ describe("conversation-service delegating methods", () => {
 
     const result = await service.listPendingInteractions(snapshot.current.id);
 
-    expect(result).toEqual({ permissions: [], question: null });
+    expect(result).toEqual({ permissions: [], question: null, questions: [] });
   });
 });

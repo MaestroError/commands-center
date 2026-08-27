@@ -133,6 +133,48 @@ describe("interactive-chat-watchdog-service", () => {
     expect(opencodeService.listSessionStatuses).not.toHaveBeenCalled();
   });
 
+  it("does not abort or publish after cancellation during a poll", async () => {
+    vi.useFakeTimers();
+    let now = 0;
+    let resolveStatuses: ((statuses: { root: { type: "busy" } }) => void) | undefined;
+    const statuses = new Promise<{ root: { type: "busy" } }>((resolve) => {
+      resolveStatuses = resolve;
+    });
+    const opencodeService = createMockOpenCodeService();
+    opencodeService.getSessionTreeIds = vi.fn(() => Promise.resolve(new Set(["root"])));
+    opencodeService.listSessionMessages = vi.fn(() => Promise.resolve([]));
+    opencodeService.listSessionStatuses = vi.fn(() => statuses);
+    const service = createInteractiveChatWatchdogService({
+      opencodeService,
+      logger: createLogger(),
+      noProgressMs: 1,
+      pollMs: 1,
+      now: () => now,
+    });
+    const listener = vi.fn();
+    service.subscribe({
+      conversationId: "conversation-1",
+      signal: AbortSignal.timeout(1_000),
+      onEvent: listener,
+    });
+    const prepared = await service.prepare({
+      conversationId: "conversation-1",
+      directory: "/work",
+      sessionID: "root",
+    });
+    prepared.arm();
+
+    now = 1;
+    void vi.advanceTimersByTimeAsync(1);
+    await vi.waitFor(() => expect(opencodeService.listSessionStatuses).toHaveBeenCalledOnce());
+    prepared.cancel();
+    resolveStatuses?.({ root: { type: "busy" } });
+    await vi.runAllTimersAsync();
+
+    expect(opencodeService.abortSession).not.toHaveBeenCalled();
+    expect(listener).not.toHaveBeenCalled();
+  });
+
   it("does not abort while a verified descendant interaction is actionable", async () => {
     vi.useFakeTimers();
     let now = 0;

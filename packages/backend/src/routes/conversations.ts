@@ -257,13 +257,14 @@ export function registerConversationRoutes(server: AppServer, context: RuntimeCo
       },
     },
     async (request) => {
-      const { permissions, question } = await service.listPendingInteractions(
+      const { permissions, question, questions } = await service.listPendingInteractions(
         request.params.conversationId,
       );
 
       return {
         permissions,
         question,
+        questions,
         liveRequests:
           context.liveRequestService?.listByConversation(request.params.conversationId) ?? [],
       };

@@ -543,6 +543,37 @@ describe("useConversation", () => {
     });
   });
 
+  it("does not resurface a stale live permission after auto-approve", async () => {
+    window.localStorage.setItem("cc-specialist-auto-approve-writer", "true");
+    vi.mocked(replyPermission).mockRejectedValue(
+      new ApiRequestError('Pending request "perm-stale" no longer exists.', 404),
+    );
+    vi.mocked(connectConversationEvents).mockImplementation((_conversationId, signal) =>
+      oneEvent(
+        {
+          type: "permission.asked",
+          properties: {
+            id: "perm-stale",
+            sessionID: "child-session",
+            permission: "external_directory",
+            patterns: ["/shared/*"],
+            metadata: {},
+            always: [],
+          },
+        },
+        signal,
+      ),
+    );
+    const queryClient = createQueryClient();
+    const { result } = renderHook(() => useConversation("writer"), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    await waitFor(() => expect(replyPermission).toHaveBeenCalled());
+
+    expect(result.current.pendingPermission).toBeNull();
+  });
+
   it("persists auto approve changes per specialist slug", async () => {
     const queryClient = createQueryClient();
     const { result } = renderHook(() => useConversation("writer"), {
@@ -653,6 +684,69 @@ describe("useConversation", () => {
       await waitFor(() => {
         expect(result.current.pendingPermission?.id).toBe("perm-flaky-approve");
       });
+    });
+
+    it("does not surface a stale rehydrated permission after auto-approve", async () => {
+      window.localStorage.setItem("cc-specialist-auto-approve-writer", "true");
+      vi.mocked(replyPermission).mockRejectedValue(
+        new ApiRequestError('Pending request "perm-stale" no longer exists.', 410),
+      );
+      vi.mocked(getPendingInteractions).mockResolvedValue({
+        permissions: [
+          {
+            id: "perm-stale",
+            sessionID: "sess-1",
+            permission: "bash",
+            patterns: [],
+            metadata: {},
+            always: [],
+          },
+        ],
+        question: null,
+        liveRequests: [],
+      });
+      const queryClient = createQueryClient();
+      const { result } = renderHook(() => useConversation("writer"), {
+        wrapper: createWrapper(queryClient),
+      });
+
+      await waitFor(() => expect(replyPermission).toHaveBeenCalled());
+
+      expect(result.current.pendingPermission).toBeNull();
+    });
+
+    it("rehydrates the next pending question after answering the displayed question", async () => {
+      vi.mocked(getPendingInteractions).mockResolvedValueOnce({
+        permissions: [],
+        question: {
+          id: "q-1",
+          sessionID: "sess-1",
+          questions: [{ question: "First?", options: [{ label: "Yes" }] }],
+        },
+        questions: [
+          {
+            id: "q-1",
+            sessionID: "sess-1",
+            questions: [{ question: "First?", options: [{ label: "Yes" }] }],
+          },
+          {
+            id: "q-2",
+            sessionID: "child-session",
+            questions: [{ question: "Second?", options: [{ label: "Continue" }] }],
+          },
+        ],
+        liveRequests: [],
+      });
+      const queryClient = createQueryClient();
+      const { result } = renderHook(() => useConversation("writer"), {
+        wrapper: createWrapper(queryClient),
+      });
+      await waitFor(() => expect(result.current.pendingQuestion?.id).toBe("q-1"));
+
+      act(() => result.current.replyQuestion("q-1", [["Yes"]]));
+
+      await waitFor(() => expect(result.current.pendingQuestion?.id).toBe("q-2"));
+      expect(getPendingInteractions).toHaveBeenCalledOnce();
     });
 
     it("drops a stale permission reply from local state on a 404", async () => {

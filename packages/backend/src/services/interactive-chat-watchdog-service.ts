@@ -115,13 +115,15 @@ export function createInteractiveChatWatchdogService(options: {
   };
 
   async function poll(handle: WatchdogHandle): Promise<void> {
-    if (handles.get(handle.conversationId) !== handle) return;
+    const isCurrent = () => handles.get(handle.conversationId) === handle;
+    if (!isCurrent()) return;
 
     try {
       const [statuses, snapshot] = await Promise.all([
         options.opencodeService.listSessionStatuses(handle.directory),
         readSnapshot(handle.directory, handle.sessionID),
       ]);
+      if (!isCurrent()) return;
       if (snapshot.signature !== handle.signature) {
         handle.signature = snapshot.signature;
         handle.sawProgress = true;
@@ -138,6 +140,7 @@ export function createInteractiveChatWatchdogService(options: {
         return;
       }
     } catch (error) {
+      if (!isCurrent()) return;
       options.logger.warn(
         { err: error, conversationId: handle.conversationId, sessionID: handle.sessionID },
         "interactive chat watchdog snapshot failed",
@@ -148,10 +151,12 @@ export function createInteractiveChatWatchdogService(options: {
 
     try {
       if (await hasPendingInteraction(handle.directory, handle.sessionID)) {
+        if (!isCurrent()) return;
         handle.lastProgressAt = now();
         return;
       }
     } catch (error) {
+      if (!isCurrent()) return;
       options.logger.warn(
         { err: error, conversationId: handle.conversationId, sessionID: handle.sessionID },
         "interactive chat watchdog pending-interaction read failed",
@@ -160,6 +165,7 @@ export function createInteractiveChatWatchdogService(options: {
 
     try {
       const finalSnapshot = await readSnapshot(handle.directory, handle.sessionID);
+      if (!isCurrent()) return;
       if (finalSnapshot.signature !== handle.signature) {
         handle.signature = finalSnapshot.signature;
         handle.sawProgress = true;
@@ -167,9 +173,11 @@ export function createInteractiveChatWatchdogService(options: {
         return;
       }
     } catch {
+      if (!isCurrent()) return;
       // A failed final read does not turn an already-stalled session into progress.
     }
 
+    if (!isCurrent()) return;
     try {
       await options.opencodeService.abortSession(
         handle.directory,
@@ -177,12 +185,14 @@ export function createInteractiveChatWatchdogService(options: {
         AbortSignal.timeout(30_000),
       );
     } catch (error) {
+      if (!isCurrent()) return;
       options.logger.warn(
         { err: error, conversationId: handle.conversationId, sessionID: handle.sessionID },
         "interactive chat watchdog abort failed",
       );
       return;
     }
+    if (!isCurrent()) return;
 
     const event: WatchdogEvent = {
       type: "session.error",

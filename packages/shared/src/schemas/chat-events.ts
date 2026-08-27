@@ -292,6 +292,7 @@ export const pendingQuestionSchema = z.object({
 export const pendingInteractionsSchema = z.object({
   permissions: z.array(pendingPermissionSchema),
   question: pendingQuestionSchema.nullable(),
+  questions: z.array(pendingQuestionSchema).optional(),
   liveRequests: z.array(liveRequestSchema),
 });
 

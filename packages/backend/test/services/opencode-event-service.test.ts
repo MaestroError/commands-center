@@ -278,6 +278,51 @@ describe("opencode-event-service", () => {
     expect(resolveSessionTree).toHaveBeenCalledTimes(2);
   });
 
+  it("does not open an event stream when initial ancestry resolution fails", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    const logger = createLogger();
+
+    subscribeForTest({
+      onEvent: vi.fn(),
+      signal: AbortSignal.timeout(25),
+      resolveSessionTree: () => Promise.reject(new Error("ancestry unavailable")),
+      logger,
+    });
+    await vi.waitFor(() => expect(logger.warn).toHaveBeenCalled());
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("cancels the event reader when ancestry refresh fails", async () => {
+    const cancel = vi.fn();
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            'data: {"type":"permission.asked","properties":{"id":"perm-1","sessionID":"child"}}\n\n',
+          ),
+        );
+      },
+      cancel,
+    });
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(stream, { status: 200, headers: { "Content-Type": "text/event-stream" } }),
+    );
+    const resolveSessionTree = vi
+      .fn<() => Promise<Set<string>>>()
+      .mockResolvedValueOnce(new Set(["sess-1"]))
+      .mockRejectedValueOnce(new Error("ancestry unavailable"));
+
+    subscribeForTest({
+      onEvent: vi.fn(),
+      signal: AbortSignal.timeout(50),
+      resolveSessionTree,
+    });
+
+    await vi.waitFor(() => expect(cancel).toHaveBeenCalledOnce());
+  });
+
   it("does not merge descendant message events into the root timeline", async () => {
     const onEvent = vi.fn();
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
@@ -607,10 +652,11 @@ function subscribeForTest(options: {
   signal: AbortSignal;
   onTitleUpdate?: (title: string) => void;
   resolveSessionTree?: (directory: string, rootSessionID: string) => Promise<Set<string>>;
+  logger?: Logger;
 }) {
   createOpenCodeEventService({
     config: { opencode: { baseUrl: "http://opencode.test:1234" } } as never,
-    logger: createLogger(),
+    logger: options.logger ?? createLogger(),
     resolveSessionTree: options.resolveSessionTree,
   }).subscribe({
     directory: "/work/agent-a",
