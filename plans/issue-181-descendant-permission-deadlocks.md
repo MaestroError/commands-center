@@ -66,6 +66,13 @@ Route direct and nested OpenCode descendant interactions through their owning ro
 - Generalize the per-conversation prompt queue to serialize asynchronous sends, manual aborts, and deletion; load the conversation inside the queued operation so sends behind deletion fail with the existing not-found behavior.
 - Cover deferred initial ancestry, cancellation during permission discovery, terminal-event-before-HTTP-failure ordering, abort during prompt acceptance, no-signal hanging ancestry, and deletion with queued sends.
 
+### 7. Authoritative reconnect fallback fencing
+
+- Advance an auto-approve fallback generation whenever a successful reconnect snapshot becomes authoritative.
+- Capture the current generation for each live-event or hydrated permission auto-reply and surface a transient failure only while that generation remains current.
+- Preserve existing behavior for current-generation transient failures, stale 404/410 replies, and terminal SSE replies.
+- Cover older live-event and initial-hydration auto-replies whose HTTP responses fail only after an authoritative reconnect has removed the permission.
+
 ## Verification
 
 1. Run focused backend adapter, event, conversation, monitor, route, and watchdog tests.

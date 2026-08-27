@@ -696,6 +696,54 @@ describe("useConversation", () => {
     expect(result.current.pendingPermission).toBeNull();
   });
 
+  it("does not resurrect a live permission when its reply fails after reconnect reconciliation", async () => {
+    window.localStorage.setItem("cc-specialist-auto-approve-writer", "true");
+    const reply = createDeferred<void>();
+    const closeFirstStream = createDeferred<void>();
+    let connectionAttempt = 0;
+    vi.mocked(replyPermission).mockReturnValue(reply.promise);
+    vi.mocked(connectConversationEvents).mockImplementation((_conversationId, signal) => {
+      connectionAttempt += 1;
+      if (connectionAttempt === 1) {
+        return (async function* (): AsyncGenerator<ChatEvent> {
+          yield { type: "connected", properties: {} };
+          yield {
+            type: "permission.asked",
+            properties: {
+              id: "perm-live-reconnected",
+              sessionID: "child-session",
+              permission: "external_directory",
+              patterns: ["/shared/*"],
+              metadata: {},
+              always: [],
+            },
+          };
+          await closeFirstStream.promise;
+        })();
+      }
+
+      return oneEvent({ type: "connected", properties: {} }, signal);
+    });
+    vi.mocked(getConversation).mockResolvedValue(
+      makeConversation({ title: "Reconnected conversation" }),
+    );
+    const queryClient = createQueryClient();
+    const { result } = renderHook(() => useConversation("writer"), {
+      wrapper: createWrapper(queryClient),
+    });
+    await waitFor(() => expect(replyPermission).toHaveBeenCalledTimes(1));
+
+    closeFirstStream.resolve();
+    await waitFor(() => expect(connectConversationEvents).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(result.current.conversation?.title).toBe("Reconnected conversation"),
+    );
+    reply.reject(new ApiRequestError("response lost", 500));
+    await act(async () => Promise.resolve());
+
+    expect(result.current.pendingPermission).toBeNull();
+  });
+
   it("persists auto approve changes per specialist slug", async () => {
     const queryClient = createQueryClient();
     const { result } = renderHook(() => useConversation("writer"), {
@@ -992,6 +1040,59 @@ describe("useConversation", () => {
 
       publishTerminal.resolve();
       await terminalConsumed.promise;
+      reply.reject(new ApiRequestError("response lost", 500));
+      await act(async () => Promise.resolve());
+
+      expect(result.current.pendingPermission).toBeNull();
+    });
+
+    it("does not resurrect a hydrated permission when its reply fails after reconnect reconciliation", async () => {
+      window.localStorage.setItem("cc-specialist-auto-approve-writer", "true");
+      const reply = createDeferred<void>();
+      const closeFirstStream = createDeferred<void>();
+      let connectionAttempt = 0;
+      vi.mocked(replyPermission).mockReturnValue(reply.promise);
+      vi.mocked(getPendingInteractions)
+        .mockResolvedValueOnce({
+          permissions: [
+            {
+              id: "perm-hydrated-reconnected",
+              sessionID: "child-session",
+              permission: "external_directory",
+              patterns: ["/shared/*"],
+              metadata: {},
+              always: [],
+            },
+          ],
+          question: null,
+          liveRequests: [],
+        })
+        .mockResolvedValueOnce(noPendingInteractions());
+      vi.mocked(connectConversationEvents).mockImplementation((_conversationId, signal) => {
+        connectionAttempt += 1;
+        if (connectionAttempt === 1) {
+          return (async function* (): AsyncGenerator<ChatEvent> {
+            yield { type: "connected", properties: {} };
+            await closeFirstStream.promise;
+          })();
+        }
+
+        return oneEvent({ type: "connected", properties: {} }, signal);
+      });
+      vi.mocked(getConversation).mockResolvedValue(
+        makeConversation({ title: "Reconnected conversation" }),
+      );
+      const queryClient = createQueryClient();
+      const { result } = renderHook(() => useConversation("writer"), {
+        wrapper: createWrapper(queryClient),
+      });
+      await waitFor(() => expect(replyPermission).toHaveBeenCalledTimes(1));
+
+      closeFirstStream.resolve();
+      await waitFor(() => expect(connectConversationEvents).toHaveBeenCalledTimes(2));
+      await waitFor(() =>
+        expect(result.current.conversation?.title).toBe("Reconnected conversation"),
+      );
       reply.reject(new ApiRequestError("response lost", 500));
       await act(async () => Promise.resolve());
 

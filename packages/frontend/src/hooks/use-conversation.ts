@@ -592,6 +592,7 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
     const terminalPermissions = new Map<string, number>();
     const terminalQuestions = new Map<string, number>();
     const terminalLiveRequests = new Map<string, number>();
+    let permissionFallbackGeneration = 0;
 
     const recordTerminalInteraction = (event: ChatEvent): void => {
       terminalSequence += 1;
@@ -634,14 +635,19 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
     ): void => {
       if (controller.signal.aborted) return;
       pending = filterTerminatedInteractions(pending, requestSequence);
+      if (authoritative) {
+        permissionFallbackGeneration += 1;
+      }
 
       const permissionsToSurface: typeof pending.permissions = [];
       if (autoApproveRef.current) {
         for (const permission of pending.permissions) {
+          const fallbackGeneration = permissionFallbackGeneration;
           void apiReplyPermission(activeConversationId, permission.id, "once").catch((error) => {
             if (controller.signal.aborted) return;
             if (isStaleRequestError(error)) return;
             if (terminalPermissions.has(permission.id)) return;
+            if (fallbackGeneration !== permissionFallbackGeneration) return;
             dispatch({
               type: "SSE_EVENT",
               event: { type: "permission.asked", properties: permission },
@@ -711,10 +717,12 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
             if (event.type === "permission.asked" && autoApproveRef.current) {
               const requestId = (event.properties as { id?: string }).id;
               if (requestId) {
+                const fallbackGeneration = permissionFallbackGeneration;
                 void apiReplyPermission(activeConversationId, requestId, "once").catch((error) => {
                   if (controller.signal.aborted) return;
                   if (isStaleRequestError(error)) return;
                   if (terminalPermissions.has(requestId)) return;
+                  if (fallbackGeneration !== permissionFallbackGeneration) return;
                   dispatch({ type: "SSE_EVENT", event });
                 });
                 continue;
