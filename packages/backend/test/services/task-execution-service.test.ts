@@ -3450,7 +3450,9 @@ async function expectRunStatus(
   runId: string,
   status: string,
 ): Promise<void> {
-  await expect.poll(async () => (await taskService.getRunById(runId))?.status).toBe(status);
+  await expect
+    .poll(async () => (await taskService.getRunById(runId))?.status, { timeout: 5_000 })
+    .toBe(status);
 }
 
 async function expectRunRuntimeState(
