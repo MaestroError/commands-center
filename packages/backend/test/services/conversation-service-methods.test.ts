@@ -181,6 +181,68 @@ describe("conversation-service delegating methods", () => {
     vi.useRealTimers();
   });
 
+  it("serializes concurrent prompt replacement for one conversation", async () => {
+    let acceptFirst: (() => void) | undefined;
+    const firstPrompt = new Promise<void>((resolve) => {
+      acceptFirst = resolve;
+    });
+    const watchdog = {
+      prepare: vi
+        .fn()
+        .mockResolvedValueOnce({ arm: vi.fn(), cancel: vi.fn() })
+        .mockResolvedValueOnce({ arm: vi.fn(), cancel: vi.fn() }),
+    } as unknown as InteractiveChatWatchdogService;
+    const { service, opencodeService, agent } = await setup({ watchdog });
+    const snapshot = await service.resolveCurrent(agent.id);
+    opencodeService.promptSessionAsync = vi
+      .fn()
+      .mockImplementationOnce(() => firstPrompt)
+      .mockResolvedValueOnce(undefined);
+
+    const first = service.sendPromptAsync(snapshot.current.id, { text: "first", attachments: [] });
+    const second = service.sendPromptAsync(snapshot.current.id, {
+      text: "second",
+      attachments: [],
+    });
+    await vi.waitFor(() => expect(opencodeService.promptSessionAsync).toHaveBeenCalledOnce());
+    expect(watchdog.prepare).toHaveBeenCalledOnce();
+
+    acceptFirst?.();
+    await Promise.all([first, second]);
+
+    expect(watchdog.prepare).toHaveBeenCalledTimes(2);
+    expect(opencodeService.promptSessionAsync).toHaveBeenCalledTimes(2);
+  });
+
+  it("cancels only a failed replacement candidate", async () => {
+    const firstArm = vi.fn();
+    const firstCancel = vi.fn();
+    const secondArm = vi.fn();
+    const secondCancel = vi.fn();
+    const watchdog = {
+      prepare: vi
+        .fn()
+        .mockResolvedValueOnce({ arm: firstArm, cancel: firstCancel })
+        .mockResolvedValueOnce({ arm: secondArm, cancel: secondCancel }),
+    } as unknown as InteractiveChatWatchdogService;
+    const { service, opencodeService, agent } = await setup({ watchdog });
+    const snapshot = await service.resolveCurrent(agent.id);
+    opencodeService.promptSessionAsync = vi
+      .fn()
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error("prompt rejected"));
+
+    await service.sendPromptAsync(snapshot.current.id, { text: "first", attachments: [] });
+    await expect(
+      service.sendPromptAsync(snapshot.current.id, { text: "second", attachments: [] }),
+    ).rejects.toThrow("prompt rejected");
+
+    expect(firstArm).toHaveBeenCalledOnce();
+    expect(firstCancel).not.toHaveBeenCalled();
+    expect(secondArm).not.toHaveBeenCalled();
+    expect(secondCancel).toHaveBeenCalledOnce();
+  });
+
   it("runs command, shell, async prompt, and summarize on the current session", async () => {
     const { service, opencodeService, agent } = await setup();
     const snapshot = await service.resolveCurrent(agent.id);

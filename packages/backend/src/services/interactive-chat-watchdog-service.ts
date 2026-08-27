@@ -25,9 +25,14 @@ type WatchdogHandle = {
   lastProgressAt: number;
   timer?: ReturnType<typeof setInterval>;
   polling?: boolean;
+  pollController?: AbortController;
   abortController?: AbortController;
   abortPromise?: Promise<void>;
+  abortFailures: number;
+  replacements: number;
 };
+
+const MAX_ABORT_FAILURES = 3;
 
 export type InteractiveChatWatchdogService = ReturnType<
   typeof createInteractiveChatWatchdogService
@@ -39,15 +44,19 @@ export function createInteractiveChatWatchdogService(options: {
   noProgressMs?: number;
   pollMs?: number;
   prepareTimeoutMs?: number;
+  pollTimeoutMs?: number;
   now?: () => number;
 }) {
   const noProgressMs = options.noProgressMs ?? 30 * 60 * 1_000;
   const pollMs = options.pollMs ?? 30_000;
   const prepareTimeoutMs = options.prepareTimeoutMs ?? 30_000;
+  const pollTimeoutMs = options.pollTimeoutMs ?? prepareTimeoutMs;
   const now = options.now ?? Date.now;
   const handles = new Map<string, WatchdogHandle>();
   const errors = new Map<string, WatchdogEvent>();
   const listeners = new Map<string, Set<(event: WatchdogEvent) => void>>();
+  const generations = new Map<string, number>();
+  let disposed = false;
 
   return {
     async prepare(input: {
@@ -55,13 +64,27 @@ export function createInteractiveChatWatchdogService(options: {
       directory: string;
       sessionID: string;
     }): Promise<{ arm: () => void; cancel: () => void }> {
-      await stop(input.conversationId);
-      errors.delete(input.conversationId);
+      const generation = generations.get(input.conversationId) ?? 0;
+      const activeAbort = handles.get(input.conversationId)?.abortPromise;
+      if (activeAbort) await activeAbort;
+      const protectedHandle = handles.get(input.conversationId);
+      if (protectedHandle) protectedHandle.replacements += 1;
+      let replacementReleased = false;
+
+      function releaseReplacement(): void {
+        if (replacementReleased) return;
+        replacementReleased = true;
+        if (protectedHandle) protectedHandle.replacements -= 1;
+      }
+
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), prepareTimeoutMs);
       let snapshot: Awaited<ReturnType<typeof readSnapshot>>;
       try {
         snapshot = await readSnapshot(input.directory, input.sessionID, controller.signal);
+      } catch (error) {
+        releaseReplacement();
+        throw error;
       } finally {
         clearTimeout(timeout);
       }
@@ -71,12 +94,26 @@ export function createInteractiveChatWatchdogService(options: {
         signature: snapshot.signature,
         sawProgress: false,
         lastProgressAt: now(),
+        abortFailures: 0,
+        replacements: 0,
       };
-      handles.set(input.conversationId, handle);
+      let cancelled = false;
 
       return {
         arm: () => {
-          if (handles.get(input.conversationId) !== handle || handle.timer) return;
+          if (
+            disposed ||
+            cancelled ||
+            generation !== (generations.get(input.conversationId) ?? 0) ||
+            handle.timer
+          ) {
+            return;
+          }
+          const previous = handles.get(input.conversationId);
+          handles.set(input.conversationId, handle);
+          deactivate(previous);
+          releaseReplacement();
+          errors.delete(input.conversationId);
           handle.timer = setInterval(() => {
             if (handle.polling) return;
             handle.polling = true;
@@ -87,6 +124,8 @@ export function createInteractiveChatWatchdogService(options: {
           handle.timer.unref?.();
         },
         cancel: () => {
+          cancelled = true;
+          releaseReplacement();
           if (handles.get(input.conversationId) === handle) void stop(input.conversationId);
         },
       };
@@ -115,11 +154,13 @@ export function createInteractiveChatWatchdogService(options: {
     },
 
     cancel(conversationId: string): void {
+      generations.set(conversationId, (generations.get(conversationId) ?? 0) + 1);
       void stop(conversationId);
       errors.delete(conversationId);
     },
 
     dispose(): void {
+      disposed = true;
       for (const conversationId of handles.keys()) void stop(conversationId);
       listeners.clear();
       errors.clear();
@@ -130,66 +171,85 @@ export function createInteractiveChatWatchdogService(options: {
     const isCurrent = () => handles.get(handle.conversationId) === handle;
     if (!isCurrent()) return;
 
-    try {
-      const [statuses, snapshot] = await Promise.all([
-        options.opencodeService.listSessionStatuses(handle.directory),
-        readSnapshot(handle.directory, handle.sessionID),
-      ]);
-      if (!isCurrent()) return;
-      if (snapshot.signature !== handle.signature) {
-        handle.signature = snapshot.signature;
-        handle.sawProgress = true;
-        handle.lastProgressAt = now();
-      }
-      const status = statuses[handle.sessionID];
-      if (
-        status?.type !== "busy" &&
-        status?.type !== "retry" &&
-        handle.sawProgress &&
-        snapshot.settled
-      ) {
-        void stop(handle.conversationId);
-        return;
-      }
-    } catch (error) {
-      if (!isCurrent()) return;
-      options.logger.warn(
-        { err: error, conversationId: handle.conversationId, sessionID: handle.sessionID },
-        "interactive chat watchdog snapshot failed",
-      );
-    }
-
-    if (now() - handle.lastProgressAt < noProgressMs) return;
+    const pollController = new AbortController();
+    handle.pollController = pollController;
+    const pollTimeout = setTimeout(() => pollController.abort(), pollTimeoutMs);
 
     try {
-      if (await hasPendingInteraction(handle.directory, handle.sessionID)) {
+      try {
+        const [statuses, snapshot] = await Promise.all([
+          options.opencodeService.listSessionStatuses(handle.directory, pollController.signal),
+          readSnapshot(handle.directory, handle.sessionID, pollController.signal),
+        ]);
         if (!isCurrent()) return;
-        handle.lastProgressAt = now();
-        return;
+        if (snapshot.signature !== handle.signature) {
+          handle.signature = snapshot.signature;
+          handle.sawProgress = true;
+          handle.lastProgressAt = now();
+        }
+        const status = statuses[handle.sessionID];
+        if (
+          status?.type !== "busy" &&
+          status?.type !== "retry" &&
+          handle.sawProgress &&
+          snapshot.settled
+        ) {
+          void stop(handle.conversationId);
+          return;
+        }
+      } catch (error) {
+        if (!isCurrent()) return;
+        if (pollController.signal.aborted) return;
+        options.logger.warn(
+          { err: error, conversationId: handle.conversationId, sessionID: handle.sessionID },
+          "interactive chat watchdog snapshot failed",
+        );
       }
-    } catch (error) {
-      if (!isCurrent()) return;
-      options.logger.warn(
-        { err: error, conversationId: handle.conversationId, sessionID: handle.sessionID },
-        "interactive chat watchdog pending-interaction read failed",
-      );
-    }
 
-    try {
-      const finalSnapshot = await readSnapshot(handle.directory, handle.sessionID);
-      if (!isCurrent()) return;
-      if (finalSnapshot.signature !== handle.signature) {
-        handle.signature = finalSnapshot.signature;
-        handle.sawProgress = true;
-        handle.lastProgressAt = now();
-        return;
+      if (now() - handle.lastProgressAt < noProgressMs) return;
+
+      try {
+        if (
+          await hasPendingInteraction(handle.directory, handle.sessionID, pollController.signal)
+        ) {
+          if (!isCurrent()) return;
+          handle.lastProgressAt = now();
+          return;
+        }
+      } catch (error) {
+        if (!isCurrent()) return;
+        if (pollController.signal.aborted) return;
+        options.logger.warn(
+          { err: error, conversationId: handle.conversationId, sessionID: handle.sessionID },
+          "interactive chat watchdog pending-interaction read failed",
+        );
       }
-    } catch {
-      if (!isCurrent()) return;
-      // A failed final read does not turn an already-stalled session into progress.
+
+      try {
+        const finalSnapshot = await readSnapshot(
+          handle.directory,
+          handle.sessionID,
+          pollController.signal,
+        );
+        if (!isCurrent()) return;
+        if (finalSnapshot.signature !== handle.signature) {
+          handle.signature = finalSnapshot.signature;
+          handle.sawProgress = true;
+          handle.lastProgressAt = now();
+          return;
+        }
+      } catch {
+        if (!isCurrent()) return;
+        if (pollController.signal.aborted) return;
+        // A failed final read does not turn an already-stalled session into progress.
+      }
+    } finally {
+      clearTimeout(pollTimeout);
+      if (handle.pollController === pollController) handle.pollController = undefined;
     }
 
     if (!isCurrent()) return;
+    if (handle.replacements > 0) return;
     const abortController = new AbortController();
     handle.abortController = abortController;
     const abortTimeout = setTimeout(() => abortController.abort(), 30_000);
@@ -213,24 +273,39 @@ export function createInteractiveChatWatchdogService(options: {
       });
     handle.abortPromise = abortRequest.then(() => undefined);
     const aborted = await abortRequest;
-    if (!aborted) return;
+    if (!aborted) {
+      handle.abortFailures += 1;
+      if (handle.abortFailures < MAX_ABORT_FAILURES || !isCurrent()) return;
+      publishError(
+        handle,
+        "Response made no progress and could not be stopped automatically after repeated attempts. Abort the chat before sending another message.",
+      );
+      void stop(handle.conversationId);
+      return;
+    }
     if (!isCurrent()) return;
 
+    publishError(
+      handle,
+      "Response stopped automatically because the chat and its delegated sessions produced no observable progress for 30 minutes.",
+    );
+    void stop(handle.conversationId);
+  }
+
+  function publishError(handle: WatchdogHandle, message: string): void {
     const event: WatchdogEvent = {
       type: "session.error",
       properties: {
         sessionID: handle.sessionID,
         error: {
           name: "ChatNoProgressError",
-          message:
-            "Response stopped automatically because the chat and its delegated sessions produced no observable progress for 30 minutes.",
+          message,
           data: { noProgressMs },
         },
       },
     };
     errors.set(handle.conversationId, event);
     for (const listener of listeners.get(handle.conversationId) ?? []) listener(event);
-    void stop(handle.conversationId);
   }
 
   async function readSnapshot(
@@ -266,11 +341,15 @@ export function createInteractiveChatWatchdogService(options: {
     };
   }
 
-  async function hasPendingInteraction(directory: string, rootSessionID: string): Promise<boolean> {
+  async function hasPendingInteraction(
+    directory: string,
+    rootSessionID: string,
+    signal: AbortSignal,
+  ): Promise<boolean> {
     const [sessionIDs, permissions, questions] = await Promise.all([
-      options.opencodeService.getSessionTreeIds(directory, rootSessionID),
-      options.opencodeService.listPendingPermissions(directory),
-      options.opencodeService.listPendingQuestions(directory),
+      options.opencodeService.getSessionTreeIds(directory, rootSessionID, signal),
+      options.opencodeService.listPendingPermissions(directory, signal),
+      options.opencodeService.listPendingQuestions(directory, signal),
     ]);
     return (
       permissions.some((permission) => sessionIDs.has(permission.sessionID)) ||
@@ -280,9 +359,14 @@ export function createInteractiveChatWatchdogService(options: {
 
   function stop(conversationId: string): Promise<void> | undefined {
     const handle = handles.get(conversationId);
-    if (handle?.timer) clearInterval(handle.timer);
     handles.delete(conversationId);
-    handle?.abortController?.abort();
+    deactivate(handle);
     return handle?.abortPromise;
+  }
+
+  function deactivate(handle: WatchdogHandle | undefined): void {
+    if (handle?.timer) clearInterval(handle.timer);
+    handle?.pollController?.abort();
+    handle?.abortController?.abort();
   }
 }

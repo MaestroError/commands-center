@@ -150,6 +150,7 @@ export function createConversationService(options: {
   // a lost pending snapshot degrades to the modal's "current configuration"
   // fallback, which is acceptable per the portable-workspace rules.
   const pendingSnapshots = new Map<string, ResolvedSystemPrompt[]>();
+  const promptSendTails = new Map<string, Promise<void>>();
 
   return {
     async resolveCurrent(agentId: string): Promise<ConversationSnapshot> {
@@ -524,49 +525,51 @@ export function createConversationService(options: {
     ): Promise<void> {
       const parsed = sendConversationPromptInputSchema.parse(input);
       const loaded = await getConversationAgent(conversationId);
-      const watchdog = await options.interactiveChatWatchdogService
-        ?.prepare({
-          conversationId: loaded.conversation.id,
-          directory: loaded.agent.workspace_path,
-          sessionID: loaded.conversation.opencode_session_id,
-        })
-        .catch((error: unknown) => {
-          options.logger?.warn(
-            { err: error, conversationId: loaded.conversation.id },
-            "interactive chat watchdog preparation failed",
-          );
-          return undefined;
-        });
+      return serializePromptSend(loaded.conversation.id, async () => {
+        const watchdog = await options.interactiveChatWatchdogService
+          ?.prepare({
+            conversationId: loaded.conversation.id,
+            directory: loaded.agent.workspace_path,
+            sessionID: loaded.conversation.opencode_session_id,
+          })
+          .catch((error: unknown) => {
+            options.logger?.warn(
+              { err: error, conversationId: loaded.conversation.id },
+              "interactive chat watchdog preparation failed",
+            );
+            return undefined;
+          });
 
-      try {
-        await setCurrentConversation(loaded.agent.id, loaded.conversation.id);
-        const { system, snapshot } = await composeSystem(
-          "chat",
-          loaded.agent,
-          loaded.conversation,
-          parseOverrides(loaded.conversation),
-        );
-        await options.opencodeService.promptSessionAsync({
-          directory: loaded.agent.workspace_path,
-          sessionID: loaded.conversation.opencode_session_id,
-          agent: resolveOpenCodeAgent(loaded.agent.slug),
-          model: await resolveRunModel(
-            loaded.agent.workspace_path,
-            parsed.model,
-            loaded.agent.default_model,
-          ),
-          text: parsed.text,
-          attachments: parsed.attachments,
-          system,
-        });
-        // Streaming send does not sync here; the snapshot is attached by the next
-        // syncConversation once OpenCode echoes the user message back.
-        pendingSnapshots.set(loaded.conversation.id, snapshot);
-        watchdog?.arm();
-      } catch (error) {
-        watchdog?.cancel();
-        throw error;
-      }
+        try {
+          await setCurrentConversation(loaded.agent.id, loaded.conversation.id);
+          const { system, snapshot } = await composeSystem(
+            "chat",
+            loaded.agent,
+            loaded.conversation,
+            parseOverrides(loaded.conversation),
+          );
+          await options.opencodeService.promptSessionAsync({
+            directory: loaded.agent.workspace_path,
+            sessionID: loaded.conversation.opencode_session_id,
+            agent: resolveOpenCodeAgent(loaded.agent.slug),
+            model: await resolveRunModel(
+              loaded.agent.workspace_path,
+              parsed.model,
+              loaded.agent.default_model,
+            ),
+            text: parsed.text,
+            attachments: parsed.attachments,
+            system,
+          });
+          // Streaming send does not sync here; the snapshot is attached by the next
+          // syncConversation once OpenCode echoes the user message back.
+          pendingSnapshots.set(loaded.conversation.id, snapshot);
+          watchdog?.arm();
+        } catch (error) {
+          watchdog?.cancel();
+          throw error;
+        }
+      });
     },
 
     async resolveConversationAgent(conversationId: string) {
@@ -838,6 +841,17 @@ export function createConversationService(options: {
       options.interactiveChatWatchdogService?.cancel(conversation.id);
     },
   };
+
+  function serializePromptSend(conversationId: string, send: () => Promise<void>): Promise<void> {
+    const previous = promptSendTails.get(conversationId) ?? Promise.resolve();
+    const current = previous.catch(() => {}).then(send);
+    promptSendTails.set(conversationId, current);
+    const clear = () => {
+      if (promptSendTails.get(conversationId) === current) promptSendTails.delete(conversationId);
+    };
+    void current.then(clear, clear);
+    return current;
+  }
 
   async function verifyPendingQuestion(
     loaded: Awaited<ReturnType<typeof getConversationAgent>>,

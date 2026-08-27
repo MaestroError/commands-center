@@ -452,12 +452,16 @@ export function createOpenCodeService(options: {
       return z.array(openCodeMessageSchema).parse(result);
     },
 
-    async listSessionStatuses(directory: string): Promise<OpenCodeSessionStatusMap> {
+    async listSessionStatuses(
+      directory: string,
+      signal?: AbortSignal,
+    ): Promise<OpenCodeSessionStatusMap> {
       const result = await requestSessionJson({
         config: options.config,
         directory,
         method: "GET",
         path: "/session/status",
+        signal,
       });
       return openCodeSessionStatusMapSchema.parse(result);
     },
@@ -605,12 +609,16 @@ export function createOpenCodeService(options: {
       );
     },
 
-    async listPendingPermissions(directory: string): Promise<OpenCodePendingPermission[]> {
+    async listPendingPermissions(
+      directory: string,
+      signal?: AbortSignal,
+    ): Promise<OpenCodePendingPermission[]> {
       const result = await requestSessionJson({
         config: options.config,
         directory,
         method: "GET",
         path: "/permission",
+        signal,
       });
       return openCodePendingPermissionListSchema.parse(result);
     },
@@ -627,12 +635,16 @@ export function createOpenCodeService(options: {
       );
     },
 
-    async listPendingQuestions(directory: string): Promise<OpenCodePendingQuestion[]> {
+    async listPendingQuestions(
+      directory: string,
+      signal?: AbortSignal,
+    ): Promise<OpenCodePendingQuestion[]> {
       const result = await requestSessionJson({
         config: options.config,
         directory,
         method: "GET",
         path: "/question",
+        signal,
       });
       return openCodePendingQuestionListSchema.parse(result);
     },
