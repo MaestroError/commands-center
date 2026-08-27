@@ -332,6 +332,73 @@ describe("server-sent event routes", () => {
     expect(interactiveChatWatchdogService.subscribe).toHaveBeenCalled();
   });
 
+  it("replays a stored chat watchdog error after an upstream reconnect", async () => {
+    const testDb = await createTestDatabase();
+    disposers.push(() => testDb.cleanup());
+    const agentService = createSpecialistService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: opencodeService(),
+    });
+    const agent = await agentService.create({
+      name: "Reconnecting",
+      role: "chat",
+      instructions: "Exist.",
+      defaultModel: "openai/gpt-4.1",
+      capabilities: {},
+    });
+    const conversationId = await insertConversation(testDb.client.db, agent.id);
+    const openCodeEventService = {
+      subscribe: vi.fn((opts: { onReady: () => void }) => {
+        opts.onReady();
+        queueMicrotask(() => opts.onReady());
+      }),
+    };
+    const interactiveChatWatchdogService = {
+      subscribe: vi.fn(),
+      getError: vi
+        .fn()
+        .mockReturnValueOnce({
+          type: "session.error",
+          properties: {
+            sessionID: "session-root",
+            error: {
+              name: "ChatNoProgressError",
+              message: "Initial recovery error.",
+              data: { noProgressMs: 1_800_000 },
+            },
+          },
+        })
+        .mockReturnValue({
+          type: "session.error",
+          properties: {
+            sessionID: "session-root",
+            error: {
+              name: "ChatNoProgressError",
+              message: "Reconnected recovery error.",
+              data: { noProgressMs: 1_800_000 },
+            },
+          },
+        }),
+    };
+    const port = await bootServer(testDb, {
+      openCodeEventService: openCodeEventService as never,
+      interactiveChatWatchdogService: interactiveChatWatchdogService as never,
+    });
+
+    const chunk = await readUntilText(
+      `http://127.0.0.1:${port}/api/conversations/${conversationId}/events`,
+      "Reconnected recovery error.",
+    );
+
+    expect(chunk.match(/"type":"connected"/g)).toHaveLength(2);
+    expect(chunk).toContain('"reconnected":true');
+    expect(chunk.indexOf('"reconnected":true')).toBeLessThan(
+      chunk.indexOf("Reconnected recovery error."),
+    );
+    expect(interactiveChatWatchdogService.getError).toHaveBeenCalledTimes(2);
+  });
+
   // A live request is published once, to whoever is subscribed at that instant.
   // A stream that connects afterwards — first load, or any reconnect — would
   // otherwise never learn about an open form, leaving the operator on a chat with

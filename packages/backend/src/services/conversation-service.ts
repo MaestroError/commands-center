@@ -156,7 +156,7 @@ export function createConversationService(options: {
   // a lost pending snapshot degrades to the modal's "current configuration"
   // fallback, which is acceptable per the portable-workspace rules.
   const pendingSnapshots = new Map<string, ResolvedSystemPrompt[]>();
-  const conversationOperationTails = new Map<string, Promise<void>>();
+  const conversationOperationTails = new Map<string, Promise<unknown>>();
   const taskRunOperationGuard = createTaskRunOperationGuard();
   const watchdogRecoveryController = new AbortController();
   const watchdogRecoveryRetryDelaysMs =
@@ -462,31 +462,46 @@ export function createConversationService(options: {
       input: SendConversationPromptInput,
     ): Promise<ConversationDetail> {
       const parsed = sendConversationPromptInputSchema.parse(input);
-      const loaded = await getConversationAgent(conversationId);
-
-      await setCurrentConversation(loaded.agent.id, loaded.conversation.id);
-      const { system, snapshot } = await composeSystem(
-        "chat",
-        loaded.agent,
-        loaded.conversation,
-        parseOverrides(loaded.conversation),
-      );
-      await options.opencodeService.promptSession({
-        directory: loaded.agent.workspace_path,
-        sessionID: loaded.conversation.opencode_session_id,
-        agent: resolveOpenCodeAgent(loaded.agent.slug),
-        model: await resolveRunModel(
-          loaded.agent.workspace_path,
-          parsed.model,
-          loaded.agent.default_model,
-        ),
-        text: parsed.text,
-        attachments: parsed.attachments,
-        system,
+      return serializeConversationOperation(conversationId, async () => {
+        const loaded = await getConversationAgent(conversationId);
+        const watchdog = await prepareInteractiveChatWatchdog(loaded);
+        let promptStarted = false;
+        try {
+          await setCurrentConversation(loaded.agent.id, loaded.conversation.id);
+          const { system, snapshot } = await composeSystem(
+            "chat",
+            loaded.agent,
+            loaded.conversation,
+            parseOverrides(loaded.conversation),
+          );
+          const model = await resolveRunModel(
+            loaded.agent.workspace_path,
+            parsed.model,
+            loaded.agent.default_model,
+          );
+          promptStarted = true;
+          watchdog?.arm();
+          await options.opencodeService.promptSession({
+            directory: loaded.agent.workspace_path,
+            sessionID: loaded.conversation.opencode_session_id,
+            agent: resolveOpenCodeAgent(loaded.agent.slug),
+            model,
+            text: parsed.text,
+            attachments: parsed.attachments,
+            system,
+            signal: openCodeRequestSignal(),
+          });
+          watchdog?.cancel();
+          pendingSnapshots.set(loaded.conversation.id, snapshot);
+          await syncConversation(loaded.agent, loaded.conversation);
+          return getConversationDetail(loaded.conversation.id);
+        } catch (error) {
+          if (!promptStarted || error instanceof OpenCodeRequestError) {
+            watchdog?.cancel();
+          }
+          throw error;
+        }
       });
-      pendingSnapshots.set(loaded.conversation.id, snapshot);
-      await syncConversation(loaded.agent, loaded.conversation);
-      return getConversationDetail(loaded.conversation.id);
     },
 
     async sendCommand(
@@ -551,20 +566,7 @@ export function createConversationService(options: {
       const parsed = sendConversationPromptInputSchema.parse(input);
       return serializeConversationOperation(conversationId, async () => {
         const loaded = await getConversationAgent(conversationId);
-        const watchdogInput = {
-          conversationId: loaded.conversation.id,
-          directory: loaded.agent.workspace_path,
-          sessionID: loaded.conversation.opencode_session_id,
-        };
-        const watchdog = await options.interactiveChatWatchdogService
-          ?.prepare(watchdogInput)
-          .catch(async (error: unknown) => {
-            options.logger?.warn(
-              { err: error, conversationId: loaded.conversation.id },
-              "interactive chat watchdog preparation failed",
-            );
-            return options.interactiveChatWatchdogService?.prepareFallback(watchdogInput);
-          });
+        const watchdog = await prepareInteractiveChatWatchdog(loaded);
 
         let promptStarted = false;
         try {
@@ -670,18 +672,25 @@ export function createConversationService(options: {
       reply: "once" | "always" | "reject",
     ): Promise<void> {
       const loaded = await getConversationAgent(conversationId);
+      const signal = openCodeRequestSignal();
       const [permissions, sessionIDs] = await Promise.all([
-        options.opencodeService.listPendingPermissions(loaded.agent.workspace_path),
+        options.opencodeService.listPendingPermissions(loaded.agent.workspace_path, signal),
         options.opencodeService.getSessionTreeIds(
           loaded.agent.workspace_path,
           loaded.conversation.opencode_session_id,
+          signal,
         ),
       ]);
       const request = permissions.find((permission) => permission.id === requestId);
       if (!request || !sessionIDs.has(request.sessionID)) {
         throw new NotFoundError(`Pending request "${requestId}" no longer exists.`);
       }
-      await options.opencodeService.replyPermission(loaded.agent.workspace_path, requestId, reply);
+      await options.opencodeService.replyPermission(
+        loaded.agent.workspace_path,
+        requestId,
+        reply,
+        signal,
+      );
     },
 
     async replyQuestion(
@@ -690,14 +699,21 @@ export function createConversationService(options: {
       answers: string[][],
     ): Promise<void> {
       const loaded = await getConversationAgent(conversationId);
-      await verifyPendingQuestion(loaded, requestId);
-      await options.opencodeService.replyQuestion(loaded.agent.workspace_path, requestId, answers);
+      const signal = openCodeRequestSignal();
+      await verifyPendingQuestion(loaded, requestId, signal);
+      await options.opencodeService.replyQuestion(
+        loaded.agent.workspace_path,
+        requestId,
+        answers,
+        signal,
+      );
     },
 
     async rejectQuestion(conversationId: string, requestId: string): Promise<void> {
       const loaded = await getConversationAgent(conversationId);
-      await verifyPendingQuestion(loaded, requestId);
-      await options.opencodeService.rejectQuestion(loaded.agent.workspace_path, requestId);
+      const signal = openCodeRequestSignal();
+      await verifyPendingQuestion(loaded, requestId, signal);
+      await options.opencodeService.rejectQuestion(loaded.agent.workspace_path, requestId, signal);
     },
 
     async abortConversation(conversationId: string): Promise<void> {
@@ -824,13 +840,15 @@ export function createConversationService(options: {
     // reality even after the user navigated away and came back.
     async listPendingInteractions(conversationId: string): Promise<PendingChatInteractions> {
       const loaded = await getConversationAgent(conversationId);
+      const signal = openCodeRequestSignal();
       const [permissions, questions] = await Promise.all([
-        options.opencodeService.listPendingPermissions(loaded.agent.workspace_path),
-        options.opencodeService.listPendingQuestions(loaded.agent.workspace_path),
+        options.opencodeService.listPendingPermissions(loaded.agent.workspace_path, signal),
+        options.opencodeService.listPendingQuestions(loaded.agent.workspace_path, signal),
       ]);
       const sessionIDs = await options.opencodeService.getSessionTreeIds(
         loaded.agent.workspace_path,
         loaded.conversation.opencode_session_id,
+        signal,
       );
 
       const pendingQuestions = questions
@@ -1046,10 +1064,10 @@ export function createConversationService(options: {
     }
   }
 
-  function serializeConversationOperation(
+  function serializeConversationOperation<T>(
     conversationId: string,
-    operation: () => Promise<void>,
-  ): Promise<void> {
+    operation: () => Promise<T>,
+  ): Promise<T> {
     const previous = conversationOperationTails.get(conversationId) ?? Promise.resolve();
     const current = previous.catch(() => {}).then(operation);
     conversationOperationTails.set(conversationId, current);
@@ -1065,18 +1083,39 @@ export function createConversationService(options: {
   async function verifyPendingQuestion(
     loaded: Awaited<ReturnType<typeof getConversationAgent>>,
     requestId: string,
+    signal: AbortSignal,
   ): Promise<void> {
     const [questions, sessionIDs] = await Promise.all([
-      options.opencodeService.listPendingQuestions(loaded.agent.workspace_path),
+      options.opencodeService.listPendingQuestions(loaded.agent.workspace_path, signal),
       options.opencodeService.getSessionTreeIds(
         loaded.agent.workspace_path,
         loaded.conversation.opencode_session_id,
+        signal,
       ),
     ]);
     const request = questions.find((question) => question.id === requestId);
     if (!request || !sessionIDs.has(request.sessionID)) {
       throw new NotFoundError(`Pending request "${requestId}" no longer exists.`);
     }
+  }
+
+  async function prepareInteractiveChatWatchdog(
+    loaded: Awaited<ReturnType<typeof getConversationAgent>>,
+  ) {
+    const watchdogInput = {
+      conversationId: loaded.conversation.id,
+      directory: loaded.agent.workspace_path,
+      sessionID: loaded.conversation.opencode_session_id,
+    };
+    return options.interactiveChatWatchdogService
+      ?.prepare(watchdogInput)
+      .catch(async (error: unknown) => {
+        options.logger?.warn(
+          { err: error, conversationId: loaded.conversation.id },
+          "interactive chat watchdog preparation failed",
+        );
+        return options.interactiveChatWatchdogService?.prepareFallback(watchdogInput);
+      });
   }
 
   async function archiveConversation(

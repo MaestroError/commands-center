@@ -113,6 +113,15 @@ Route direct and nested OpenCode descendant interactions through their owning ro
 - Record successful and stale manual permission replies as terminal interaction events so in-flight snapshots cannot restore an already-resolved permission.
 - Cover unresolved task-run replies, stalled abort/delete requests, newer-failure/older-success hydration, and manual permission reply/reconnect ordering.
 
+### 13. Exact-head prompt and interaction request budgets
+
+- Protect synchronous interactive prompts with the same serialized watchdog preparation and configured OpenCode request budget used by asynchronous prompts, while preserving the synchronous response contract.
+- Keep watchdog protection armed after an ambiguous synchronous prompt timeout and cancel it after success or definitive rejection.
+- Give chat pending-interaction hydration and each manual permission/question reply one configured OpenCode request budget spanning listing, ancestry verification, and mutation.
+- Extend OpenCode question reply/reject operations to accept and forward abort signals.
+- Replay a stored watchdog error after every upstream OpenCode reconnect before reconnect detail hydration can clear the displayed error.
+- Cover stalled synchronous prompts, stalled pending hydration and manual replies, adapter signal forwarding, and watchdog error replay after an upstream reconnect.
+
 ## Verification
 
 1. Run focused backend adapter, event, conversation, monitor, route, and watchdog tests.

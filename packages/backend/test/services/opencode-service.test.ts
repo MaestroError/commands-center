@@ -900,6 +900,38 @@ describe("opencode-service", () => {
       expect(body.parts).toHaveLength(2);
     });
 
+    it("forwards a request signal to a synchronous prompt", async () => {
+      const hangingFetch = vi.fn(
+        (_url: URL, init: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            init.signal?.addEventListener(
+              "abort",
+              () =>
+                reject(
+                  init.signal?.reason instanceof Error ? init.signal.reason : new Error("aborted"),
+                ),
+              { once: true },
+            );
+          }),
+      );
+      vi.stubGlobal("fetch", hangingFetch);
+      const service = makeService();
+      const controller = new AbortController();
+
+      const request = service.promptSession({
+        directory: "/work/a",
+        sessionID: "sess-1",
+        agent: "build",
+        model: { providerID: "openai", modelID: "gpt-4.1" },
+        text: "go",
+        signal: controller.signal,
+      });
+      controller.abort();
+
+      await expect(request).rejects.toThrow();
+      expect((hangingFetch.mock.calls[0]?.[1] as RequestInit).signal).toBe(controller.signal);
+    });
+
     it("issues command, summarize, shell, and abort/delete requests", async () => {
       fetchMock.mockResolvedValue(jsonResponse(204));
       const service = makeService();
@@ -953,6 +985,39 @@ describe("opencode-service", () => {
         "/question/q-1/reject",
       ]);
     });
+
+    it.each(["reply", "reject"] as const)(
+      "forwards a request signal to a question %s",
+      async (action) => {
+        const hangingFetch = vi.fn(
+          (_url: URL, init: RequestInit) =>
+            new Promise<Response>((_resolve, reject) => {
+              init.signal?.addEventListener(
+                "abort",
+                () =>
+                  reject(
+                    init.signal?.reason instanceof Error
+                      ? init.signal.reason
+                      : new Error("aborted"),
+                  ),
+                { once: true },
+              );
+            }),
+        );
+        vi.stubGlobal("fetch", hangingFetch);
+        const service = makeService();
+        const controller = new AbortController();
+
+        const request =
+          action === "reply"
+            ? service.replyQuestion("/work/a", "q-1", [["yes"]], controller.signal)
+            : service.rejectQuestion("/work/a", "q-1", controller.signal);
+        controller.abort();
+
+        await expect(request).rejects.toThrow();
+        expect((hangingFetch.mock.calls[0]?.[1] as RequestInit).signal).toBe(controller.signal);
+      },
+    );
 
     it("treats a non-JSON 2xx response as success (true)", async () => {
       fetchMock.mockResolvedValue(new Response("OK", { status: 200 }));

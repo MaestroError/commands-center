@@ -514,6 +514,42 @@ describe("useConversation", () => {
     expect(result.current.sessionStatus).toEqual({ type: "busy" });
   });
 
+  it("preserves a replayed watchdog error after reconnect detail hydration resolves", async () => {
+    const reconnect = createDeferred<void>();
+    const detail = createDeferred<ConversationDetail>();
+    vi.mocked(getConversation).mockReturnValue(detail.promise);
+    vi.mocked(connectConversationEvents).mockImplementation(
+      async function* (_conversationId, signal): AsyncGenerator<ChatEvent> {
+        yield { type: "connected", properties: {} };
+        await reconnect.promise;
+        yield { type: "connected", properties: { reconnected: true } };
+        yield {
+          type: "session.error",
+          properties: {
+            sessionID: "sess-1",
+            error: {
+              name: "ChatNoProgressError",
+              message: "Response stopped automatically.",
+            },
+          },
+        };
+        await waitForAbort(signal);
+      },
+    );
+    const queryClient = createQueryClient();
+    const { result } = renderHook(() => useConversation("writer"), {
+      wrapper: createWrapper(queryClient),
+    });
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+
+    reconnect.resolve();
+    await waitFor(() => expect(result.current.sendError).toBe("Response stopped automatically."));
+    detail.resolve(makeConversation());
+    await act(async () => Promise.resolve());
+
+    expect(result.current.sendError).toBe("Response stopped automatically.");
+  });
+
   it("keeps the newest of overlapping reconnect detail snapshots", async () => {
     const firstReconnect = createDeferred<void>();
     const secondReconnect = createDeferred<void>();

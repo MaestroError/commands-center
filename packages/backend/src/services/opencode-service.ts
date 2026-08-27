@@ -492,6 +492,7 @@ export function createOpenCodeService(options: {
       text: string;
       attachments?: SendConversationAttachmentInput[];
       system?: string;
+      signal?: AbortSignal;
     }): Promise<OpenCodeSessionMessage> {
       // The synchronous /message endpoint returns the assistant message once the
       // turn settles. A terminal model failure (after opencode's own same-model
@@ -510,6 +511,7 @@ export function createOpenCodeService(options: {
           ...(input.system ? { system: input.system } : {}),
           parts: buildPromptParts(input.text, input.attachments ?? []),
         },
+        signal: input.signal,
       });
 
       return openCodeMessageSchema.parse(result);
@@ -634,7 +636,12 @@ export function createOpenCodeService(options: {
       return openCodePendingPermissionListSchema.parse(result);
     },
 
-    async replyQuestion(directory: string, requestId: string, answers: string[][]): Promise<void> {
+    async replyQuestion(
+      directory: string,
+      requestId: string,
+      answers: string[][],
+      signal?: AbortSignal,
+    ): Promise<void> {
       await withNotFoundRemap(requestId, () =>
         requestSessionJson({
           config: options.config,
@@ -642,6 +649,7 @@ export function createOpenCodeService(options: {
           method: "POST",
           path: `/question/${encodeURIComponent(requestId)}/reply`,
           body: { answers },
+          signal,
         }),
       );
     },
@@ -660,7 +668,11 @@ export function createOpenCodeService(options: {
       return openCodePendingQuestionListSchema.parse(result);
     },
 
-    async rejectQuestion(directory: string, requestId: string): Promise<void> {
+    async rejectQuestion(
+      directory: string,
+      requestId: string,
+      signal?: AbortSignal,
+    ): Promise<void> {
       await withNotFoundRemap(requestId, () =>
         requestSessionJson({
           config: options.config,
@@ -668,6 +680,7 @@ export function createOpenCodeService(options: {
           method: "POST",
           path: `/question/${encodeURIComponent(requestId)}/reject`,
           body: {},
+          signal,
         }),
       );
     },

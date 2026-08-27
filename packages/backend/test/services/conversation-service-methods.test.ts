@@ -388,6 +388,60 @@ describe("conversation-service delegating methods", () => {
     expect(cancel).not.toHaveBeenCalled();
   });
 
+  it("protects a synchronous prompt until it settles", async () => {
+    const prompt = createDeferred<Awaited<ReturnType<OpenCodeService["promptSession"]>>>();
+    const arm = vi.fn();
+    const cancel = vi.fn();
+    const watchdog = {
+      prepare: vi.fn(() => Promise.resolve({ arm, cancel })),
+    } as unknown as InteractiveChatWatchdogService;
+    const { service, opencodeService, agent } = await setup({ watchdog });
+    const snapshot = await service.resolveCurrent(agent.id);
+    opencodeService.promptSession = vi.fn(() => prompt.promise);
+
+    const sending = service.sendPrompt(snapshot.current.id, { text: "work", attachments: [] });
+    await vi.waitFor(() => expect(opencodeService.promptSession).toHaveBeenCalledOnce());
+
+    expect(arm).toHaveBeenCalledOnce();
+    expect(cancel).not.toHaveBeenCalled();
+    expect(opencodeService.promptSession).toHaveBeenCalledWith(
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+
+    prompt.resolve({
+      info: {
+        id: "message-sync",
+        sessionID: snapshot.current.opencodeSessionId,
+        role: "assistant",
+        time: { created: 1 },
+      },
+      parts: [{ id: "part-sync", type: "text", text: "done" }],
+    });
+    await sending;
+
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
+  it("retains watchdog protection when a synchronous prompt times out", async () => {
+    const arm = vi.fn();
+    const cancel = vi.fn();
+    const watchdog = {
+      prepare: vi.fn(() => Promise.resolve({ arm, cancel })),
+    } as unknown as InteractiveChatWatchdogService;
+    const { service, opencodeService, agent } = await setup({ watchdog, opencodeRequestMs: 10 });
+    const snapshot = await service.resolveCurrent(agent.id);
+    opencodeService.promptSession = vi.fn(({ signal }: { signal?: AbortSignal }) =>
+      neverSettlesUntilAborted<Awaited<ReturnType<OpenCodeService["promptSession"]>>>(signal),
+    );
+
+    await expect(
+      service.sendPrompt(snapshot.current.id, { text: "work", attachments: [] }),
+    ).rejects.toBeDefined();
+
+    expect(arm).toHaveBeenCalledOnce();
+    expect(cancel).not.toHaveBeenCalled();
+  });
+
   it("submits an async prompt when watchdog preparation fails", async () => {
     const error = new Error("snapshot failed");
     const logger = { warn: vi.fn() } as unknown as Logger;
@@ -728,6 +782,7 @@ describe("conversation-service delegating methods", () => {
           agent.workspacePath,
           "permission-descendant",
           action,
+          expect.any(AbortSignal),
         );
       } else if (action === "reply") {
         await service.replyQuestion(snapshot.current.id, "question-descendant", [["yes"]]);
@@ -735,12 +790,14 @@ describe("conversation-service delegating methods", () => {
           agent.workspacePath,
           "question-descendant",
           [["yes"]],
+          expect.any(AbortSignal),
         );
       } else {
         await service.rejectQuestion(snapshot.current.id, "question-descendant");
         expect(opencodeService.rejectQuestion).toHaveBeenCalledWith(
           agent.workspacePath,
           "question-descendant",
+          expect.any(AbortSignal),
         );
       }
     },
@@ -1206,6 +1263,119 @@ describe("conversation-service delegating methods", () => {
 
     expect(result).toEqual({ permissions: [], question: null, questions: [] });
   });
+
+  it.each(["permissions", "questions"] as const)(
+    "bounds stalled pending %s hydration",
+    async (interaction) => {
+      const { service, opencodeService, agent } = await setup({ opencodeRequestMs: 10 });
+      const snapshot = await service.resolveCurrent(agent.id);
+      if (interaction === "permissions") {
+        opencodeService.listPendingPermissions = vi.fn((_directory: string, signal?: AbortSignal) =>
+          neverSettlesUntilAborted<Awaited<ReturnType<OpenCodeService["listPendingPermissions"]>>>(
+            signal,
+          ),
+        );
+      } else {
+        opencodeService.listPendingQuestions = vi.fn((_directory: string, signal?: AbortSignal) =>
+          neverSettlesUntilAborted<Awaited<ReturnType<OpenCodeService["listPendingQuestions"]>>>(
+            signal,
+          ),
+        );
+      }
+
+      await expect(service.listPendingInteractions(snapshot.current.id)).rejects.toBeDefined();
+    },
+  );
+
+  it.each(["permission", "question reply", "question rejection"] as const)(
+    "bounds a stalled manual %s operation with one request budget",
+    async (interaction) => {
+      const { service, opencodeService, agent } = await setup({ opencodeRequestMs: 10 });
+      const snapshot = await service.resolveCurrent(agent.id);
+      const sessionID = snapshot.current.opencodeSessionId;
+      let operationSignal: AbortSignal | undefined;
+      const getSessionTreeIds = vi.fn(
+        (_directory: string, _sessionID: string, _signal?: AbortSignal) =>
+          Promise.resolve(new Set([sessionID])),
+      );
+      opencodeService.getSessionTreeIds = getSessionTreeIds;
+
+      if (interaction === "permission") {
+        const listPendingPermissions = vi.fn((_directory: string, signal?: AbortSignal) => {
+          operationSignal = signal;
+          return Promise.resolve([
+            {
+              id: "permission-stalled",
+              sessionID,
+              permission: "read",
+              patterns: ["*"],
+              always: [],
+              metadata: {},
+            },
+          ]);
+        });
+        opencodeService.listPendingPermissions = listPendingPermissions;
+        opencodeService.replyPermission = vi.fn(
+          (_directory: string, _requestId: string, _reply: "once", signal?: AbortSignal) => {
+            expect(signal).toBe(operationSignal);
+            return neverSettlesUntilAborted(signal);
+          },
+        );
+
+        await expect(
+          service.replyPermission(snapshot.current.id, "permission-stalled", "once"),
+        ).rejects.toBeDefined();
+        expect(listPendingPermissions).toHaveBeenCalledWith(
+          agent.workspacePath,
+          expect.any(AbortSignal),
+        );
+      } else {
+        const listPendingQuestions = vi.fn((_directory: string, signal?: AbortSignal) => {
+          operationSignal = signal;
+          return Promise.resolve([
+            {
+              id: "question-stalled",
+              sessionID,
+              questions: [{ question: "Proceed?", options: [] }],
+            },
+          ]);
+        });
+        opencodeService.listPendingQuestions = listPendingQuestions;
+        if (interaction === "question reply") {
+          opencodeService.replyQuestion = vi.fn(
+            (
+              _directory: string,
+              _requestId: string,
+              _answers: string[][],
+              signal?: AbortSignal,
+            ) => {
+              expect(signal).toBe(operationSignal);
+              return neverSettlesUntilAborted(signal);
+            },
+          );
+          await expect(
+            service.replyQuestion(snapshot.current.id, "question-stalled", [["yes"]]),
+          ).rejects.toBeDefined();
+        } else {
+          opencodeService.rejectQuestion = vi.fn(
+            (_directory: string, _requestId: string, signal?: AbortSignal) => {
+              expect(signal).toBe(operationSignal);
+              return neverSettlesUntilAborted(signal);
+            },
+          );
+          await expect(
+            service.rejectQuestion(snapshot.current.id, "question-stalled"),
+          ).rejects.toBeDefined();
+        }
+      }
+
+      expect(getSessionTreeIds).toHaveBeenCalledWith(
+        agent.workspacePath,
+        sessionID,
+        operationSignal,
+      );
+    },
+  );
 });
 
 function createDeferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
@@ -1216,8 +1386,8 @@ function createDeferred<T>(): { promise: Promise<T>; resolve: (value: T) => void
   return { promise, resolve };
 }
 
-function neverSettlesUntilAborted(signal?: AbortSignal): Promise<void> {
-  return new Promise<void>((_resolve, reject) => {
+function neverSettlesUntilAborted<T = void>(signal?: AbortSignal): Promise<T> {
+  return new Promise<T>((_resolve, reject) => {
     signal?.addEventListener(
       "abort",
       () => reject(signal.reason instanceof Error ? signal.reason : new Error("aborted")),

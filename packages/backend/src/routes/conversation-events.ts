@@ -99,12 +99,12 @@ export function registerConversationEventRoutes(server: AppServer, context: Runt
             type: "connected",
             properties: reconnected ? { reconnected: true } : {},
           });
-          if (reconnected) return;
-
           const watchdogError = context.interactiveChatWatchdogService?.getError(
             loaded.conversation.id,
           );
           if (watchdogError && !raw.destroyed) writeSseEvent(raw, watchdogError);
+
+          if (reconnected) return;
 
           for (const request of context.liveRequestService?.listByConversation(
             loaded.conversation.id,
