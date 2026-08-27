@@ -301,11 +301,14 @@ describe("MERGE_RECONNECT_DETAIL", () => {
       "shared",
       "live-only",
     ]);
+    expect(next.conversation?.messages[1]?.content).toBe("persisted");
   });
 
-  it("keeps live parts when reconnect hydration contains an older version", () => {
-    const livePart = makePart({ id: "part-shared", text: "newer live text" });
+  it("uses persisted parts for shared messages and keeps parts for live-only messages", () => {
+    const livePart = makePart({ id: "part-shared", text: "partial live text" });
+    const liveOnlyPart = makePart({ id: "part-live-only" });
     const state = stateWithConversation([makeMessage({ id: "shared" })], { shared: [livePart] });
+    state.parts["live-only"] = [liveOnlyPart];
 
     const next = conversationReducer(state, {
       type: "MERGE_RECONNECT_DETAIL",
@@ -313,13 +316,16 @@ describe("MERGE_RECONNECT_DETAIL", () => {
         messages: [
           makeMessage({
             id: "shared",
-            parts: [makePart({ id: "part-shared", text: "older persisted text" })],
+            parts: [makePart({ id: "part-shared", text: "completed persisted text" })],
           }),
         ],
       }),
     });
 
-    expect(next.parts["shared"]).toEqual([livePart]);
+    expect(next.parts["shared"]?.[0]).toEqual(
+      expect.objectContaining({ text: "completed persisted text" }),
+    );
+    expect(next.parts["live-only"]).toEqual([liveOnlyPart]);
   });
 
   it("preserves live interaction and session state", () => {

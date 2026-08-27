@@ -488,6 +488,7 @@ describe("useConversation", () => {
     vi.mocked(connectConversationEvents).mockImplementation((_conversationId, signal) =>
       reconnectingUpstream(signal, reconnect),
     );
+    vi.mocked(getConversation).mockResolvedValue(makeConversation());
     vi.mocked(getPendingInteractions)
       .mockResolvedValueOnce(noPendingInteractions())
       .mockResolvedValueOnce({
@@ -517,6 +518,170 @@ describe("useConversation", () => {
 
     await waitFor(() => {
       expect(result.current.pendingPermission?.id).toBe("permission-missed-during-outage");
+    });
+  });
+
+  it("removes interactions resolved during an upstream outage", async () => {
+    let reconnectUpstream: (() => void) | undefined;
+    const reconnect = new Promise<void>((resolve) => {
+      reconnectUpstream = resolve;
+    });
+    vi.mocked(connectConversationEvents).mockImplementation((_conversationId, signal) =>
+      reconnectingUpstream(signal, reconnect),
+    );
+    vi.mocked(getConversation).mockResolvedValue(makeConversation());
+    vi.mocked(getPendingInteractions)
+      .mockResolvedValueOnce({
+        permissions: [
+          {
+            id: "permission-resolved-during-outage",
+            sessionID: "sess-1",
+            permission: "bash",
+            patterns: [],
+            metadata: {},
+            always: [],
+          },
+        ],
+        question: null,
+        liveRequests: [makeLiveRequest()],
+      })
+      .mockResolvedValueOnce(noPendingInteractions());
+
+    const queryClient = createQueryClient();
+    const { result } = renderHook(() => useConversation("writer"), {
+      wrapper: createWrapper(queryClient),
+    });
+    await waitFor(() => {
+      expect(result.current.pendingPermission?.id).toBe("permission-resolved-during-outage");
+      expect(result.current.liveRequests).toHaveLength(1);
+    });
+
+    reconnectUpstream?.();
+
+    await waitFor(() => {
+      expect(result.current.pendingPermission).toBeNull();
+      expect(result.current.liveRequests).toEqual([]);
+    });
+  });
+
+  it("ignores an initial pending snapshot that resolves after reconnect hydration", async () => {
+    let reconnectUpstream: (() => void) | undefined;
+    let resolveInitialPending: ((pending: PendingInteractions) => void) | undefined;
+    const reconnect = new Promise<void>((resolve) => {
+      reconnectUpstream = resolve;
+    });
+    const initialPending = new Promise<PendingInteractions>((resolve) => {
+      resolveInitialPending = resolve;
+    });
+    vi.mocked(connectConversationEvents).mockImplementation((_conversationId, signal) =>
+      reconnectingUpstream(signal, reconnect),
+    );
+    vi.mocked(getConversation).mockResolvedValue(makeConversation());
+    vi.mocked(getPendingInteractions)
+      .mockReturnValueOnce(initialPending)
+      .mockResolvedValueOnce(noPendingInteractions());
+
+    const queryClient = createQueryClient();
+    const { result } = renderHook(() => useConversation("writer"), {
+      wrapper: createWrapper(queryClient),
+    });
+    await waitFor(() => {
+      expect(getPendingInteractions).toHaveBeenCalledTimes(1);
+    });
+
+    reconnectUpstream?.();
+    await waitFor(() => {
+      expect(getPendingInteractions).toHaveBeenCalledTimes(2);
+    });
+    resolveInitialPending?.({
+      permissions: [
+        {
+          id: "stale-initial-permission",
+          sessionID: "sess-1",
+          permission: "bash",
+          patterns: [],
+          metadata: {},
+          always: [],
+        },
+      ],
+      question: null,
+      liveRequests: [],
+    });
+
+    await act(async () => {
+      await initialPending;
+    });
+    expect(result.current.pendingPermission).toBeNull();
+  });
+
+  it("uses the reconnect snapshot when a shared message completes during the outage", async () => {
+    let reconnectUpstream: (() => void) | undefined;
+    let resolveReconnectDetail: ((detail: ConversationDetail) => void) | undefined;
+    const reconnect = new Promise<void>((resolve) => {
+      reconnectUpstream = resolve;
+    });
+    const reconnectDetail = new Promise<ConversationDetail>((resolve) => {
+      resolveReconnectDetail = resolve;
+    });
+    vi.mocked(getActiveConversation).mockResolvedValue(
+      makeSnapshot({
+        current: makeConversation({
+          messages: [
+            {
+              id: "assistant-shared",
+              conversationId: "conv-1",
+              role: "assistant",
+              content: "Partial",
+              parts: [{ id: "part-shared", type: "text", text: "Partial" }],
+              attachments: [],
+              createdAt: "2026-01-01T00:03:00.000Z",
+              updatedAt: "2026-01-01T00:03:00.000Z",
+            },
+          ],
+        }),
+      }),
+    );
+    vi.mocked(connectConversationEvents).mockImplementation((_conversationId, signal) =>
+      reconnectingUpstream(signal, reconnect),
+    );
+    vi.mocked(getConversation).mockReturnValue(reconnectDetail);
+
+    const queryClient = createQueryClient();
+    const { result } = renderHook(() => useConversation("writer"), {
+      wrapper: createWrapper(queryClient),
+    });
+    await waitFor(() => {
+      expect(result.current.parts["assistant-shared"]?.[0]).toEqual(
+        expect.objectContaining({ text: "Partial" }),
+      );
+    });
+
+    reconnectUpstream?.();
+    await waitFor(() => {
+      expect(getConversation).toHaveBeenCalledTimes(1);
+    });
+    resolveReconnectDetail?.(
+      makeConversation({
+        messages: [
+          {
+            id: "assistant-shared",
+            conversationId: "conv-1",
+            role: "assistant",
+            content: "Completed",
+            parts: [{ id: "part-shared", type: "text", text: "Completed" }],
+            attachments: [],
+            createdAt: "2026-01-01T00:03:00.000Z",
+            updatedAt: "2026-01-01T00:04:00.000Z",
+          },
+        ],
+      }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.conversation?.messages[0]?.content).toBe("Completed");
+      expect(result.current.parts["assistant-shared"]?.[0]).toEqual(
+        expect.objectContaining({ text: "Completed" }),
+      );
     });
   });
 

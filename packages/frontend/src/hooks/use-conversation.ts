@@ -88,7 +88,7 @@ export type Action =
   | { type: "SEND_FAILED"; message: string }
   | { type: "CLEAR_SEND_ERROR" }
   | { type: "SSE_EVENT"; event: ChatEvent }
-  | { type: "HYDRATE_PENDING"; pending: PendingInteractions }
+  | { type: "HYDRATE_PENDING"; pending: PendingInteractions; replace?: boolean }
   | { type: "DISCARD_STALE_PERMISSION"; requestId: string }
   | { type: "DISCARD_STALE_QUESTION"; requestId: string };
 
@@ -175,9 +175,9 @@ export function conversationReducer(state: ConversationState, action: Action): C
         ...state,
         conversation: {
           ...action.detail,
-          messages: mergeById(action.detail.messages, state.conversation?.messages ?? []),
+          messages: mergeWithLiveOnly(action.detail.messages, state.conversation?.messages ?? []),
         },
-        parts: mergePartsMaps(buildPartsMap(action.detail.messages), state.parts),
+        parts: mergeReconnectParts(action.detail.messages, state.parts),
         sendError: null,
       };
 
@@ -219,6 +219,15 @@ export function conversationReducer(state: ConversationState, action: Action): C
       return applySseEvent(state, action.event);
 
     case "HYDRATE_PENDING": {
+      if (action.replace) {
+        return {
+          ...state,
+          pendingPermissions: action.pending.permissions,
+          pendingQuestion: action.pending.question,
+          liveRequests: action.pending.liveRequests,
+        };
+      }
+
       // Merge (union by id) rather than replace. The pending-interactions fetch
       // is async and runs alongside the SSE stream, so a live event can add a
       // NEWER interaction before the fetch resolves; a wholesale replace with
@@ -263,22 +272,23 @@ export function conversationReducer(state: ConversationState, action: Action): C
   }
 }
 
-function mergeById<T extends { id: string }>(persisted: T[], live: T[]): T[] {
-  const liveById = new Map(live.map((item) => [item.id, item]));
-  const merged = persisted.map((item) => liveById.get(item.id) ?? item);
+function mergeWithLiveOnly<T extends { id: string }>(persisted: T[], live: T[]): T[] {
   const persistedIds = new Set(persisted.map((item) => item.id));
 
-  return [...merged, ...live.filter((item) => !persistedIds.has(item.id))];
+  return [...persisted, ...live.filter((item) => !persistedIds.has(item.id))];
 }
 
-function mergePartsMaps(
-  persisted: Record<string, ConversationPart[]>,
+function mergeReconnectParts(
+  persistedMessages: ConversationMessage[],
   live: Record<string, ConversationPart[]>,
 ): Record<string, ConversationPart[]> {
-  const merged = { ...persisted };
+  const persistedMessageIds = new Set(persistedMessages.map((message) => message.id));
+  const merged = buildPartsMap(persistedMessages);
 
   for (const [messageId, parts] of Object.entries(live)) {
-    merged[messageId] = mergeById(persisted[messageId] ?? [], parts);
+    if (!persistedMessageIds.has(messageId)) {
+      merged[messageId] = parts;
+    }
   }
 
   return merged;
@@ -560,8 +570,15 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
     const controller = new AbortController();
     sseAbortRef.current = controller;
 
-    const hydratePendingInteractions = (pending: PendingInteractions): void => {
+    let pendingHydrationGeneration = 0;
+
+    const hydratePendingInteractions = (
+      pending: PendingInteractions,
+      replace: boolean,
+      generation: number,
+    ): void => {
       if (controller.signal.aborted) return;
+      if (generation !== pendingHydrationGeneration) return;
 
       const permissionsToSurface: typeof pending.permissions = [];
       if (autoApproveRef.current) {
@@ -581,10 +598,13 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
       dispatch({
         type: "HYDRATE_PENDING",
         pending: { ...pending, permissions: permissionsToSurface },
+        replace,
       });
     };
 
     const rehydrateConversation = async (mergeDetail: boolean): Promise<void> => {
+      const generation = ++pendingHydrationGeneration;
+
       try {
         const [detail, pending] = await Promise.all([
           getConversation(activeAgentId, activeConversationId),
@@ -593,15 +613,16 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
 
         if (controller.signal.aborted) return;
         dispatch({ type: mergeDetail ? "MERGE_RECONNECT_DETAIL" : "HYDRATE_DETAIL", detail });
-        hydratePendingInteractions(pending);
+        hydratePendingInteractions(pending, true, generation);
       } catch {
         if (controller.signal.aborted) return;
       }
     };
 
     void (async () => {
+      const initialPendingGeneration = ++pendingHydrationGeneration;
       void getPendingInteractions(activeConversationId)
-        .then(hydratePendingInteractions)
+        .then((pending) => hydratePendingInteractions(pending, false, initialPendingGeneration))
         .catch(() => {
           // The live stream remains the fallback for interactions raised after this point.
         });
