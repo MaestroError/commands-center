@@ -4,7 +4,9 @@ import { expect, test, type Page, type Route } from "./fixtures";
 
 const NOW = "2026-07-29T12:00:00.000Z";
 
-test("marks every dashboard notification type as read", async ({ page }) => {
+test("marks every dashboard notification type as read", async ({ isMobile, page }) => {
+  test.skip(isMobile, "The desktop notification panel is hidden at mobile breakpoints.");
+
   const activities = activityKindSchema.options.map((kind, index) => createActivity(kind, index));
   const archivedIds: string[] = [];
   await mockActivitiesApi(page, activities, archivedIds);
@@ -26,7 +28,12 @@ test("marks every dashboard notification type as read", async ({ page }) => {
   expect(archivedIds).toEqual(activities.map((activity) => activity.id));
 });
 
-test("filters action-required activity and restores resolved activity", async ({ page }) => {
+test("filters action-required activity and restores resolved activity", async ({
+  isMobile,
+  page,
+}) => {
+  test.skip(isMobile, "The desktop notification panel is hidden at mobile breakpoints.");
+
   const info = createActivity("specialist_info", 1, { level: "info", title: "Digest ready" });
   const attention = createActivity("specialist_warning", 2, {
     level: "action_required",
@@ -213,7 +220,9 @@ test("marks a resolved mobile notification unread", async ({ page }) => {
   await expect(dialog.getByText("Earlier update")).toBeVisible();
 });
 
-test("contains long notification content within the desktop panel", async ({ page }) => {
+test("contains long notification content within the desktop panel", async ({ isMobile, page }) => {
+  test.skip(isMobile, "The desktop notification panel is hidden at mobile breakpoints.");
+
   const activities = [
     createActivity("run_command_proposal", 1, {
       payload: { command: `printf ${"x".repeat(600)}` },

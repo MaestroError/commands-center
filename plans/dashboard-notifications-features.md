@@ -132,6 +132,15 @@ and card rendering without adding presentation snapshots or reference pills.
 Pause for review after each of the first four checkpoints so behavior changes remain
 separate from test-only hardening.
 
+## CI follow-up
+
+- [x] Update the dashboard smoke test for the renamed `Latest activity` heading.
+- [x] Keep desktop-panel notification assertions out of the mobile Playwright project.
+- [x] Run the dashboard notification and sidebar smoke specs in both Chromium and mobile.
+
+Verify: the affected specs pass in both configured Playwright projects without changing
+the responsive application behavior.
+
 ## Completion checks
 
 ```bash
