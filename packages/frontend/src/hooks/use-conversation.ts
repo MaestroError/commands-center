@@ -75,6 +75,7 @@ export type ConversationState = {
   previousConversations: ConversationSummary[];
   pendingPermissions: PermissionRequest[];
   pendingQuestion: QuestionRequest | null;
+  queuedQuestions: QuestionRequest[];
   liveRequests: LiveRequest[];
   todos: TodoItem[];
   sendError: string | null;
@@ -87,7 +88,16 @@ export type Action =
   | { type: "SEND_FAILED"; message: string }
   | { type: "CLEAR_SEND_ERROR" }
   | { type: "SSE_EVENT"; event: ChatEvent }
-  | { type: "HYDRATE_PENDING"; pending: PendingInteractions }
+  | {
+      type: "HYDRATE_PENDING";
+      pending: PendingInteractions;
+      authoritative?: boolean;
+      openedAfterSnapshot?: {
+        permissionIds: string[];
+        questionIds: string[];
+        liveRequestIds: string[];
+      };
+    }
   | { type: "DISCARD_STALE_PERMISSION"; requestId: string }
   | { type: "DISCARD_STALE_QUESTION"; requestId: string };
 
@@ -98,6 +108,7 @@ export const initialState: ConversationState = {
   previousConversations: [],
   pendingPermissions: [],
   pendingQuestion: null,
+  queuedQuestions: [],
   liveRequests: [],
   todos: [],
   sendError: null,
@@ -105,6 +116,8 @@ export const initialState: ConversationState = {
 
 const INITIAL_SSE_RECONNECT_DELAY_MS = 250;
 const MAX_SSE_RECONNECT_DELAY_MS = 5_000;
+const INITIAL_PENDING_HYDRATION_RETRY_DELAY_MS = 250;
+const MAX_PENDING_HYDRATION_RETRY_DELAY_MS = 5_000;
 
 /**
  * Build the parts map from hydrated messages so that parts from the initial
@@ -132,14 +145,24 @@ function buildPartsMap(messages: ConversationMessage[]): Record<string, Conversa
 function liveInteractionState(
   state: ConversationState,
   nextConversationId: string,
-): Pick<ConversationState, "pendingPermissions" | "pendingQuestion" | "liveRequests" | "todos"> {
+): Pick<
+  ConversationState,
+  "pendingPermissions" | "pendingQuestion" | "queuedQuestions" | "liveRequests" | "todos"
+> {
   if (state.conversation?.id !== nextConversationId) {
-    return { pendingPermissions: [], pendingQuestion: null, liveRequests: [], todos: [] };
+    return {
+      pendingPermissions: [],
+      pendingQuestion: null,
+      queuedQuestions: [],
+      liveRequests: [],
+      todos: [],
+    };
   }
 
   return {
     pendingPermissions: state.pendingPermissions,
     pendingQuestion: state.pendingQuestion,
+    queuedQuestions: state.queuedQuestions,
     liveRequests: state.liveRequests,
     todos: state.todos,
   };
@@ -207,6 +230,39 @@ export function conversationReducer(state: ConversationState, action: Action): C
       return applySseEvent(state, action.event);
 
     case "HYDRATE_PENDING": {
+      const hydratedQuestions =
+        action.pending.questions ?? (action.pending.question ? [action.pending.question] : []);
+      if (action.authoritative) {
+        const openedPermissionIds = new Set(action.openedAfterSnapshot?.permissionIds);
+        const openedQuestionIds = new Set(action.openedAfterSnapshot?.questionIds);
+        const openedLiveRequestIds = new Set(action.openedAfterSnapshot?.liveRequestIds);
+        let pendingPermissions = action.pending.permissions;
+        for (const permission of state.pendingPermissions) {
+          if (openedPermissionIds.has(permission.id)) {
+            pendingPermissions = upsertPermissionRequest(pendingPermissions, permission);
+          }
+        }
+        let questions = hydratedQuestions;
+        for (const question of [state.pendingQuestion, ...state.queuedQuestions]) {
+          if (question && openedQuestionIds.has(question.id)) {
+            questions = upsertQuestionRequest(questions, question);
+          }
+        }
+        let liveRequests = action.pending.liveRequests;
+        for (const request of state.liveRequests) {
+          if (openedLiveRequestIds.has(request.id)) {
+            liveRequests = upsertLiveRequest(liveRequests, request);
+          }
+        }
+        return {
+          ...state,
+          pendingPermissions,
+          pendingQuestion: questions[0] ?? null,
+          queuedQuestions: questions.slice(1),
+          liveRequests,
+        };
+      }
+
       // Merge (union by id) rather than replace. The pending-interactions fetch
       // is async and runs alongside the SSE stream, so a live event can add a
       // NEWER interaction before the fetch resolves; a wholesale replace with
@@ -224,10 +280,21 @@ export function conversationReducer(state: ConversationState, action: Action): C
         liveRequests = upsertLiveRequest(liveRequests, request);
       }
 
+      let pendingQuestion = state.pendingQuestion;
+      let queuedQuestions = state.queuedQuestions;
+      for (const question of hydratedQuestions) {
+        if (!pendingQuestion) {
+          pendingQuestion = question;
+        } else if (pendingQuestion.id !== question.id) {
+          queuedQuestions = upsertQuestionRequest(queuedQuestions, question);
+        }
+      }
+
       return {
         ...state,
         pendingPermissions,
-        pendingQuestion: state.pendingQuestion ?? action.pending.question,
+        pendingQuestion,
+        queuedQuestions,
         liveRequests,
       };
     }
@@ -241,10 +308,19 @@ export function conversationReducer(state: ConversationState, action: Action): C
       };
 
     case "DISCARD_STALE_QUESTION":
-      if (state.pendingQuestion?.id !== action.requestId) {
-        return state;
+      if (state.pendingQuestion?.id === action.requestId) {
+        return {
+          ...state,
+          pendingQuestion: state.queuedQuestions[0] ?? null,
+          queuedQuestions: state.queuedQuestions.slice(1),
+        };
       }
-      return { ...state, pendingQuestion: null };
+      return {
+        ...state,
+        queuedQuestions: state.queuedQuestions.filter(
+          (question) => question.id !== action.requestId,
+        ),
+      };
 
     default:
       return state;
@@ -374,14 +450,32 @@ function applySseEvent(state: ConversationState, event: ChatEvent): Conversation
       };
 
     case "question.asked":
+      if (!state.pendingQuestion) {
+        return {
+          ...state,
+          pendingQuestion: event.properties as unknown as QuestionRequest,
+        };
+      }
+      if (state.pendingQuestion.id === event.properties.id) {
+        return {
+          ...state,
+          pendingQuestion: event.properties as unknown as QuestionRequest,
+        };
+      }
       return {
         ...state,
-        pendingQuestion: event.properties as unknown as QuestionRequest,
+        queuedQuestions: upsertQuestionRequest(
+          state.queuedQuestions,
+          event.properties as unknown as QuestionRequest,
+        ),
       };
 
     case "question.replied":
     case "question.rejected":
-      return { ...state, pendingQuestion: null };
+      return conversationReducer(state, {
+        type: "DISCARD_STALE_QUESTION",
+        requestId: event.properties.requestID,
+      });
 
     case "todo.updated":
       return { ...state, todos: event.properties.todos };
@@ -456,6 +550,7 @@ export type UseConversationReturn = {
 export function useConversation(agentSlug: string, conversationId?: string): UseConversationReturn {
   const [state, dispatch] = useReducer(conversationReducer, initialState);
   const sseAbortRef = useRef<AbortController | null>(null);
+  const interactionEventRecorderRef = useRef<((event: ChatEvent) => void) | null>(null);
 
   // Auto-approve state with localStorage persistence
   const [autoApprove, setAutoApproveState] = useState(() => {
@@ -526,15 +621,86 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
 
     const controller = new AbortController();
     sseAbortRef.current = controller;
+    let interactionSequence = 0;
+    let conversationEventSequence = 0;
+    let detailHydrationGeneration = 0;
+    const terminalPermissions = new Map<string, number>();
+    const terminalQuestions = new Map<string, number>();
+    const terminalLiveRequests = new Map<string, number>();
+    const openedPermissions = new Map<string, number>();
+    const openedQuestions = new Map<string, number>();
+    const openedLiveRequests = new Map<string, number>();
+    let latestAuthoritativeHydrationSequence = 0;
 
-    const hydratePendingInteractions = (pending: PendingInteractions): void => {
+    const recordInteraction = (event: ChatEvent): number => {
+      interactionSequence += 1;
+      conversationEventSequence += 1;
+      if (event.type === "permission.asked") {
+        openedPermissions.set(event.properties.id, interactionSequence);
+      } else if (event.type === "permission.replied") {
+        terminalPermissions.set(event.properties.requestID, interactionSequence);
+      } else if (event.type === "question.asked") {
+        openedQuestions.set(event.properties.id, interactionSequence);
+      } else if (event.type === "question.replied" || event.type === "question.rejected") {
+        terminalQuestions.set(event.properties.requestID, interactionSequence);
+      } else if (event.type === "cc.live_request.opened") {
+        openedLiveRequests.set(event.properties.request.id, interactionSequence);
+      } else if (
+        event.type === "cc.live_request.resolved" ||
+        event.type === "cc.live_request.cancelled"
+      ) {
+        terminalLiveRequests.set(event.properties.requestId, interactionSequence);
+      }
+      return interactionSequence;
+    };
+
+    const recordLocalInteraction = (event: ChatEvent): void => {
       if (controller.signal.aborted) return;
+      recordInteraction(event);
+      dispatch({ type: "SSE_EVENT", event });
+    };
+    interactionEventRecorderRef.current = recordLocalInteraction;
+
+    const filterTerminatedInteractions = (
+      pending: PendingInteractions,
+      requestSequence: number,
+    ): PendingInteractions => {
+      const questions = (pending.questions ?? (pending.question ? [pending.question] : [])).filter(
+        (question) => (terminalQuestions.get(question.id) ?? 0) <= requestSequence,
+      );
+      return {
+        ...pending,
+        permissions: pending.permissions.filter(
+          (permission) => (terminalPermissions.get(permission.id) ?? 0) <= requestSequence,
+        ),
+        question: questions[0] ?? null,
+        questions,
+        liveRequests: pending.liveRequests.filter(
+          (request) => (terminalLiveRequests.get(request.id) ?? 0) <= requestSequence,
+        ),
+      };
+    };
+
+    const hydratePendingInteractions = (
+      pending: PendingInteractions,
+      authoritative = false,
+      requestSequence = interactionSequence,
+    ): void => {
+      if (controller.signal.aborted) return;
+      pending = filterTerminatedInteractions(pending, requestSequence);
+      if (authoritative) {
+        latestAuthoritativeHydrationSequence = requestSequence;
+      }
 
       const permissionsToSurface: typeof pending.permissions = [];
       if (autoApproveRef.current) {
         for (const permission of pending.permissions) {
-          void apiReplyPermission(activeConversationId, permission.id, "once").catch(() => {
+          const fallbackSequence = requestSequence;
+          void apiReplyPermission(activeConversationId, permission.id, "once").catch((error) => {
             if (controller.signal.aborted) return;
+            if (isStaleRequestError(error)) return;
+            if (terminalPermissions.has(permission.id)) return;
+            if (fallbackSequence < latestAuthoritativeHydrationSequence) return;
             dispatch({
               type: "SSE_EVENT",
               event: { type: "permission.asked", properties: permission },
@@ -548,16 +714,54 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
       dispatch({
         type: "HYDRATE_PENDING",
         pending: { ...pending, permissions: permissionsToSurface },
+        authoritative,
+        openedAfterSnapshot: authoritative
+          ? {
+              permissionIds: [...openedPermissions.entries()]
+                .filter(([, sequence]) => sequence > requestSequence)
+                .map(([id]) => id),
+              questionIds: [...openedQuestions.entries()]
+                .filter(([, sequence]) => sequence > requestSequence)
+                .map(([id]) => id),
+              liveRequestIds: [...openedLiveRequests.entries()]
+                .filter(([, sequence]) => sequence > requestSequence)
+                .map(([id]) => id),
+            }
+          : undefined,
       });
+    };
+    let pendingHydrationGeneration = 0;
+    let latestSuccessfulPendingHydrationGeneration = 0;
+
+    const requestPendingInteractions = (
+      authoritative: boolean,
+      retryDelayMs = INITIAL_PENDING_HYDRATION_RETRY_DELAY_MS,
+    ): void => {
+      const requestSequence = ++interactionSequence;
+      const requestGeneration = ++pendingHydrationGeneration;
+      void getPendingInteractions(activeConversationId)
+        .then((pending) => {
+          if (requestGeneration < latestSuccessfulPendingHydrationGeneration) return;
+          latestSuccessfulPendingHydrationGeneration = requestGeneration;
+          hydratePendingInteractions(pending, authoritative, requestSequence);
+        })
+        .catch(() => {
+          if (controller.signal.aborted) return;
+          if (requestGeneration !== pendingHydrationGeneration) return;
+          void waitForAbortableDelay(retryDelayMs, controller.signal)
+            .then(() => {
+              if (controller.signal.aborted) return;
+              if (requestGeneration !== pendingHydrationGeneration) return;
+              requestPendingInteractions(
+                authoritative,
+                Math.min(retryDelayMs * 2, MAX_PENDING_HYDRATION_RETRY_DELAY_MS),
+              );
+            })
+            .catch(() => {});
+        });
     };
 
     void (async () => {
-      void getPendingInteractions(activeConversationId)
-        .then(hydratePendingInteractions)
-        .catch(() => {
-          // The live stream remains the fallback for interactions raised after this point.
-        });
-
       let connectionAttempt = 0;
       let reconnectDelay = INITIAL_SSE_RECONNECT_DELAY_MS;
 
@@ -574,32 +778,43 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
             if (controller.signal.aborted) return;
 
             if (event.type === "connected") {
-              if (connectionReady) continue;
+              const upstreamReconnected = event.properties["reconnected"] === true;
+              if (connectionReady && !upstreamReconnected) continue;
+              const initialConnection = connectionAttempt === 1 && !connectionReady;
               connectionReady = true;
               reconnectDelay = INITIAL_SSE_RECONNECT_DELAY_MS;
 
-              if (connectionAttempt > 1) {
-                try {
-                  const [detail, pending] = await Promise.all([
-                    getConversation(activeAgentId, activeConversationId),
-                    getPendingInteractions(activeConversationId),
-                  ]);
-
-                  if (controller.signal.aborted) return;
-                  dispatch({ type: "HYDRATE_DETAIL", detail });
-                  hydratePendingInteractions(pending);
-                } catch {
-                  if (controller.signal.aborted) return;
-                }
+              if (initialConnection) {
+                requestPendingInteractions(false);
+              } else {
+                const detailRequestSequence = conversationEventSequence;
+                const detailRequestGeneration = ++detailHydrationGeneration;
+                void getConversation(activeAgentId, activeConversationId)
+                  .then((detail) => {
+                    if (controller.signal.aborted) return;
+                    if (detailRequestGeneration !== detailHydrationGeneration) return;
+                    if (detailRequestSequence !== conversationEventSequence) return;
+                    dispatch({ type: "HYDRATE_DETAIL", detail });
+                  })
+                  .catch(() => {});
+                requestPendingInteractions(true);
               }
 
               continue;
             }
 
+            const eventSequence = recordInteraction(event);
             if (event.type === "permission.asked" && autoApproveRef.current) {
               const requestId = (event.properties as { id?: string }).id;
               if (requestId) {
-                void apiReplyPermission(activeConversationId, requestId, "once");
+                const fallbackSequence = eventSequence;
+                void apiReplyPermission(activeConversationId, requestId, "once").catch((error) => {
+                  if (controller.signal.aborted) return;
+                  if (isStaleRequestError(error)) return;
+                  if (terminalPermissions.has(requestId)) return;
+                  if (fallbackSequence < latestAuthoritativeHydrationSequence) return;
+                  dispatch({ type: "SSE_EVENT", event });
+                });
                 continue;
               }
             }
@@ -617,6 +832,9 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
 
     return () => {
       controller.abort();
+      if (interactionEventRecorderRef.current === recordLocalInteraction) {
+        interactionEventRecorderRef.current = null;
+      }
       if (sseAbortRef.current === controller) {
         sseAbortRef.current = null;
       }
@@ -718,39 +936,107 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
   const replyPerm = useCallback(
     (requestId: string, reply: "once" | "always" | "reject") => {
       if (!state.conversation) return;
-      void apiReplyPermission(state.conversation.id, requestId, reply).catch((error: unknown) => {
-        // The permission was already resolved or timed out server-side —
-        // drop it locally so the dock can't wedge on a dead prompt.
-        if (isStaleRequestError(error)) {
+      const conversationId = state.conversation.id;
+      const sessionID = state.pendingPermissions.find(
+        (permission) => permission.id === requestId,
+      )?.sessionID;
+      const terminalEvent: ChatEvent = {
+        type: "permission.replied",
+        properties: {
+          sessionID: sessionID ?? state.conversation.opencodeSessionId,
+          requestID: requestId,
+          reply,
+        },
+      };
+      const recordTerminal = interactionEventRecorderRef.current;
+      const finish = (): void => {
+        if (recordTerminal) {
+          recordTerminal(terminalEvent);
+        } else {
           dispatch({ type: "DISCARD_STALE_PERMISSION", requestId });
         }
-      });
+      };
+      void apiReplyPermission(conversationId, requestId, reply)
+        .then(() => {
+          finish();
+        })
+        .catch((error: unknown) => {
+          if (isStaleRequestError(error)) {
+            finish();
+          }
+        });
     },
-    [state.conversation],
+    [state.conversation, state.pendingPermissions],
   );
 
   const replyQ = useCallback(
     (requestId: string, answers: string[][]) => {
       if (!state.conversation) return;
-      void apiReplyQuestion(state.conversation.id, requestId, answers).catch((error: unknown) => {
-        if (isStaleRequestError(error)) {
+      const conversationId = state.conversation.id;
+      const sessionID = [state.pendingQuestion, ...state.queuedQuestions].find(
+        (question) => question?.id === requestId,
+      )?.sessionID;
+      const terminalEvent: ChatEvent = {
+        type: "question.replied",
+        properties: {
+          sessionID: sessionID ?? state.conversation.opencodeSessionId,
+          requestID: requestId,
+        },
+      };
+      const recordTerminal = interactionEventRecorderRef.current;
+      const finish = (): void => {
+        if (recordTerminal) {
+          recordTerminal(terminalEvent);
+        } else {
           dispatch({ type: "DISCARD_STALE_QUESTION", requestId });
         }
-      });
+      };
+      void apiReplyQuestion(conversationId, requestId, answers)
+        .then(() => {
+          finish();
+        })
+        .catch((error: unknown) => {
+          if (isStaleRequestError(error)) {
+            finish();
+          }
+        });
     },
-    [state.conversation],
+    [state.conversation, state.pendingQuestion, state.queuedQuestions],
   );
 
   const rejectQ = useCallback(
     (requestId: string) => {
       if (!state.conversation) return;
-      void apiRejectQuestion(state.conversation.id, requestId).catch((error: unknown) => {
-        if (isStaleRequestError(error)) {
+      const conversationId = state.conversation.id;
+      const sessionID = [state.pendingQuestion, ...state.queuedQuestions].find(
+        (question) => question?.id === requestId,
+      )?.sessionID;
+      const terminalEvent: ChatEvent = {
+        type: "question.rejected",
+        properties: {
+          sessionID: sessionID ?? state.conversation.opencodeSessionId,
+          requestID: requestId,
+        },
+      };
+      const recordTerminal = interactionEventRecorderRef.current;
+      const finish = (): void => {
+        if (recordTerminal) {
+          recordTerminal(terminalEvent);
+        } else {
           dispatch({ type: "DISCARD_STALE_QUESTION", requestId });
         }
-      });
+      };
+      void apiRejectQuestion(conversationId, requestId)
+        .then(() => {
+          finish();
+        })
+        .catch((error: unknown) => {
+          if (isStaleRequestError(error)) {
+            finish();
+          }
+        });
     },
-    [state.conversation],
+    [state.conversation, state.pendingQuestion, state.queuedQuestions],
   );
 
   const resolveLive = useCallback(
@@ -842,6 +1128,19 @@ function upsertPermissionRequest(
   }
 
   return [...requests, nextRequest].sort((left, right) => left.id.localeCompare(right.id));
+}
+
+function upsertQuestionRequest(
+  requests: QuestionRequest[],
+  nextRequest: QuestionRequest,
+): QuestionRequest[] {
+  const existingIndex = requests.findIndex((request) => request.id === nextRequest.id);
+
+  if (existingIndex >= 0) {
+    return requests.map((request, index) => (index === existingIndex ? nextRequest : request));
+  }
+
+  return [...requests, nextRequest];
 }
 
 // A permission/question reply targeting an id the backend no longer knows

@@ -19,6 +19,19 @@ import {
 } from "../../src/schemas/live-requests.js";
 
 describe("conversation and event schemas", () => {
+  it("parses initial and upstream-reconnected stream readiness events", () => {
+    expect(chatEventSchema.parse({ type: "connected", properties: {} })).toEqual({
+      type: "connected",
+      properties: {},
+    });
+    expect(chatEventSchema.parse({ type: "connected", properties: { reconnected: true } })).toEqual(
+      {
+        type: "connected",
+        properties: { reconnected: true },
+      },
+    );
+  });
+
   it("applies defaults for conversation attachments and command inputs", () => {
     expect(conversationAttachmentSchema.parse({ mimeType: "text/plain" })).toEqual({
       mimeType: "text/plain",
@@ -240,6 +253,13 @@ describe("conversation and event schemas", () => {
         sessionID: "sess_1",
         questions: [{ question: "Proceed?", options: [{ label: "Yes" }, { label: "No" }] }],
       },
+      questions: [
+        {
+          id: "req_2",
+          sessionID: "sess_1",
+          questions: [{ question: "Proceed?", options: [{ label: "Yes" }, { label: "No" }] }],
+        },
+      ],
       liveRequests: [
         {
           id: "live_1",
@@ -254,6 +274,7 @@ describe("conversation and event schemas", () => {
 
     expect(parsed.permissions[0]).toMatchObject({ id: "req_1", patterns: ["rm *"] });
     expect(parsed.question).toMatchObject({ id: "req_2" });
+    expect(parsed.questions).toEqual([expect.objectContaining({ id: "req_2" })]);
     expect(parsed.liveRequests[0]).toMatchObject({ id: "live_1" });
 
     // No pending question is represented as null, not omitted.

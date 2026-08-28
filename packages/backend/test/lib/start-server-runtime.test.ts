@@ -122,6 +122,57 @@ describe("startup public binding guidance", () => {
 });
 
 describe("best-effort OpenCode startup", () => {
+  it("runs recovery after OpenCode starts successfully", async () => {
+    const logger = createLoggerMock();
+    const onStarted = vi.fn().mockResolvedValue(undefined);
+    const orchestrator = {
+      start: vi.fn().mockResolvedValue(undefined),
+      getStatus: vi.fn(),
+    };
+
+    const handle = startOpenCodeEngineBestEffort({
+      orchestrator,
+      logger: logger as never,
+      retryDelayMs: 1,
+      onStarted,
+    });
+
+    try {
+      await vi.waitFor(() => expect(onStarted).toHaveBeenCalledOnce());
+      expect(orchestrator.start).toHaveBeenCalledOnce();
+    } finally {
+      handle.dispose();
+    }
+  });
+
+  it("does not retry OpenCode when recovery fails", async () => {
+    const logger = createLoggerMock();
+    const recoveryError = new Error("recovery failed");
+    const orchestrator = {
+      start: vi.fn().mockResolvedValue(undefined),
+      getStatus: vi.fn(),
+    };
+
+    const handle = startOpenCodeEngineBestEffort({
+      orchestrator,
+      logger: logger as never,
+      retryDelayMs: 1,
+      onStarted: vi.fn().mockRejectedValue(recoveryError),
+    });
+
+    try {
+      await vi.waitFor(() =>
+        expect(logger.warn).toHaveBeenCalledWith(
+          { err: recoveryError },
+          "opencode startup recovery failed",
+        ),
+      );
+      expect(orchestrator.start).toHaveBeenCalledOnce();
+    } finally {
+      handle.dispose();
+    }
+  });
+
   it("keeps CommandsCenter startup non-blocking when OpenCode start fails", async () => {
     const logger = createLoggerMock();
     const orchestrator = {

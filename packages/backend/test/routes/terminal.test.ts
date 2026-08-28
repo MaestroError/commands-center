@@ -43,6 +43,8 @@ function createMockOpenCodeService(): OpenCodeService {
     removeMcpAuth: vi.fn(),
     createSession: vi.fn().mockResolvedValue({ id: "sess-1", time: { created: Date.now() } }),
     getSession: vi.fn(),
+    listSessionChildren: vi.fn().mockResolvedValue([]),
+    getSessionTreeIds: vi.fn((_directory, sessionID) => Promise.resolve(new Set([sessionID]))),
     listSessionStatuses: vi.fn().mockResolvedValue({}),
     getSessionStatus: vi.fn().mockResolvedValue({ type: "idle" }),
     listSessionMessages: vi.fn().mockResolvedValue([]),

@@ -365,12 +365,14 @@ describe("conversation pending-interactions route", () => {
       const body = response.json<{
         permissions: Array<{ id: string }>;
         question: { id: string } | null;
+        questions: Array<{ id: string }>;
         liveRequests: Array<{ presentation: { title: string } }>;
       }>();
       expect(body.permissions).toEqual([
         expect.objectContaining({ id: "perm-1", sessionID, permission: "bash" }),
       ]);
       expect(body.question).toMatchObject({ id: "q-1" });
+      expect(body.questions).toEqual([expect.objectContaining({ id: "q-1" })]);
       expect(body.liveRequests).toHaveLength(1);
       expect(body.liveRequests[0]?.presentation.title).toBe("Add secret");
     } finally {
@@ -422,7 +424,12 @@ describe("conversation pending-interactions route", () => {
       });
 
       expect(response.statusCode).toBe(200);
-      expect(response.json()).toEqual({ permissions: [], question: null, liveRequests: [] });
+      expect(response.json()).toEqual({
+        permissions: [],
+        question: null,
+        questions: [],
+        liveRequests: [],
+      });
     } finally {
       await server.close();
       await testDb.cleanup();
@@ -672,6 +679,9 @@ function createBaseOpenCodeService() {
       }),
     completeOauth: () => Promise.resolve(true),
     disconnectProvider: () => Promise.resolve(true),
+    listSessionChildren: () => Promise.resolve([]),
+    getSessionTreeIds: (_directory: string, sessionID: string) =>
+      Promise.resolve(new Set([sessionID])),
     listSessionStatuses: () => Promise.resolve({}),
     getSessionStatus: () => Promise.resolve({ type: "idle" as const }),
     replyPermission: async () => {},
