@@ -213,10 +213,13 @@ test("keeps mobile card-internal controls at least 44px tall", async ({ page }) 
   const dialog = page.getByRole("dialog");
   const runOutput = dialog.getByRole("button", { name: /Run output/ });
   const criteria = dialog.getByRole("button", { name: /Acceptance criteria/ });
+  const criteriaCheckbox = dialog.getByRole("checkbox", { name: 'Mark "Review output" as met' });
   const suggestedReply = dialog.getByRole("button", { name: "Use suggested reply: Publish" });
 
   await expect(runOutput).toHaveCSS("min-height", "44px");
   await expect(criteria).toHaveCSS("min-height", "44px");
+  await expect(criteriaCheckbox).toHaveCSS("height", "44px");
+  await expect(criteriaCheckbox).toHaveCSS("width", "44px");
   await expect(suggestedReply).toHaveCSS("min-height", "44px");
 });
 

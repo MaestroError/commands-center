@@ -114,6 +114,19 @@ describe("ActivityCard acceptance criteria", () => {
     expect(screen.getAllByRole("checkbox").length).toBeGreaterThan(0);
   });
 
+  it("task_needs_review: uses responsive checkbox hit-area sizing", () => {
+    renderCard(activity({ id: "a1", kind: "task_needs_review", payload: { taskId: "t1" } }));
+
+    fireEvent.click(screen.getByRole("button", { name: /Acceptance criteria/ }));
+
+    expect(screen.getByRole("checkbox", { name: 'Mark "Read changelog" as met' })).toHaveClass(
+      "h-11",
+      "w-11",
+      "md:h-4",
+      "md:w-4",
+    );
+  });
+
   it("task_needs_review: shows both the reason and question", () => {
     renderCard(
       activity({
