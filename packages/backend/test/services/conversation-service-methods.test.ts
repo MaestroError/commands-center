@@ -994,6 +994,48 @@ describe("conversation-service delegating methods", () => {
     ]);
   });
 
+  it("reconciles a task permission after an ambiguous auto-approval failure", async () => {
+    const { service, opencodeService, taskService, agent } = await setup();
+    const task = await taskService.create({ agentId: agent.id, title: "Task" });
+    const run = await taskService.createRun({
+      id: "run-ambiguous-reply",
+      taskId: task.id,
+      agentId: agent.id,
+      status: "running",
+      triggerSource: "manual",
+      renderedPrompt: "Run.",
+      effectivePermissions: { approvalPolicy: "auto_approve" },
+    });
+    const conversation = await service.createTaskRunConversation({
+      agentId: agent.id,
+      taskId: task.id,
+      taskRunId: run.id,
+      title: "Run",
+    });
+    opencodeService.getSessionTreeIds = vi.fn(() =>
+      Promise.resolve(new Set([conversation.opencodeSessionId, "child-session"])),
+    );
+    opencodeService.listPendingPermissions = vi
+      .fn()
+      .mockResolvedValueOnce([
+        {
+          id: "perm-applied",
+          sessionID: "child-session",
+          permission: "external_directory",
+          patterns: ["/shared/*"],
+          always: [],
+          metadata: {},
+        },
+      ])
+      .mockResolvedValueOnce([]);
+    opencodeService.replyPermission = vi.fn(() =>
+      Promise.reject(new Error("reply response timed out")),
+    );
+
+    await expect(service.listTaskRunPendingInteractions(task.id, run.id)).resolves.toEqual([]);
+    expect(opencodeService.listPendingPermissions).toHaveBeenCalledTimes(2);
+  });
+
   it("ignores a task permission resolved between listing and auto-approval", async () => {
     const logger = { warn: vi.fn() } as unknown as Logger;
     const { service, opencodeService, taskService, agent } = await setup({ logger });

@@ -1946,8 +1946,23 @@ describe("useConversation", () => {
       });
     });
 
-    it("does not rehydrate when getPendingInteractions fails", async () => {
-      vi.mocked(getPendingInteractions).mockRejectedValue(new Error("network down"));
+    it("retries initial hydration while the event stream remains connected", async () => {
+      vi.mocked(getPendingInteractions)
+        .mockRejectedValueOnce(new Error("network down"))
+        .mockResolvedValueOnce({
+          permissions: [
+            {
+              id: "perm-after-retry",
+              sessionID: "child-session",
+              permission: "external_directory",
+              patterns: ["/shared/*"],
+              metadata: {},
+              always: [],
+            },
+          ],
+          question: null,
+          liveRequests: [],
+        });
       const queryClient = createQueryClient();
       const { result } = renderHook(() => useConversation("writer"), {
         wrapper: createWrapper(queryClient),
@@ -1957,11 +1972,10 @@ describe("useConversation", () => {
         expect(result.current.status).toBe("ready");
       });
       await waitFor(() => {
-        expect(getPendingInteractions).toHaveBeenCalled();
+        expect(getPendingInteractions).toHaveBeenCalledTimes(2);
       });
 
-      expect(result.current.pendingPermission).toBeNull();
-      expect(result.current.pendingQuestion).toBeNull();
+      expect(result.current.pendingPermission?.id).toBe("perm-after-retry");
     });
   });
 });

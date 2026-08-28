@@ -802,6 +802,37 @@ export function createConversationService(options: {
           if (!replied) continue;
         } catch (error) {
           if (error instanceof NotFoundError) continue;
+          let unresolvedPermission = permission;
+          try {
+            const reconciliationSignal = openCodeRequestSignal();
+            const [currentPermissions, currentSessionIDs] = await Promise.all([
+              options.opencodeService.listPendingPermissions(
+                agent.workspace_path,
+                reconciliationSignal,
+              ),
+              options.opencodeService.getSessionTreeIds(
+                agent.workspace_path,
+                conversation.opencode_session_id,
+                reconciliationSignal,
+              ),
+            ]);
+            const currentPermission = currentPermissions.find(
+              (candidate) => candidate.id === permission.id,
+            );
+            if (!currentPermission || !currentSessionIDs.has(currentPermission.sessionID)) continue;
+            unresolvedPermission = currentPermission;
+          } catch (reconciliationError) {
+            options.logger?.warn(
+              {
+                err: reconciliationError,
+                taskId,
+                taskRunId,
+                requestId: permission.id,
+                sessionID: permission.sessionID,
+              },
+              "failed to reconcile task-run permission after auto-approval failure",
+            );
+          }
           options.logger?.warn(
             {
               err: error,
@@ -812,7 +843,7 @@ export function createConversationService(options: {
             },
             "failed to auto-approve task-run permission; surfacing for review",
           );
-          unresolvedPermissions.push(permission);
+          unresolvedPermissions.push(unresolvedPermission);
         }
       }
 

@@ -122,6 +122,12 @@ Route direct and nested OpenCode descendant interactions through their owning ro
 - Replay a stored watchdog error after every upstream OpenCode reconnect before reconnect detail hydration can clear the displayed error.
 - Cover stalled synchronous prompts, stalled pending hydration and manual replies, adapter signal forwarding, and watchdog error replay after an upstream reconnect.
 
+### 14. Final readiness reconciliation
+
+- After an ambiguous task-run permission auto-reply failure, use a fresh bounded request budget to verify that the permission still exists in the current root session tree before surfacing it as blocked.
+- Retry failed chat pending-interaction hydration while the event stream remains connected, using one generation-fenced retry chain with capped exponential delay.
+- Cover an applied reply with a failed HTTP response and a hidden pre-subscription descendant permission recovered by hydration retry.
+
 ## Verification
 
 1. Run focused backend adapter, event, conversation, monitor, route, and watchdog tests.

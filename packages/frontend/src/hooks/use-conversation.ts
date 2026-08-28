@@ -116,6 +116,8 @@ export const initialState: ConversationState = {
 
 const INITIAL_SSE_RECONNECT_DELAY_MS = 250;
 const MAX_SSE_RECONNECT_DELAY_MS = 5_000;
+const INITIAL_PENDING_HYDRATION_RETRY_DELAY_MS = 250;
+const MAX_PENDING_HYDRATION_RETRY_DELAY_MS = 5_000;
 
 /**
  * Build the parts map from hydrated messages so that parts from the initial
@@ -731,7 +733,10 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
     let pendingHydrationGeneration = 0;
     let latestSuccessfulPendingHydrationGeneration = 0;
 
-    const requestPendingInteractions = (authoritative: boolean): void => {
+    const requestPendingInteractions = (
+      authoritative: boolean,
+      retryDelayMs = INITIAL_PENDING_HYDRATION_RETRY_DELAY_MS,
+    ): void => {
       const requestSequence = ++interactionSequence;
       const requestGeneration = ++pendingHydrationGeneration;
       void getPendingInteractions(activeConversationId)
@@ -741,7 +746,18 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
           hydratePendingInteractions(pending, authoritative, requestSequence);
         })
         .catch(() => {
-          // The live stream remains the fallback for later interactions.
+          if (controller.signal.aborted) return;
+          if (requestGeneration !== pendingHydrationGeneration) return;
+          void waitForAbortableDelay(retryDelayMs, controller.signal)
+            .then(() => {
+              if (controller.signal.aborted) return;
+              if (requestGeneration !== pendingHydrationGeneration) return;
+              requestPendingInteractions(
+                authoritative,
+                Math.min(retryDelayMs * 2, MAX_PENDING_HYDRATION_RETRY_DELAY_MS),
+              );
+            })
+            .catch(() => {});
         });
     };
 
