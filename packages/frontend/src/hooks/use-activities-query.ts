@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useIsMutating, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
   archiveActivity,
@@ -12,6 +12,12 @@ import { queryKeys } from "@/lib/query-keys";
 import type { Activity, ActivityListResponse } from "@cc/shared/schemas";
 
 const POLL_INTERVAL_MS = 20_000;
+const ACTIVITY_READ_STATE_SCOPE = { id: "activity-read-state" };
+const ACTIVITY_READ_STATE_MUTATION_KEY = ["activity-read-state"];
+
+export function useActivityReadStateChanging(): boolean {
+  return useIsMutating({ mutationKey: ACTIVITY_READ_STATE_MUTATION_KEY }) > 0;
+}
 
 export function useActivitiesQuery() {
   return useQuery({
@@ -33,6 +39,8 @@ export function useResolvedActivitiesQuery() {
 export function useArchiveActivityMutation() {
   const queryClient = useQueryClient();
   return useMutation({
+    mutationKey: ACTIVITY_READ_STATE_MUTATION_KEY,
+    scope: ACTIVITY_READ_STATE_SCOPE,
     mutationFn: (id: string) => archiveActivity(id),
     onMutate: async (id) => {
       await Promise.all([
@@ -99,60 +107,31 @@ export function useArchiveActivityMutation() {
 export function useUnarchiveActivityMutation() {
   const queryClient = useQueryClient();
   return useMutation({
+    mutationKey: ACTIVITY_READ_STATE_MUTATION_KEY,
+    scope: ACTIVITY_READ_STATE_SCOPE,
     mutationFn: (id: string) => unarchiveActivity(id),
     onMutate: async (id) => {
       await Promise.all([
         queryClient.cancelQueries({ queryKey: queryKeys.activities }),
         queryClient.cancelQueries({ queryKey: queryKeys.activitiesResolved }),
       ]);
-      const previousPending = queryClient.getQueryData<ActivityListResponse>(queryKeys.activities);
       const previousResolved = queryClient.getQueryData<ActivityListResponse>(
         queryKeys.activitiesResolved,
       );
       const removed = previousResolved?.activities.find((activity) => activity.id === id);
-      const pendingCollision = previousPending?.activities.find((activity) => activity.id === id);
       if (previousResolved && removed) {
         queryClient.setQueryData<ActivityListResponse>(queryKeys.activitiesResolved, {
           ...previousResolved,
           activities: previousResolved.activities.filter((activity) => activity.id !== id),
         });
       }
-      if (previousPending && removed) {
-        const alreadyPending = previousPending.activities.some(
-          (activity) => activity.id === removed.id,
-        );
-        queryClient.setQueryData<ActivityListResponse>(queryKeys.activities, {
-          activities: sortActivities(
-            upsertActivity(previousPending.activities, toActivityStatus(removed, "pending")),
-          ),
-          actionRequiredCount:
-            previousPending.actionRequiredCount +
-            (!alreadyPending && removed.level === "action_required" ? 1 : 0),
-        });
-      }
-      return { pendingCollision, removed };
+      return { removed };
     },
     onError: (_error, _id, context) => {
       if (!context?.removed) {
         return;
       }
       const removed = context.removed;
-      queryClient.setQueryData<ActivityListResponse>(queryKeys.activities, (current) => {
-        if (!current) return current;
-        const optimisticallyPending = current.activities.some(({ id }) => id === removed.id);
-        return {
-          activities: context.pendingCollision
-            ? sortActivities(upsertActivity(current.activities, context.pendingCollision))
-            : current.activities.filter(({ id }) => id !== removed.id),
-          actionRequiredCount:
-            current.actionRequiredCount -
-            (optimisticallyPending &&
-            !context.pendingCollision &&
-            removed.level === "action_required"
-              ? 1
-              : 0),
-        };
-      });
       queryClient.setQueryData<ActivityListResponse>(queryKeys.activitiesResolved, (current) =>
         current
           ? {
@@ -172,6 +151,8 @@ export function useUnarchiveActivityMutation() {
 export function useArchiveAllActivitiesMutation() {
   const queryClient = useQueryClient();
   return useMutation({
+    mutationKey: ACTIVITY_READ_STATE_MUTATION_KEY,
+    scope: ACTIVITY_READ_STATE_SCOPE,
     mutationFn: archiveAllActivities,
     onMutate: async () => {
       await Promise.all([

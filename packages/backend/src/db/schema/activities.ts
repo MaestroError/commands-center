@@ -1,4 +1,5 @@
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { sql } from "drizzle-orm";
+import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 // Durable owner-global activity thread (inbox). Runtime/DB state — not a portable
 // workspace file; resets on DB rebuild like conversations and task runs.
@@ -20,6 +21,8 @@ export const activities = sqliteTable(
   },
   (table) => [
     index("activities_status_idx").on(table.status),
-    index("activities_dedupe_key_idx").on(table.dedupe_key),
+    uniqueIndex("activities_pending_dedupe_key_unique_idx")
+      .on(table.dedupe_key)
+      .where(sql`${table.status} = 'pending'`),
   ],
 );

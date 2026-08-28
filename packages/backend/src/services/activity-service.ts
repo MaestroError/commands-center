@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import type { Logger } from "pino";
 
 import {
@@ -30,16 +30,6 @@ export type ActivityService = ReturnType<typeof createActivityService>;
 export function createActivityService(options: { db: AppDb; logger?: Logger }) {
   const { db } = options;
 
-  async function findPendingByDedupeKey(dedupeKey: string): Promise<ActivityRow | undefined> {
-    return db.query.activities.findFirst({
-      where: (table, operators) =>
-        operators.and(
-          operators.eq(table.dedupe_key, dedupeKey),
-          operators.eq(table.status, "pending"),
-        ),
-    });
-  }
-
   return {
     /** Create a pending activity, or update the existing non-archived one with the same dedupeKey. */
     async emit(input: EmitActivityInput): Promise<Activity> {
@@ -47,29 +37,38 @@ export function createActivityService(options: { db: AppDb; logger?: Logger }) {
       const payloadJson = input.payload ? JSON.stringify(input.payload) : null;
 
       if (input.dedupeKey) {
-        const existing = await findPendingByDedupeKey(input.dedupeKey);
-        if (existing) {
-          await db
-            .update(activities)
-            .set({
+        const [row] = await db
+          .insert(activities)
+          .values({
+            id: createId(),
+            kind: input.kind,
+            level: input.level,
+            status: "pending",
+            title: input.title,
+            body: input.body ?? null,
+            payload_json: payloadJson,
+            dedupe_key: input.dedupeKey,
+            created_at: now,
+            updated_at: now,
+            archived_at: null,
+          })
+          .onConflictDoUpdate({
+            target: activities.dedupe_key,
+            targetWhere: sql`${activities.status} = 'pending'`,
+            set: {
               kind: input.kind,
               level: input.level,
               title: input.title,
               body: input.body ?? null,
               payload_json: payloadJson,
               updated_at: now,
-            })
-            .where(eq(activities.id, existing.id));
-          return mapActivity({
-            ...existing,
-            kind: input.kind,
-            level: input.level,
-            title: input.title,
-            body: input.body ?? null,
-            payload_json: payloadJson,
-            updated_at: now,
-          });
+            },
+          })
+          .returning();
+        if (!row) {
+          throw new Error("Failed to emit activity.");
         }
+        return mapActivity(row);
       }
 
       const row: ActivityRow = {

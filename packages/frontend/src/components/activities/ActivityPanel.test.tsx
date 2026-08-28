@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -177,6 +177,29 @@ describe("ActivityPanel", () => {
     );
   });
 
+  it("keeps archive-all pending and failure state visible after optimistic clearing", async () => {
+    const request = deferred<{ archivedCount: number }>();
+    vi.mocked(api.archiveAllActivities).mockReturnValueOnce(request.promise);
+    renderPanel();
+    await screen.findByText("Digest completed");
+    fireEvent.click(screen.getByRole("button", { name: "Mark all as read" }));
+    fireEvent.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", {
+        name: "Mark all as read",
+      }),
+    );
+
+    await waitFor(() => expect(screen.queryByText("Digest completed")).not.toBeInTheDocument());
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Marking…" })).toBeDisabled();
+
+    request.reject(new Error("offline"));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Could not mark all notifications as read",
+    );
+  });
+
   it("opens the mobile full-screen notification feed from its teaser", async () => {
     renderPanel();
     await screen.findByText("Digest completed");
@@ -200,6 +223,68 @@ describe("ActivityPanel", () => {
     expect(within(dialog).getByTestId("activity-mobile-tab-resolved")).toHaveTextContent(
       "Resolved1",
     );
+  });
+
+  it("uses pressed buttons without dangling tabpanel references", async () => {
+    const user = userEvent.setup();
+    renderPanel();
+    await screen.findByText("Digest completed");
+    const all = screen.getByTestId("activity-tab-all");
+    const attention = screen.getByTestId("activity-tab-attention");
+
+    expect(all).toHaveAttribute("aria-pressed", "true");
+    expect(all).not.toHaveAttribute("aria-controls");
+    expect(attention).toHaveAttribute("aria-pressed", "false");
+
+    await user.click(attention);
+
+    expect(all).toHaveAttribute("aria-pressed", "false");
+    expect(attention).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("closes the mobile dialog when the desktop breakpoint begins matching", async () => {
+    let breakpointListener: ((event: MediaQueryListEvent) => void) | undefined;
+    vi.mocked(window.matchMedia).mockImplementation((query) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn((_type, listener) => {
+        if (query === "(min-width: 768px)" && typeof listener === "function") {
+          breakpointListener = listener;
+        }
+      }),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
+    renderPanel();
+    await screen.findByText("Digest completed");
+    fireEvent.click(screen.getByRole("button", { name: /Notifications/ }));
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+
+    act(() => breakpointListener?.({ matches: true } as MediaQueryListEvent));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  it("blocks mark unread while the same activity is being archived", async () => {
+    const request = deferred<Activity>();
+    vi.mocked(api.archiveActivity).mockReturnValueOnce(request.promise);
+    const user = userEvent.setup();
+    renderPanel();
+    await screen.findByText("Digest completed");
+    fireEvent.click(
+      within(screen.getByTestId("activity-card-info-1")).getByRole("button", { name: "Mark read" }),
+    );
+    await waitFor(() => expect(api.archiveActivity).toHaveBeenCalledWith("info-1"));
+    await user.click(screen.getByTestId("activity-tab-resolved"));
+
+    const movedCard = screen.getByTestId("activity-card-info-1");
+    expect(within(movedCard).getByRole("button", { name: "Marking…" })).toBeDisabled();
+    fireEvent.click(within(movedCard).getByRole("button", { name: "Marking…" }));
+    expect(api.unarchiveActivity).not.toHaveBeenCalled();
+    request.resolve({ ...pendingInfo, status: "archived", archivedAt: pendingInfo.updatedAt });
   });
 
   it("keeps mobile header controls at least 44px tall", async () => {
@@ -314,4 +399,18 @@ function activity(overrides: {
     archivedAt: overrides.status === "archived" ? "2026-08-27T12:00:00.000Z" : null,
     ...overrides,
   };
+}
+
+function deferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject: (reason: unknown) => void;
+} {
+  let resolve = (_value: T): void => undefined;
+  let reject = (_reason: unknown): void => undefined;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, reject, resolve };
 }

@@ -54,6 +54,26 @@ describe("activity service", () => {
     expect(list[0]?.title).toBe("Done v2");
   });
 
+  it("keeps one pending activity when matching emits overlap", async () => {
+    const [first, second] = await Promise.all([
+      service.emit({
+        kind: "task_completed",
+        level: "info",
+        title: "Done v1",
+        dedupeKey: "task_completed:overlap",
+      }),
+      service.emit({
+        kind: "task_completed",
+        level: "info",
+        title: "Done v2",
+        dedupeKey: "task_completed:overlap",
+      }),
+    ]);
+
+    expect(second.id).toBe(first.id);
+    expect(await service.list()).toHaveLength(1);
+  });
+
   it("lists pending newest-last and supports status=all and status=archived", async () => {
     const a = await service.emit({ kind: "task_completed", level: "info", title: "A" });
     const b = await service.emit({ kind: "task_completed", level: "info", title: "B" });
@@ -134,6 +154,28 @@ describe("activity service", () => {
 
     expect((await service.list()).map((activity) => activity.id)).toEqual([older.id]);
     expect((await service.get(newer.id))?.status).toBe("archived");
+  });
+
+  it("keeps one pending activity when unarchive and emit overlap", async () => {
+    const older = await service.emit({
+      kind: "task_completed",
+      level: "info",
+      title: "Older",
+      dedupeKey: "task_completed:concurrent",
+    });
+    await service.archive(older.id);
+
+    await Promise.all([
+      service.unarchive(older.id),
+      service.emit({
+        kind: "task_completed",
+        level: "info",
+        title: "Concurrent update",
+        dedupeKey: "task_completed:concurrent",
+      }),
+    ]);
+
+    expect(await service.list()).toHaveLength(1);
   });
 
   it("unarchive is idempotent and rejects unknown ids", async () => {

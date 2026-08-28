@@ -16,6 +16,7 @@ type ActivityFeedProps = {
   onMarkUnread: (id: string) => void;
   archivingId?: string;
   unarchivingId?: string;
+  readStateChanging?: boolean;
   mobile?: boolean;
   onMobileIndexChange?: (index: number) => void;
 };
@@ -29,6 +30,7 @@ export function ActivityFeed({
   onMarkUnread,
   archivingId,
   unarchivingId,
+  readStateChanging = false,
   mobile = false,
   onMobileIndexChange,
 }: ActivityFeedProps) {
@@ -59,25 +61,29 @@ export function ActivityFeed({
       )}
       onScroll={mobile ? onScroll : undefined}
     >
-      {activities.map((activity) => (
-        <div
-          className={cn(
-            "min-w-0 w-full max-w-full",
-            mobile && "h-full min-h-full snap-start snap-always p-4",
-          )}
-          key={activity.id}
-        >
-          <ActivityCard
-            activity={activity}
-            archiving={archivingId === activity.id}
-            mobile={mobile}
-            mode={mode}
-            onMarkRead={onMarkRead}
-            onMarkUnread={onMarkUnread}
-            unarchiving={unarchivingId === activity.id}
-          />
-        </div>
-      ))}
+      {activities.map((activity) => {
+        const activityReadStateChanging =
+          readStateChanging || archivingId === activity.id || unarchivingId === activity.id;
+        return (
+          <div
+            className={cn(
+              "min-w-0 w-full max-w-full",
+              mobile && "h-full min-h-full snap-start snap-always p-4",
+            )}
+            key={activity.id}
+          >
+            <ActivityCard
+              activity={activity}
+              archiving={activityReadStateChanging}
+              mobile={mobile}
+              mode={mode}
+              onMarkRead={onMarkRead}
+              onMarkUnread={onMarkUnread}
+              unarchiving={activityReadStateChanging}
+            />
+          </div>
+        );
+      })}
     </div>
   );
 }

@@ -100,6 +100,20 @@ test("opens the mobile notification feed", async ({ page }) => {
   expect(buttonBox?.width ?? 0).toBeGreaterThan((cardBox?.width ?? 0) * 0.85);
 });
 
+test("closes the mobile notification feed when resized to desktop", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockActivitiesApi(page, [createActivity("specialist_info", 1)], []);
+  await page.goto("/");
+  await page.getByRole("button", { name: /Notifications/ }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+
+  await page.setViewportSize({ width: 1024, height: 844 });
+
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByTestId("activity-panel")).toBeVisible();
+  await page.getByTestId("activity-tab-attention").click();
+});
+
 test("keeps mobile notification actions in one proportional row", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const activities = [

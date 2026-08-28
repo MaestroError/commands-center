@@ -553,6 +553,21 @@ describe("ActivityCard acceptance criteria", () => {
     expect(onMarkRead).not.toHaveBeenCalled();
   });
 
+  it("snaps back after a rightward swipe beyond the threshold", () => {
+    vi.useFakeTimers();
+    const onMarkRead = vi.fn();
+    renderCard(activity({ id: "a1", kind: "specialist_info" }), { onMarkRead });
+    const card = screen.getByTestId("activity-card-a1");
+
+    dispatchPointer(card, "pointerdown", 200, 20);
+    dispatchPointer(card, "pointermove", 340, 22);
+    dispatchPointer(card, "pointerup", 340, 22);
+    void act(() => vi.runAllTimers());
+
+    expect(card).toHaveStyle({ transform: "translateX(0px)" });
+    expect(onMarkRead).not.toHaveBeenCalled();
+  });
+
   it("ignores a primarily vertical gesture", () => {
     vi.useFakeTimers();
     const onMarkRead = vi.fn();

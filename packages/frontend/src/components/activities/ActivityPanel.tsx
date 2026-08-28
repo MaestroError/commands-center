@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Bell, X } from "lucide-react";
 
 import { ErrorState, LoadingState } from "@/components/common/PageStates";
@@ -9,14 +9,15 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { buttonVariants } from "@/components/ui/button-variants";
 import {
+  useActivityReadStateChanging,
   useActivitiesQuery,
   useArchiveActivityMutation,
   useResolvedActivitiesQuery,
   useUnarchiveActivityMutation,
 } from "@/hooks/use-activities-query";
+import { useMediaQuery } from "@/hooks/use-media-query";
 import { cn } from "@/lib/cn";
 
 import { ActivityFeed } from "./ActivityFeed";
@@ -44,10 +45,12 @@ export function ActivityPanel() {
   const [activeFilter, setActiveFilter] = useState<ActivityFilter>("all");
   const [mobileOpen, setMobileOpen] = useState(false);
   const [mobileIndex, setMobileIndex] = useState(0);
+  const desktop = useMediaQuery("(min-width: 768px)");
   const pendingQuery = useActivitiesQuery();
   const resolvedQuery = useResolvedActivitiesQuery();
   const archiveMutation = useArchiveActivityMutation();
   const unarchiveMutation = useUnarchiveActivityMutation();
+  const readStateChanging = useActivityReadStateChanging();
   const pending = useMemo(
     () => pendingQuery.data?.activities ?? [],
     [pendingQuery.data?.activities],
@@ -67,6 +70,11 @@ export function ActivityPanel() {
   const latest = pending.at(-1);
   const emptyState = EMPTY_STATES[activeFilter];
   const readStateError = archiveMutation.isError || unarchiveMutation.isError;
+  useEffect(() => {
+    if (desktop) {
+      setMobileOpen(false);
+    }
+  }, [desktop]);
 
   function changeFilter(filter: ActivityFilter): void {
     setActiveFilter(filter);
@@ -89,6 +97,7 @@ export function ActivityPanel() {
       mode={activeFilter === "resolved" ? "resolved" : "pending"}
       onMarkRead={(id) => archiveMutation.mutate(id)}
       onMarkUnread={(id) => unarchiveMutation.mutate(id)}
+      readStateChanging={readStateChanging}
       unarchivingId={unarchiveMutation.isPending ? unarchiveMutation.variables : undefined}
     />
   );
@@ -218,6 +227,7 @@ export function ActivityPanel() {
                 onMarkRead={(id) => archiveMutation.mutate(id)}
                 onMarkUnread={(id) => unarchiveMutation.mutate(id)}
                 onMobileIndexChange={setMobileIndex}
+                readStateChanging={readStateChanging}
                 unarchivingId={
                   unarchiveMutation.isPending ? unarchiveMutation.variables : undefined
                 }
@@ -254,23 +264,24 @@ function ActivityFilterBar({
   ];
 
   return (
-    <Tabs value={activeFilter} onValueChange={(value) => onChange(value as ActivityFilter)}>
-      <TabsList className="gap-2">
-        {filters.map((filter) => (
-          <TabsTrigger
-            className={cn(
-              "rounded-full border border-border after:hidden data-[state=active]:border-accent data-[state=active]:bg-accent data-[state=active]:text-on-accent",
-              compact ? "min-h-11 px-3 py-1.5 text-xs" : "px-4 py-2 text-sm",
-            )}
-            data-testid={`${testIdPrefix}-${filter.id}`}
-            key={filter.id}
-            value={filter.id}
-          >
-            {filter.label}
-            <span className="ml-2 tabular-nums opacity-80">{filter.count}</span>
-          </TabsTrigger>
-        ))}
-      </TabsList>
-    </Tabs>
+    <div aria-label="Activity filters" className="flex min-w-0 gap-2" role="group">
+      {filters.map((filter) => (
+        <button
+          aria-pressed={activeFilter === filter.id}
+          className={cn(
+            "relative shrink-0 whitespace-nowrap rounded-full border border-border text-text-secondary transition-colors hover:text-text-primary focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-focus-ring",
+            activeFilter === filter.id && "border-accent bg-accent text-on-accent",
+            compact ? "min-h-11 px-3 py-1.5 text-xs" : "px-4 py-2 text-sm",
+          )}
+          data-testid={`${testIdPrefix}-${filter.id}`}
+          key={filter.id}
+          onClick={() => onChange(filter.id)}
+          type="button"
+        >
+          {filter.label}
+          <span className="ml-2 tabular-nums opacity-80">{filter.count}</span>
+        </button>
+      ))}
+    </div>
   );
 }

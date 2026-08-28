@@ -199,8 +199,8 @@ export function ActivityCard({
     }
     dragRef.current = null;
     const finalDragX = event.clientX - drag.startX;
-    if (drag.horizontal && Math.abs(finalDragX) >= SWIPE_THRESHOLD_PX) {
-      requestMarkRead(activity.id, finalDragX < 0 ? -1 : 1);
+    if (drag.horizontal && finalDragX <= -SWIPE_THRESHOLD_PX) {
+      requestMarkRead(activity.id);
       return;
     }
     setDragging(false);
