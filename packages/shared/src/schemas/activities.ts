@@ -129,11 +129,17 @@ export const archiveAllActivitiesResponseSchema = z.object({
   archivedCount: z.number().int().nonnegative(),
 });
 
+export const unarchiveActivityResponseSchema = z.object({
+  activity: activitySchema,
+  archivedActivityIds: z.array(z.string().min(1)),
+});
+
 export type ActivityKind = z.infer<typeof activityKindSchema>;
 export type ActivityLevel = z.infer<typeof activityLevelSchema>;
 export type ActivityStatus = z.infer<typeof activityStatusSchema>;
 export type Activity = z.infer<typeof activitySchema>;
 export type ActivityListResponse = z.infer<typeof activityListResponseSchema>;
 export type ArchiveAllActivitiesResponse = z.infer<typeof archiveAllActivitiesResponseSchema>;
+export type UnarchiveActivityResponse = z.infer<typeof unarchiveActivityResponseSchema>;
 export type ReviewActivityPayload = z.infer<typeof reviewActivityPayloadSchema>;
 export type ActivityPresentationPayload = z.infer<typeof activityPresentationPayloadSchema>;

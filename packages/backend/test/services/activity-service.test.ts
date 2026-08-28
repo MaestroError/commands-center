@@ -128,10 +128,11 @@ describe("activity service", () => {
     });
     await service.archive(activity.id);
 
-    const unarchived = await service.unarchive(activity.id);
+    const { activity: unarchived, archivedActivityIds } = await service.unarchive(activity.id);
 
     expect(unarchived.status).toBe("pending");
     expect(unarchived.archivedAt).toBeNull();
+    expect(archivedActivityIds).toEqual([]);
     expect(await service.actionRequiredCount()).toBe(1);
   });
 
@@ -150,10 +151,11 @@ describe("activity service", () => {
       dedupeKey: "task_completed:run-1",
     });
 
-    await service.unarchive(older.id);
+    const result = await service.unarchive(older.id);
 
     expect((await service.list()).map((activity) => activity.id)).toEqual([older.id]);
     expect((await service.get(newer.id))?.status).toBe("archived");
+    expect(result.archivedActivityIds).toEqual([newer.id]);
   });
 
   it("keeps one pending activity when unarchive and emit overlap", async () => {
@@ -185,7 +187,7 @@ describe("activity service", () => {
       title: "Feedback",
     });
 
-    const pending = await service.unarchive(activity.id);
+    const { activity: pending } = await service.unarchive(activity.id);
 
     expect(pending.status).toBe("pending");
     await expect(service.unarchive("nope")).rejects.toThrow(/not found/i);

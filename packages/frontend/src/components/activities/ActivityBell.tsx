@@ -10,6 +10,7 @@ import { ArchiveAllActivitiesButton } from "./ArchiveAllActivitiesButton";
 export function ActivityBell() {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const query = useActivitiesQuery();
   const archiveMutation = useArchiveActivityMutation();
 
@@ -49,6 +50,7 @@ export function ActivityBell() {
         aria-expanded={open}
         className="relative inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-surface text-text-secondary transition hover:border-accent/50 hover:text-text-primary"
         onClick={() => setOpen((value) => !value)}
+        ref={triggerRef}
       >
         <Bell className="h-4 w-4" />
         {count > 0 ? (
@@ -67,7 +69,11 @@ export function ActivityBell() {
           <div className="flex items-center justify-between border-b border-border px-3 py-2">
             <span className="text-sm font-semibold text-text-primary">Needs attention</span>
             <div className="flex items-center gap-3">
-              <ArchiveAllActivitiesButton count={query.data?.activities.length ?? 0} compact />
+              <ArchiveAllActivitiesButton
+                count={query.data?.activities.length ?? 0}
+                compact
+                successFocusRef={triggerRef}
+              />
               <NavLink
                 to="/"
                 className="text-xs text-accent hover:underline"

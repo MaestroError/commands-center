@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type RefObject } from "react";
 
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { buttonVariants } from "@/components/ui/button-variants";
@@ -11,9 +11,14 @@ import { cn } from "@/lib/cn";
 type ArchiveAllActivitiesButtonProps = {
   count: number;
   compact?: boolean;
+  successFocusRef?: RefObject<HTMLElement | null>;
 };
 
-export function ArchiveAllActivitiesButton({ count, compact }: ArchiveAllActivitiesButtonProps) {
+export function ArchiveAllActivitiesButton({
+  count,
+  compact,
+  successFocusRef,
+}: ArchiveAllActivitiesButtonProps) {
   const [confirming, setConfirming] = useState(false);
   const archiveAll = useArchiveAllActivitiesMutation();
   const readStateChanging = useActivityReadStateChanging();
@@ -33,7 +38,12 @@ export function ArchiveAllActivitiesButton({ count, compact }: ArchiveAllActivit
   }
 
   const confirm = () => {
-    archiveAll.mutate(undefined, { onSuccess: () => setConfirming(false) });
+    archiveAll.mutate(undefined, {
+      onSuccess: () => {
+        setConfirming(false);
+        requestAnimationFrame(() => successFocusRef?.current?.focus());
+      },
+    });
   };
 
   return (

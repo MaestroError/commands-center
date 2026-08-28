@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type Ref } from "react";
 import { Bell, X } from "lucide-react";
 
 import { ErrorState, LoadingState } from "@/components/common/PageStates";
@@ -12,6 +12,7 @@ import {
 import { buttonVariants } from "@/components/ui/button-variants";
 import {
   useActivityReadStateChanging,
+  useActivityReadStateError,
   useActivitiesQuery,
   useArchiveActivityMutation,
   useResolvedActivitiesQuery,
@@ -45,12 +46,15 @@ export function ActivityPanel() {
   const [activeFilter, setActiveFilter] = useState<ActivityFilter>("all");
   const [mobileOpen, setMobileOpen] = useState(false);
   const [mobileIndex, setMobileIndex] = useState(0);
+  const desktopAllFilterRef = useRef<HTMLButtonElement>(null);
+  const mobileAllFilterRef = useRef<HTMLButtonElement>(null);
   const desktop = useMediaQuery("(min-width: 768px)");
   const pendingQuery = useActivitiesQuery();
   const resolvedQuery = useResolvedActivitiesQuery();
   const archiveMutation = useArchiveActivityMutation();
   const unarchiveMutation = useUnarchiveActivityMutation();
   const readStateChanging = useActivityReadStateChanging();
+  const readStateError = useActivityReadStateError();
   const pending = useMemo(
     () => pendingQuery.data?.activities ?? [],
     [pendingQuery.data?.activities],
@@ -69,7 +73,6 @@ export function ActivityPanel() {
   const error = activeFilter === "resolved" ? resolvedQuery.error : pendingQuery.error;
   const latest = pending.at(-1);
   const emptyState = EMPTY_STATES[activeFilter];
-  const readStateError = archiveMutation.isError || unarchiveMutation.isError;
   useEffect(() => {
     if (desktop) {
       setMobileOpen(false);
@@ -109,13 +112,17 @@ export function ActivityPanel() {
           <ActivityFilterBar
             activeFilter={activeFilter}
             attentionCount={attention.length}
+            allFilterRef={desktopAllFilterRef}
             onChange={changeFilter}
             pendingCount={pending.length}
             resolvedCount={resolved.length}
           />
           <div className="flex-1" />
           {activeFilter !== "resolved" ? (
-            <ArchiveAllActivitiesButton count={pending.length} />
+            <ArchiveAllActivitiesButton
+              count={pending.length}
+              successFocusRef={desktopAllFilterRef}
+            />
           ) : null}
         </div>
         <div className="my-5 h-px bg-border" />
@@ -181,13 +188,18 @@ export function ActivityPanel() {
               </DialogDescription>
             </div>
             {activeFilter !== "resolved" ? (
-              <ArchiveAllActivitiesButton compact count={pending.length} />
+              <ArchiveAllActivitiesButton
+                compact
+                count={pending.length}
+                successFocusRef={mobileAllFilterRef}
+              />
             ) : null}
           </div>
           <div className="shrink-0 overflow-x-auto border-b border-border bg-surface px-3 py-2">
             <ActivityFilterBar
               activeFilter={activeFilter}
               attentionCount={attention.length}
+              allFilterRef={mobileAllFilterRef}
               compact
               onChange={changeFilter}
               pendingCount={pending.length}
@@ -248,6 +260,7 @@ function ActivityFilterBar({
   onChange,
   compact = false,
   testIdPrefix = "activity-tab",
+  allFilterRef,
 }: {
   activeFilter: ActivityFilter;
   pendingCount: number;
@@ -256,6 +269,7 @@ function ActivityFilterBar({
   onChange: (filter: ActivityFilter) => void;
   compact?: boolean;
   testIdPrefix?: string;
+  allFilterRef?: Ref<HTMLButtonElement>;
 }) {
   const filters: Array<{ id: ActivityFilter; label: string; count: number }> = [
     { id: "all", label: "All", count: pendingCount },
@@ -275,6 +289,7 @@ function ActivityFilterBar({
           )}
           data-testid={`${testIdPrefix}-${filter.id}`}
           key={filter.id}
+          ref={filter.id === "all" ? allFilterRef : undefined}
           onClick={() => onChange(filter.id)}
           type="button"
         >

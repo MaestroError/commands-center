@@ -123,7 +123,10 @@ describe("activity routes", () => {
       });
 
       expect(response.statusCode).toBe(200);
-      expect(response.json()).toMatchObject({ status: "pending", archivedAt: null });
+      expect(response.json()).toMatchObject({
+        activity: { status: "pending", archivedAt: null },
+        archivedActivityIds: [],
+      });
     } finally {
       await server.close();
       await testDb.cleanup();

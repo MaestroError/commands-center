@@ -6,6 +6,7 @@ import {
   type Activity,
   type ActivityKind,
   type ActivityLevel,
+  type UnarchiveActivityResponse,
 } from "@cc/shared/schemas";
 
 import type { AppDb } from "../db/client.js";
@@ -137,7 +138,7 @@ export function createActivityService(options: { db: AppDb; logger?: Logger }) {
       return mapActivity({ ...existing, status: "archived", archived_at: now, updated_at: now });
     },
 
-    async unarchive(id: string): Promise<Activity> {
+    async unarchive(id: string): Promise<UnarchiveActivityResponse> {
       const existing = await db.query.activities.findFirst({
         where: (table, operators) => operators.eq(table.id, id),
       });
@@ -145,24 +146,37 @@ export function createActivityService(options: { db: AppDb; logger?: Logger }) {
         throw new NotFoundError("Activity not found.");
       }
       if (existing.status === "pending") {
-        return mapActivity(existing);
+        return { activity: mapActivity(existing), archivedActivityIds: [] };
       }
       const now = new Date();
-      db.transaction((tx) => {
+      const archivedActivityIds = db.transaction((tx) => {
+        let archivedIds: string[] = [];
         if (existing.dedupe_key) {
-          tx.update(activities)
+          archivedIds = tx
+            .update(activities)
             .set({ status: "archived", archived_at: now, updated_at: now })
             .where(
               and(eq(activities.dedupe_key, existing.dedupe_key), eq(activities.status, "pending")),
             )
-            .run();
+            .returning({ id: activities.id })
+            .all()
+            .map(({ id: archivedId }) => archivedId);
         }
         tx.update(activities)
           .set({ status: "pending", archived_at: null, updated_at: now })
           .where(eq(activities.id, id))
           .run();
+        return archivedIds;
       });
-      return mapActivity({ ...existing, status: "pending", archived_at: null, updated_at: now });
+      return {
+        activity: mapActivity({
+          ...existing,
+          status: "pending",
+          archived_at: null,
+          updated_at: now,
+        }),
+        archivedActivityIds,
+      };
     },
 
     async archiveAllPending(): Promise<number> {

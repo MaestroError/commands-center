@@ -4,6 +4,7 @@ export {
   activityListResponseSchema,
   activityPresentationPayloadSchema,
   archiveAllActivitiesResponseSchema,
+  unarchiveActivityResponseSchema,
   reviewActivityPayloadSchema,
   taskProposalPayloadSchema,
   taskTemplateProposalPayloadSchema,
@@ -17,6 +18,7 @@ export {
   type ActivityListResponse,
   type ActivityPresentationPayload,
   type ArchiveAllActivitiesResponse,
+  type UnarchiveActivityResponse,
   type ReviewActivityPayload,
   type ActivityStatus,
 } from "./activities.js";

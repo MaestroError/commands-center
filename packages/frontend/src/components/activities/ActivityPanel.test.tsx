@@ -73,7 +73,7 @@ beforeEach(() => {
     resolved = resolved.filter((entry) => entry.id !== id);
     const unarchived = { ...match, status: "pending" as const, archivedAt: null };
     pending = [...pending, unarchived];
-    return Promise.resolve(unarchived);
+    return Promise.resolve({ activity: unarchived, archivedActivityIds: [] });
   });
   vi.mocked(api.archiveAllActivities).mockReset();
   vi.mocked(api.archiveAllActivities).mockImplementation(() => {
@@ -198,6 +198,26 @@ describe("ActivityPanel", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Could not mark all notifications as read",
     );
+  });
+
+  it("restores focus to the All filter after successfully marking all as read", async () => {
+    const request = deferred<{ archivedCount: number }>();
+    vi.mocked(api.archiveAllActivities).mockReturnValueOnce(request.promise);
+    renderPanel();
+    await screen.findByText("Digest completed");
+    const trigger = screen.getByRole("button", { name: "Mark all as read" });
+    trigger.focus();
+    fireEvent.click(trigger);
+    fireEvent.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", {
+        name: "Mark all as read",
+      }),
+    );
+
+    request.resolve({ archivedCount: 2 });
+
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId("activity-tab-all")).toHaveFocus());
   });
 
   it("opens the mobile full-screen notification feed from its teaser", async () => {
@@ -351,6 +371,36 @@ describe("ActivityPanel", () => {
     expect(await within(dialog).findByRole("alert")).toHaveTextContent(
       "Could not update the notification",
     );
+  });
+
+  it("shows an earlier serialized archive failure while a later archive is pending", async () => {
+    const first = deferred<Activity>();
+    const second = deferred<Activity>();
+    vi.mocked(api.archiveActivity)
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    renderPanel();
+    await screen.findByText("Digest completed");
+
+    fireEvent.click(
+      within(screen.getByTestId("activity-card-info-1")).getByRole("button", { name: "Mark read" }),
+    );
+    fireEvent.click(
+      within(screen.getByTestId("activity-card-warning-1")).getByRole("button", {
+        name: "Mark read",
+      }),
+    );
+    await waitFor(() => expect(api.archiveActivity).toHaveBeenCalledTimes(1));
+
+    first.reject(new Error("offline"));
+
+    await waitFor(() => expect(api.archiveActivity).toHaveBeenCalledTimes(2));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not update the notification");
+    second.resolve({
+      ...pendingAttention,
+      status: "archived",
+      archivedAt: pendingAttention.updatedAt,
+    });
   });
 
   it("shows mark-unread failure inside the mobile feed", async () => {

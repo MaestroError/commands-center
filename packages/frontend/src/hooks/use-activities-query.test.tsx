@@ -117,8 +117,8 @@ describe("activity read-state mutations", () => {
     expect(readResolved(queryClient)).toEqual(original.resolved);
   });
 
-  it("waits for canonical pending data when unarchiving", async () => {
-    const request = deferred<Activity>();
+  it("optimistically moves an archived activity to pending when unarchiving", async () => {
+    const request = deferred<{ activity: Activity; archivedActivityIds: string[] }>();
     vi.mocked(unarchiveActivity).mockReturnValue(request.promise);
     const queryClient = createQueryClient();
     seedCaches(queryClient);
@@ -132,16 +132,20 @@ describe("activity read-state mutations", () => {
       expect(unarchiveActivity).toHaveBeenCalledWith(resolvedAttentionActivity.id),
     );
     expect(readPending(queryClient).activities.map(({ id }) => id)).toEqual([
+      resolvedAttentionActivity.id,
       infoActivity.id,
       attentionActivity.id,
     ]);
-    expect(readPending(queryClient).actionRequiredCount).toBe(1);
+    expect(readPending(queryClient).actionRequiredCount).toBe(2);
     expect(readResolved(queryClient).activities).toEqual([]);
-    request.resolve({ ...resolvedAttentionActivity, status: "pending", archivedAt: null });
+    request.resolve({
+      activity: { ...resolvedAttentionActivity, status: "pending", archivedAt: null },
+      archivedActivityIds: [],
+    });
   });
 
-  it("does not add a restored activity beside a different pending dedupe collision", async () => {
-    const request = deferred<Activity>();
+  it("removes the pending dedupe collision returned by unarchive", async () => {
+    const request = deferred<{ activity: Activity; archivedActivityIds: string[] }>();
     vi.mocked(unarchiveActivity).mockReturnValue(request.promise);
     const queryClient = createQueryClient();
     seedCaches(queryClient);
@@ -154,12 +158,18 @@ describe("activity read-state mutations", () => {
     await waitFor(() =>
       expect(unarchiveActivity).toHaveBeenCalledWith(resolvedAttentionActivity.id),
     );
-    expect(readPending(queryClient).activities.map(({ id }) => id)).toEqual([
-      infoActivity.id,
-      attentionActivity.id,
-    ]);
+    request.resolve({
+      activity: { ...resolvedAttentionActivity, status: "pending", archivedAt: null },
+      archivedActivityIds: [attentionActivity.id],
+    });
+
+    await waitFor(() =>
+      expect(readPending(queryClient).activities.map(({ id }) => id)).toEqual([
+        resolvedAttentionActivity.id,
+        infoActivity.id,
+      ]),
+    );
     expect(readPending(queryClient).actionRequiredCount).toBe(1);
-    request.resolve({ ...resolvedAttentionActivity, status: "pending", archivedAt: null });
   });
 
   it("restores both caches when unarchive fails", async () => {
@@ -181,9 +191,8 @@ describe("activity read-state mutations", () => {
     const archiveRequest = deferred<Activity>();
     vi.mocked(archiveActivity).mockReturnValue(archiveRequest.promise);
     vi.mocked(unarchiveActivity).mockResolvedValue({
-      ...resolvedAttentionActivity,
-      status: "pending",
-      archivedAt: null,
+      activity: { ...resolvedAttentionActivity, status: "pending", archivedAt: null },
+      archivedActivityIds: [],
     });
     const queryClient = createQueryClient();
     seedCaches(queryClient);
@@ -211,9 +220,8 @@ describe("activity read-state mutations", () => {
     const archiveAllRequest = deferred<{ archivedCount: number }>();
     vi.mocked(archiveAllActivities).mockReturnValue(archiveAllRequest.promise);
     vi.mocked(unarchiveActivity).mockResolvedValue({
-      ...resolvedAttentionActivity,
-      status: "pending",
-      archivedAt: null,
+      activity: { ...resolvedAttentionActivity, status: "pending", archivedAt: null },
+      archivedActivityIds: [],
     });
     const queryClient = createQueryClient();
     seedCaches(queryClient);
