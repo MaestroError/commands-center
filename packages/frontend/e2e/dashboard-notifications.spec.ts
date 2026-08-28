@@ -1,6 +1,7 @@
 import { activityKindSchema, type Activity } from "@cc/shared/schemas";
 
 import { expect, test, type Page, type Route } from "./fixtures";
+import { createTaskState, mockTaskApi } from "./tasks/fixtures";
 
 const NOW = "2026-07-29T12:00:00.000Z";
 
@@ -140,6 +141,85 @@ test("keeps mobile notification actions in one proportional row", async ({ page 
   expect(primaryBox?.width ?? 0).toBeGreaterThan(markReadBox?.width ?? 0);
 });
 
+test("accepts a task from the mobile notification feed", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const state = createTaskState();
+  const activities = [
+    createActivity("task_completed", 1, {
+      payload: { taskId: "task-ready", sourceSpecialistSlug: "planner" },
+    }),
+  ];
+  const archivedIds: string[] = [];
+  await mockActivitiesApi(page, activities, archivedIds);
+  await mockTaskApi(page, state);
+
+  await page.goto("/");
+  await page.getByRole("button", { name: /Notifications/ }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Accept" }).click();
+
+  await expect(page.getByRole("dialog").getByText("0 of 0")).toBeVisible();
+  expect(state.tasks.find((task) => task.id === "task-ready")?.status).toBe("done");
+  expect(archivedIds).toEqual(["activity-1"]);
+});
+
+test("opens a task from the mobile notification feed", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const state = createTaskState();
+  const activities = [
+    createActivity("task_completed", 1, {
+      payload: { taskId: "task-ready", sourceSpecialistSlug: "planner" },
+    }),
+  ];
+  await mockActivitiesApi(page, activities, []);
+  await mockTaskApi(page, state);
+
+  await page.goto("/");
+  await page.getByRole("button", { name: /Notifications/ }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Open task" }).click();
+
+  await expect(page).toHaveURL(/\/tasks\?task=task-ready$/);
+  await expect(page.getByTestId("task-detail-panel")).toBeVisible();
+});
+
+test("keeps mobile card-internal controls at least 44px tall", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const state = createTaskState();
+  const task = state.tasks.find((entry) => entry.id === "task-ready");
+  if (!task) throw new Error("Expected task fixture to include task-ready.");
+  task.todos = [
+    {
+      id: "todo-1",
+      content: "Review output",
+      status: "pending",
+      createdAt: NOW,
+    },
+  ];
+  const activities = [
+    createActivity("task_needs_review", 1, {
+      payload: {
+        taskId: "task-ready",
+        taskRunId: "run-1",
+        question: "Publish it?",
+        suggestedReplies: ["Publish"],
+        runOutput: "outcome: ready_for_review",
+      },
+    }),
+  ];
+  await mockActivitiesApi(page, activities, []);
+  await mockTaskApi(page, state);
+
+  await page.goto("/");
+  await page.getByRole("button", { name: /Notifications/ }).click();
+  const dialog = page.getByRole("dialog");
+  const runOutput = dialog.getByRole("button", { name: /Run output/ });
+  const criteria = dialog.getByRole("button", { name: /Acceptance criteria/ });
+  const suggestedReply = dialog.getByRole("button", { name: "Use suggested reply: Publish" });
+
+  await expect(runOutput).toHaveCSS("min-height", "44px");
+  await expect(criteria).toHaveCSS("min-height", "44px");
+  await expect(suggestedReply).toHaveCSS("min-height", "44px");
+});
+
 test("filters and repositions a multi-card mobile notification feed", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const activities = [
@@ -208,6 +288,50 @@ test("marks a mobile notification read", async ({ page }) => {
 
   await expect(dialog.getByText("0 of 0")).toBeVisible();
   expect(archivedIds).toEqual(["activity-1"]);
+});
+
+test("swipes a mobile notification read", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const activities = [createActivity("specialist_info", 1, { level: "info" })];
+  const archivedIds: string[] = [];
+  await mockActivitiesApi(page, activities, archivedIds);
+
+  await page.goto("/");
+  await page.getByRole("button", { name: /Notifications/ }).click();
+  const dialog = page.getByRole("dialog");
+  const headerBox = await dialog.getByTestId("activity-card-header").boundingBox();
+  expect(headerBox).not.toBeNull();
+
+  await page.mouse.move((headerBox?.x ?? 0) + 250, (headerBox?.y ?? 0) + 40);
+  await page.mouse.down();
+  await page.mouse.move((headerBox?.x ?? 0) + 60, (headerBox?.y ?? 0) + 42, { steps: 5 });
+  await page.mouse.up();
+
+  await expect(dialog.getByText("0 of 0")).toBeVisible();
+  expect(archivedIds).toEqual(["activity-1"]);
+});
+
+test("scrolls the mobile card body without marking it read", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const activities = [
+    createActivity("specialist_info", 1, {
+      level: "info",
+      body: Array.from({ length: 30 }, (_, index) => `Paragraph ${index + 1}`).join("\n\n"),
+    }),
+  ];
+  const archivedIds: string[] = [];
+  await mockActivitiesApi(page, activities, archivedIds);
+
+  await page.goto("/");
+  await page.getByRole("button", { name: /Notifications/ }).click();
+  const dialog = page.getByRole("dialog");
+  const body = dialog.getByTestId("activity-card-body");
+  await body.hover();
+  await page.mouse.wheel(0, 500);
+
+  await expect.poll(() => body.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  await expect(dialog.getByTestId("activity-card-activity-1")).toBeVisible();
+  expect(archivedIds).toEqual([]);
 });
 
 test("marks a resolved mobile notification unread", async ({ page }) => {

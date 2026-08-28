@@ -175,7 +175,7 @@ function ReviewReplyActions({ activity, onArchive, archiving }: ActivityActionsP
           {suggestedReplies.map((suggestedReply, index) => (
             <button
               aria-label={`Use suggested reply: ${suggestedReply}`}
-              className="rounded-md border border-border bg-surface px-2 py-1 text-xs text-text-primary transition hover:border-accent/50 hover:text-accent"
+              className="min-h-11 rounded-md border border-border bg-surface px-2 py-1 text-xs text-text-primary transition hover:border-accent/50 hover:text-accent md:min-h-0"
               key={`${index}-${suggestedReply}`}
               type="button"
               onClick={() => setReply(suggestedReply)}

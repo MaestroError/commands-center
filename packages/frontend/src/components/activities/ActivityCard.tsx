@@ -344,6 +344,7 @@ export function ActivityCard({
                 ? "flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 [scrollbar-width:thin]"
                 : "ml-12 mt-4 grid grid-cols-[minmax(0,1fr)] gap-4",
             )}
+            data-testid={mobile ? "activity-card-body" : undefined}
           >
             {activity.body ? (
               <div className="break-words text-sm leading-6 text-text-primary [overflow-wrap:anywhere] sm:text-[15px] sm:leading-7">
@@ -463,7 +464,7 @@ function ActivityRunOutput({ output }: { output: string }) {
     <section className="overflow-hidden rounded-lg border border-border bg-surface-elevated">
       <button
         aria-expanded={open}
-        className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left"
+        className="flex min-h-11 w-full items-center justify-between gap-3 px-3 py-2.5 text-left md:min-h-0"
         onClick={() => setOpen((value) => !value)}
         type="button"
       >
@@ -547,7 +548,7 @@ function ActivityAcceptanceCriteria({
     <section className="overflow-hidden rounded-lg border border-border">
       <button
         aria-expanded={open}
-        className="flex w-full items-center justify-between gap-3 bg-surface-elevated px-3 py-2.5 text-left"
+        className="flex min-h-11 w-full items-center justify-between gap-3 bg-surface-elevated px-3 py-2.5 text-left md:min-h-0"
         onClick={() => setOpen((value) => !value)}
         type="button"
       >

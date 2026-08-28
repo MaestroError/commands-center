@@ -444,6 +444,25 @@ describe("ActivityCard acceptance criteria", () => {
     expect(screen.getByText("outcome: ready_for_review")).toBeInTheDocument();
   });
 
+  it("uses responsive sizing for mobile disclosure controls", () => {
+    renderCard(
+      activity({
+        id: "a1",
+        kind: "task_completed",
+        payload: { taskId: "t1", runOutput: "outcome: ready_for_review" },
+      }),
+    );
+
+    expect(screen.getByRole("button", { name: /Run output/ })).toHaveClass(
+      "min-h-11",
+      "md:min-h-0",
+    );
+    expect(screen.getByRole("button", { name: /Acceptance criteria/ })).toHaveClass(
+      "min-h-11",
+      "md:min-h-0",
+    );
+  });
+
   it("offers mark unread for resolved cards", () => {
     const onMarkUnread = vi.fn();
     renderCard(activity({ id: "a1", kind: "specialist_info", status: "archived" }), {

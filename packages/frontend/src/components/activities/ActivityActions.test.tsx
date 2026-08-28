@@ -187,6 +187,26 @@ describe("ActivityActions", () => {
     expect(screen.getByLabelText("Review reply")).toHaveValue("Publish");
   });
 
+  it("uses responsive sizing for suggested replies", () => {
+    renderActions(
+      activity({
+        id: "a1",
+        kind: "task_needs_review",
+        payload: {
+          taskId: "t1",
+          taskRunId: "r1",
+          question: "Publish it?",
+          suggestedReplies: ["Publish"],
+        },
+      }),
+    );
+
+    expect(screen.getByRole("button", { name: "Use suggested reply: Publish" })).toHaveClass(
+      "min-h-11",
+      "md:min-h-0",
+    );
+  });
+
   it("task_needs_review: replies and archives the card in one action", async () => {
     const { onArchive } = renderActions(
       activity({
