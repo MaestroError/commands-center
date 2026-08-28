@@ -10,6 +10,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { buttonVariants } from "@/components/ui/button-variants";
 import {
   useActivitiesQuery,
   useArchiveActivityMutation,
@@ -150,7 +151,7 @@ export function ActivityPanel() {
             <DialogClose asChild>
               <button
                 aria-label="Close notifications"
-                className="cc-icon-btn shrink-0"
+                className={cn(buttonVariants({ variant: "secondary", size: "icon" }), "shrink-0")}
                 type="button"
               >
                 <X aria-hidden="true" className="h-4 w-4" />
@@ -259,11 +260,10 @@ function ActivityFilterBar({
           <TabsTrigger
             className={cn(
               "rounded-full border border-border after:hidden data-[state=active]:border-accent data-[state=active]:bg-accent data-[state=active]:text-on-accent",
-              compact ? "min-h-8 px-3 py-1.5 text-xs" : "px-4 py-2 text-sm",
+              compact ? "min-h-11 px-3 py-1.5 text-xs" : "px-4 py-2 text-sm",
             )}
             data-testid={`${testIdPrefix}-${filter.id}`}
             key={filter.id}
-            onClick={() => onChange(filter.id)}
             value={filter.id}
           >
             {filter.label}

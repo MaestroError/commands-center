@@ -115,6 +115,27 @@ describe("activity service", () => {
     expect(await service.actionRequiredCount()).toBe(1);
   });
 
+  it("archives a newer pending dedupe collision when restoring an older activity", async () => {
+    const older = await service.emit({
+      kind: "task_completed",
+      level: "info",
+      title: "Older",
+      dedupeKey: "task_completed:run-1",
+    });
+    await service.archive(older.id);
+    const newer = await service.emit({
+      kind: "task_completed",
+      level: "info",
+      title: "Newer",
+      dedupeKey: "task_completed:run-1",
+    });
+
+    await service.unarchive(older.id);
+
+    expect((await service.list()).map((activity) => activity.id)).toEqual([older.id]);
+    expect((await service.get(newer.id))?.status).toBe("archived");
+  });
+
   it("unarchive is idempotent and rejects unknown ids", async () => {
     const activity = await service.emit({
       kind: "feedback_resolved",

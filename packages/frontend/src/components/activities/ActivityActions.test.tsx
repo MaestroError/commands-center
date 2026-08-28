@@ -60,19 +60,23 @@ function LocationProbe() {
   );
 }
 
-function renderActions(value: Activity, onArchive = vi.fn()) {
+function renderActions(value: Activity, onArchive = vi.fn(), onArchiveImmediately = vi.fn()) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={["/"]}>
-        <ActivityActions activity={value} onArchive={onArchive} />
+        <ActivityActions
+          activity={value}
+          onArchive={onArchive}
+          onArchiveImmediately={onArchiveImmediately}
+        />
         <LocationProbe />
       </MemoryRouter>
     </QueryClientProvider>,
   );
-  return { onArchive };
+  return { onArchive, onArchiveImmediately };
 }
 
 beforeEach(() => {
@@ -244,5 +248,55 @@ describe("ActivityActions", () => {
 
     fireEvent.click(screen.getByText("Mark read"));
     expect(onArchive).toHaveBeenCalledWith("a1");
+  });
+
+  it.each([
+    [
+      "task proposal",
+      activity({
+        id: "task-proposal",
+        kind: "task_proposal",
+        payload: { title: "Draft report", reason: "Review the proposal" },
+      }),
+      "Review & create",
+      "/tasks/new",
+    ],
+    [
+      "task template proposal",
+      activity({
+        id: "template-proposal",
+        kind: "task_template_proposal",
+        payload: { title: "Weekly report", reason: "Review the template" },
+      }),
+      "Review & create",
+      "/tasks/templates/new",
+    ],
+  ])("archives a %s before navigating", (_label, proposal, buttonName, path) => {
+    const onArchiveImmediately = vi.fn();
+    renderActions(proposal, vi.fn(), onArchiveImmediately);
+
+    fireEvent.click(screen.getByRole("button", { name: buttonName }));
+
+    expect(onArchiveImmediately).toHaveBeenCalledWith(proposal.id);
+    expect(screen.getByTestId("location")).toHaveTextContent(path);
+  });
+
+  it("archives a command proposal before navigating to the terminal", () => {
+    const onArchiveImmediately = vi.fn();
+    renderActions(
+      activity({
+        id: "command-proposal",
+        kind: "run_command_proposal",
+        payload: { command: "pnpm test", reason: "Verify the change" },
+      }),
+      vi.fn(),
+      onArchiveImmediately,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Run command" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open terminal" }));
+
+    expect(onArchiveImmediately).toHaveBeenCalledWith("command-proposal");
+    expect(screen.getByTestId("location")).toHaveTextContent("/terminal");
   });
 });

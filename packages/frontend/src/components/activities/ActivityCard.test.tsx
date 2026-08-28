@@ -481,6 +481,37 @@ describe("ActivityCard acceptance criteria", () => {
     await waitFor(() => expect(onMarkRead).toHaveBeenCalledWith("a1"));
   });
 
+  it("uses the pointer-up displacement before React commits drag state", () => {
+    vi.useFakeTimers();
+    const onMarkRead = vi.fn();
+    renderCard(activity({ id: "a1", kind: "specialist_info" }), { onMarkRead });
+    const card = screen.getByTestId("activity-card-a1");
+
+    act(() => {
+      dispatchPointerEvent(card, "pointerdown", 200, 20);
+      dispatchPointerEvent(card, "pointermove", 40, 24);
+      dispatchPointerEvent(card, "pointerup", 40, 24);
+    });
+    void act(() => vi.runAllTimers());
+
+    expect(onMarkRead).toHaveBeenCalledWith("a1");
+  });
+
+  it("resets a cancelled swipe without marking the card read", () => {
+    vi.useFakeTimers();
+    const onMarkRead = vi.fn();
+    renderCard(activity({ id: "a1", kind: "specialist_info" }), { onMarkRead });
+    const card = screen.getByTestId("activity-card-a1");
+
+    dispatchPointer(card, "pointerdown", 200, 20);
+    dispatchPointer(card, "pointermove", 40, 24);
+    dispatchPointer(card, "pointercancel", 40, 24);
+    void act(() => vi.runAllTimers());
+
+    expect(card).toHaveStyle({ transform: "translateX(0px)" });
+    expect(onMarkRead).not.toHaveBeenCalled();
+  });
+
   it("waits for the exit duration before resolving a clicked card", () => {
     vi.useFakeTimers();
     mockReducedMotion(false);
@@ -648,9 +679,22 @@ describe("ActivityCard acceptance criteria", () => {
 });
 
 function dispatchPointer(element: Element, type: string, clientX: number, clientY: number): void {
+  fireEvent(element, createPointerEvent(type, clientX, clientY));
+}
+
+function dispatchPointerEvent(
+  element: Element,
+  type: string,
+  clientX: number,
+  clientY: number,
+): void {
+  element.dispatchEvent(createPointerEvent(type, clientX, clientY));
+}
+
+function createPointerEvent(type: string, clientX: number, clientY: number): MouseEvent {
   const event = new MouseEvent(type, { bubbles: true, clientX, clientY });
   Object.defineProperty(event, "pointerId", { value: 1 });
-  fireEvent(element, event);
+  return event;
 }
 
 function mockReducedMotion(matches: boolean): void {

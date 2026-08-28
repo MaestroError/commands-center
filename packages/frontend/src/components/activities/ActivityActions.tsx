@@ -24,6 +24,7 @@ import { cn } from "@/lib/cn";
 type ActivityActionsProps = {
   activity: Activity;
   onArchive: (id: string) => void;
+  onArchiveImmediately?: (id: string) => void;
   archiving?: boolean;
 };
 
@@ -264,7 +265,12 @@ function InfoActions({ activity, onArchive, archiving }: ActivityActionsProps) {
 // A specialist proposed creating a task. Confirming opens the real task
 // creation page prefilled with the proposal (title, prompt, proposed assignee);
 // the operator reviews and creates it there.
-function TaskProposalActions({ activity, onArchive, archiving }: ActivityActionsProps) {
+function TaskProposalActions({
+  activity,
+  onArchive,
+  onArchiveImmediately = onArchive,
+  archiving,
+}: ActivityActionsProps) {
   const navigate = useNavigate();
   const parsed = taskProposalPayloadSchema.safeParse(activity.payload);
   const specialists = useSpecialistsQuery().data ?? [];
@@ -286,7 +292,7 @@ function TaskProposalActions({ activity, onArchive, archiving }: ActivityActions
       // content — only an explicit prompt seeds the task body.
       prompt: createTaskPromptValue(parsed.data.taskDescription ?? ""),
     };
-    onArchive(activity.id);
+    onArchiveImmediately(activity.id);
     void navigate("/tasks/new", { state: { taskPrefill } });
   };
 
@@ -305,7 +311,12 @@ function TaskProposalActions({ activity, onArchive, archiving }: ActivityActions
 // A specialist proposed a recurring task template. Confirming opens the real
 // template creation page prefilled with the proposal (title, prompt, assignee,
 // recurrence); the operator reviews and creates it there.
-function TaskTemplateProposalActions({ activity, onArchive, archiving }: ActivityActionsProps) {
+function TaskTemplateProposalActions({
+  activity,
+  onArchive,
+  onArchiveImmediately = onArchive,
+  archiving,
+}: ActivityActionsProps) {
   const navigate = useNavigate();
   const parsed = taskTemplateProposalPayloadSchema.safeParse(activity.payload);
   const specialists = useSpecialistsQuery().data ?? [];
@@ -328,7 +339,7 @@ function TaskTemplateProposalActions({ activity, onArchive, archiving }: Activit
       description: parsed.data.taskDescription ?? "",
       recurrence: parsed.data.recurrence,
     };
-    onArchive(activity.id);
+    onArchiveImmediately(activity.id);
     void navigate("/tasks/templates/new", { state: { templatePrefill } });
   };
 
@@ -385,7 +396,12 @@ function RunTemplateProposalActions({ activity, onArchive, archiving }: Activity
 
 // A specialist proposed a terminal command. Confirming opens the global
 // terminal prefilled with the command (operator reviews and presses Enter).
-function RunCommandProposalActions({ activity, onArchive, archiving }: ActivityActionsProps) {
+function RunCommandProposalActions({
+  activity,
+  onArchive,
+  onArchiveImmediately = onArchive,
+  archiving,
+}: ActivityActionsProps) {
   const navigate = useNavigate();
   const parsed = runCommandProposalPayloadSchema.safeParse(activity.payload);
   const command = parsed.success ? parsed.data.command : undefined;
@@ -395,7 +411,7 @@ function RunCommandProposalActions({ activity, onArchive, archiving }: ActivityA
     if (!command) {
       return;
     }
-    onArchive(activity.id);
+    onArchiveImmediately(activity.id);
     // The terminal page opens a fresh session and prefills it from this state.
     void navigate("/terminal", { state: { runCommand: command } });
   };

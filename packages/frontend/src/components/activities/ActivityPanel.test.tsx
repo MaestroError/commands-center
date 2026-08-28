@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Activity } from "@cc/shared/schemas";
@@ -96,19 +97,21 @@ describe("ActivityPanel", () => {
   });
 
   it("filters Needs attention using action_required", async () => {
+    const user = userEvent.setup();
     renderPanel();
     await screen.findByText("Digest completed");
 
-    fireEvent.click(screen.getByTestId("activity-tab-attention"));
+    await user.click(screen.getByTestId("activity-tab-attention"));
 
     expect(screen.getByText("Review blocked")).toBeInTheDocument();
     expect(screen.queryByText("Digest completed")).not.toBeInTheDocument();
   });
 
   it("marks a resolved activity unread", async () => {
+    const user = userEvent.setup();
     renderPanel();
     await screen.findByText("Digest completed");
-    fireEvent.click(screen.getByTestId("activity-tab-resolved"));
+    await user.click(screen.getByTestId("activity-tab-resolved"));
     await screen.findByText("Earlier update");
 
     fireEvent.click(screen.getByRole("button", { name: "Mark unread" }));
@@ -199,7 +202,23 @@ describe("ActivityPanel", () => {
     );
   });
 
+  it("keeps mobile header controls at least 44px tall", async () => {
+    renderPanel();
+    await screen.findByText("Digest completed");
+    fireEvent.click(screen.getByRole("button", { name: /Notifications/ }));
+    const dialog = await screen.findByRole("dialog");
+
+    expect(within(dialog).getByRole("button", { name: "Close notifications" })).toHaveClass(
+      "cc-button-icon",
+    );
+    expect(within(dialog).getByRole("button", { name: "Mark all as read" })).toHaveClass(
+      "min-h-11",
+    );
+    expect(within(dialog).getByTestId("activity-mobile-tab-all")).toHaveClass("min-h-11");
+  });
+
   it("resets the mobile feed position when its filter changes", async () => {
+    const user = userEvent.setup();
     renderPanel();
     await screen.findByText("Digest completed");
     fireEvent.click(screen.getByRole("button", { name: /Notifications/ }));
@@ -210,7 +229,7 @@ describe("ActivityPanel", () => {
     fireEvent.scroll(feed);
     expect(within(dialog).getByText("2 of 2")).toBeInTheDocument();
 
-    fireEvent.click(within(dialog).getByTestId("activity-mobile-tab-attention"));
+    await user.click(within(dialog).getByTestId("activity-mobile-tab-attention"));
 
     expect(within(dialog).getByText("1 of 1")).toBeInTheDocument();
     expect(within(dialog).getByTestId("activity-mobile-feed")).not.toBe(feed);
@@ -250,12 +269,13 @@ describe("ActivityPanel", () => {
   });
 
   it("shows mark-unread failure inside the mobile feed", async () => {
+    const user = userEvent.setup();
     vi.mocked(api.unarchiveActivity).mockRejectedValueOnce(new Error("offline"));
     renderPanel();
     await screen.findByText("Digest completed");
     fireEvent.click(screen.getByRole("button", { name: /Notifications/ }));
     const dialog = await screen.findByRole("dialog");
-    fireEvent.click(within(dialog).getByTestId("activity-mobile-tab-resolved"));
+    await user.click(within(dialog).getByTestId("activity-mobile-tab-resolved"));
     await within(dialog).findByText("Earlier update");
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Mark unread" }));

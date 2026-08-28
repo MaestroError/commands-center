@@ -149,10 +149,20 @@ export function createActivityService(options: { db: AppDb; logger?: Logger }) {
         return mapActivity(existing);
       }
       const now = new Date();
-      await db
-        .update(activities)
-        .set({ status: "pending", archived_at: null, updated_at: now })
-        .where(eq(activities.id, id));
+      db.transaction((tx) => {
+        if (existing.dedupe_key) {
+          tx.update(activities)
+            .set({ status: "archived", archived_at: now, updated_at: now })
+            .where(
+              and(eq(activities.dedupe_key, existing.dedupe_key), eq(activities.status, "pending")),
+            )
+            .run();
+        }
+        tx.update(activities)
+          .set({ status: "pending", archived_at: null, updated_at: now })
+          .where(eq(activities.id, id))
+          .run();
+      });
       return mapActivity({ ...existing, status: "pending", archived_at: null, updated_at: now });
     },
 

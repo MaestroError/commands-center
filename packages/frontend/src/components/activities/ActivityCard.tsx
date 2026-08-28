@@ -198,16 +198,27 @@ export function ActivityCard({
       return;
     }
     dragRef.current = null;
-    if (drag.horizontal && Math.abs(dragX) >= SWIPE_THRESHOLD_PX) {
-      requestMarkRead(activity.id, dragX < 0 ? -1 : 1);
+    const finalDragX = event.clientX - drag.startX;
+    if (drag.horizontal && Math.abs(finalDragX) >= SWIPE_THRESHOLD_PX) {
+      requestMarkRead(activity.id, finalDragX < 0 ? -1 : 1);
       return;
     }
     setDragging(false);
     setDragX(0);
   }
 
+  function onPointerCancel(event: ReactPointerEvent<HTMLElement>): void {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) {
+      return;
+    }
+    dragRef.current = null;
+    setDragging(false);
+    setDragX(0);
+  }
+
   const swipeHandlers = {
-    onPointerCancel: onPointerEnd,
+    onPointerCancel,
     onPointerDown,
     onPointerMove,
     onPointerUp: onPointerEnd,
@@ -365,6 +376,7 @@ export function ActivityCard({
                       activity={activity}
                       archiving={archiving}
                       onArchive={requestMarkRead}
+                      onArchiveImmediately={finishMarkRead}
                     />
                   </div>
                 ) : null}
@@ -388,6 +400,7 @@ export function ActivityCard({
                 activity={activity}
                 archiving={archiving}
                 onArchive={requestMarkRead}
+                onArchiveImmediately={finishMarkRead}
               />
             </div>
           </section>
@@ -404,6 +417,7 @@ export function ActivityCard({
               activity={activity}
               archiving={archiving}
               onArchive={requestMarkRead}
+              onArchiveImmediately={finishMarkRead}
             />
           </div>
         ) : null}
@@ -413,6 +427,7 @@ export function ActivityCard({
               activity={activity}
               archiving={archiving}
               onArchive={requestMarkRead}
+              onArchiveImmediately={finishMarkRead}
             />
           </div>
         ) : null}

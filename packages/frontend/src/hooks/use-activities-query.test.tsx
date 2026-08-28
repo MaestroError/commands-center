@@ -65,6 +65,28 @@ describe("activity read-state mutations", () => {
     request.resolve({ ...infoActivity, status: "archived" });
   });
 
+  it("replaces an existing resolved cache entry when archiving", async () => {
+    const request = deferred<Activity>();
+    vi.mocked(archiveActivity).mockReturnValue(request.promise);
+    const queryClient = createQueryClient();
+    seedCaches(queryClient);
+    queryClient.setQueryData<ActivityListResponse>(queryKeys.activitiesResolved, {
+      activities: [resolvedAttentionActivity, { ...infoActivity, status: "archived" }],
+      actionRequiredCount: 0,
+    });
+    const { result } = renderHook(() => useArchiveActivityMutation(), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    act(() => result.current.mutate(infoActivity.id));
+
+    await waitFor(() => expect(archiveActivity).toHaveBeenCalledWith(infoActivity.id));
+    expect(
+      readResolved(queryClient).activities.filter(({ id }) => id === infoActivity.id),
+    ).toHaveLength(1);
+    request.resolve({ ...infoActivity, status: "archived" });
+  });
+
   it("decrements the attention count only when archiving action-required activity", async () => {
     const request = deferred<Activity>();
     vi.mocked(archiveActivity).mockReturnValue(request.promise);
@@ -115,6 +137,31 @@ describe("activity read-state mutations", () => {
       attentionActivity.id,
     ]);
     expect(readResolved(queryClient).activities).toEqual([]);
+    request.resolve({ ...resolvedAttentionActivity, status: "pending", archivedAt: null });
+  });
+
+  it("replaces an existing pending cache entry without double-counting it", async () => {
+    const request = deferred<Activity>();
+    vi.mocked(unarchiveActivity).mockReturnValue(request.promise);
+    const queryClient = createQueryClient();
+    seedCaches(queryClient);
+    queryClient.setQueryData<ActivityListResponse>(queryKeys.activities, {
+      activities: [resolvedAttentionActivity, infoActivity, attentionActivity],
+      actionRequiredCount: 2,
+    });
+    const { result } = renderHook(() => useUnarchiveActivityMutation(), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    act(() => result.current.mutate(resolvedAttentionActivity.id));
+
+    await waitFor(() =>
+      expect(unarchiveActivity).toHaveBeenCalledWith(resolvedAttentionActivity.id),
+    );
+    expect(
+      readPending(queryClient).activities.filter(({ id }) => id === resolvedAttentionActivity.id),
+    ).toHaveLength(1);
+    expect(readPending(queryClient).actionRequiredCount).toBe(2);
     request.resolve({ ...resolvedAttentionActivity, status: "pending", archivedAt: null });
   });
 
@@ -169,6 +216,28 @@ describe("activity read-state mutations", () => {
     request.resolve({ archivedCount: 2 });
   });
 
+  it("replaces resolved cache collisions when archiving all", async () => {
+    const request = deferred<{ archivedCount: number }>();
+    vi.mocked(archiveAllActivities).mockReturnValue(request.promise);
+    const queryClient = createQueryClient();
+    seedCaches(queryClient);
+    queryClient.setQueryData<ActivityListResponse>(queryKeys.activitiesResolved, {
+      activities: [resolvedAttentionActivity, { ...attentionActivity, status: "archived" }],
+      actionRequiredCount: 0,
+    });
+    const { result } = renderHook(() => useArchiveAllActivitiesMutation(), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    act(() => result.current.mutate());
+
+    await waitFor(() => expect(archiveAllActivities).toHaveBeenCalledOnce());
+    expect(
+      readResolved(queryClient).activities.filter(({ id }) => id === attentionActivity.id),
+    ).toHaveLength(1);
+    request.resolve({ archivedCount: 2 });
+  });
+
   it("restores both caches when archive-all fails", async () => {
     vi.mocked(archiveAllActivities).mockRejectedValue(new Error("offline"));
     const queryClient = createQueryClient();
@@ -182,6 +251,33 @@ describe("activity read-state mutations", () => {
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(readPending(queryClient)).toEqual(original.pending);
     expect(readResolved(queryClient)).toEqual(original.resolved);
+  });
+
+  it("rolls back only the failed activity when overlapping mutations finish out of order", async () => {
+    const first = deferred<Activity>();
+    const second = deferred<Activity>();
+    vi.mocked(archiveActivity)
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    const queryClient = createQueryClient();
+    seedCaches(queryClient);
+    const { result } = renderHook(() => useArchiveActivityMutation(), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    act(() => result.current.mutate(infoActivity.id));
+    act(() => result.current.mutate(attentionActivity.id));
+    await waitFor(() => expect(archiveActivity).toHaveBeenCalledTimes(2));
+
+    second.resolve({ ...attentionActivity, status: "archived" });
+    first.reject(new Error("offline"));
+    await waitFor(() =>
+      expect(readPending(queryClient).activities.map(({ id }) => id)).toEqual([infoActivity.id]),
+    );
+    expect(readResolved(queryClient).activities.map(({ id }) => id)).toEqual([
+      resolvedAttentionActivity.id,
+      attentionActivity.id,
+    ]);
   });
 });
 
@@ -229,12 +325,15 @@ function readResolved(queryClient: QueryClient): ActivityListResponse {
 function deferred<T>(): {
   promise: Promise<T>;
   resolve: (value: T) => void;
+  reject: (reason: unknown) => void;
 } {
   let resolve = (_value: T): void => undefined;
-  const promise = new Promise<T>((resolvePromise) => {
+  let reject = (_reason: unknown): void => undefined;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
     resolve = resolvePromise;
+    reject = rejectPromise;
   });
-  return { promise, resolve };
+  return { promise, reject, resolve };
 }
 
 function activity(overrides: Pick<Activity, "id" | "level" | "status" | "createdAt">): Activity {
