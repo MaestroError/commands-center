@@ -520,5 +520,9 @@ function ActionButton({
 }
 
 function ActionError({ children }: { children: ReactNode }) {
-  return <span className="text-xs text-danger">{children}</span>;
+  return (
+    <span aria-live="assertive" className="text-xs text-danger" role="alert">
+      {children}
+    </span>
+  );
 }

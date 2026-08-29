@@ -234,7 +234,7 @@ test("keeps mobile card-internal controls at least 44px tall", async ({ page }) 
 });
 
 test("keeps a long mobile review workflow reachable in a short viewport", async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 480 });
+  await page.setViewportSize({ width: 390, height: 400 });
   const state = createTaskState();
   const suggestedReplies = [
     "Approve after checking every listed condition",
@@ -244,6 +244,8 @@ test("keeps a long mobile review workflow reachable in a short viewport", async 
   ];
   const activities = [
     createActivity("task_needs_review", 1, {
+      title:
+        "A long review title that wraps across several lines in the notification header ".repeat(3),
       payload: {
         taskId: "task-ready",
         taskRunId: "run-1",
@@ -291,8 +293,8 @@ test("keeps a long mobile review workflow reachable in a short viewport", async 
   const replyBox = footer.getByRole("textbox", { name: "Review reply" });
   await expect(replyBox).toHaveValue(suggestedReplies.at(-1) ?? "");
   await replyBox.fill("Please revise this work.");
-  await footer.getByRole("button", { name: "Reply" }).click();
-  const error = footer.getByText("Could not send the reply.");
+  await footer.getByRole("button", { name: "Reply", exact: true }).click();
+  const error = footer.getByRole("alert");
   await error.scrollIntoViewIfNeeded();
 
   await expect(error).toHaveText("Could not send the reply.");

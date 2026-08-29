@@ -439,7 +439,14 @@ describe("ActivityCard acceptance criteria", () => {
 
     const footer = screen.getByTestId("activity-card-footer");
 
-    expect(footer).toHaveClass("max-h-[60%]", "min-h-0", "overflow-y-auto", "overscroll-contain");
+    expect(footer).toHaveClass(
+      "max-h-[60%]",
+      "min-h-0",
+      "shrink",
+      "overflow-y-auto",
+      "overscroll-contain",
+    );
+    expect(footer).not.toHaveClass("shrink-0");
     expect(within(footer).getByRole("textbox", { name: "Review reply" })).toBeInTheDocument();
     expect(within(footer).getByRole("button", { name: "Mark read" })).toBeInTheDocument();
   });

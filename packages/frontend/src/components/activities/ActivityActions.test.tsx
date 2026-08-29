@@ -234,6 +234,41 @@ describe("ActivityActions", () => {
     expect(onArchive).toHaveBeenCalledWith("a1");
   });
 
+  it("task_needs_review: announces reply failures", async () => {
+    createRunFollowupMutateAsync.mockRejectedValueOnce(new Error("Reply failed"));
+    renderActions(
+      activity({
+        id: "a1",
+        kind: "task_needs_review",
+        payload: { taskId: "t1", taskRunId: "r1", question: "Publish it?" },
+      }),
+    );
+
+    fireEvent.change(screen.getByLabelText("Review reply"), { target: { value: "Revise" } });
+    fireEvent.click(screen.getByRole("button", { name: "Reply" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not send the reply.");
+    expect(screen.getByRole("alert")).toHaveAttribute("aria-live", "assertive");
+  });
+
+  it("run_template_proposal: announces action failures", () => {
+    runTemplateNowMutate.mockImplementationOnce(
+      (_input: unknown, options?: { onError?: () => void }) => options?.onError?.(),
+    );
+    renderActions(
+      activity({
+        id: "a1",
+        kind: "run_template_proposal",
+        payload: { templateId: "template-1", reason: "Run it" },
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Run template" }));
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Could not run the template.");
+    expect(screen.getByRole("alert")).toHaveAttribute("aria-live", "assertive");
+  });
+
   it("subtask_needs_review: replies and archives the card", async () => {
     const { onArchive } = renderActions(
       activity({

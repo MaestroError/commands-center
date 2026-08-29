@@ -46,7 +46,7 @@ const SWIPE_THRESHOLD_PX = 110;
 const EXIT_DURATION_MS = 180;
 const INTERACTIVE_SELECTOR = "button, input, textarea, a, label, [role='checkbox']";
 const MOBILE_FIXED_FOOTER_CLASS =
-  "relative z-10 shrink-0 border-t border-border shadow-[var(--shadow-fixed-footer)]";
+  "relative z-10 border-t border-border shadow-[var(--shadow-fixed-footer)]";
 
 const TONE_CLASSES = {
   accent: {
@@ -391,7 +391,7 @@ export function ActivityCard({
             aria-label="Review question and reply"
             className={cn(
               MOBILE_FIXED_FOOTER_CLASS,
-              "max-h-[60%] min-h-0 overflow-y-auto overscroll-contain bg-surface-elevated p-3 [scrollbar-width:thin]",
+              "max-h-[60%] min-h-0 shrink overflow-y-auto overscroll-contain bg-surface-elevated p-3 [scrollbar-width:thin]",
             )}
             data-testid="activity-card-footer"
           >
@@ -413,7 +413,9 @@ export function ActivityCard({
         {mode === "pending" && onMarkRead && !reviewQuestion ? (
           <div
             className={cn(
-              mobile ? cn(MOBILE_FIXED_FOOTER_CLASS, "bg-surface-elevated p-3") : "ml-12 mt-4",
+              mobile
+                ? cn(MOBILE_FIXED_FOOTER_CLASS, "shrink-0 bg-surface-elevated p-3")
+                : "ml-12 mt-4",
             )}
             data-testid={mobile ? "activity-card-footer" : undefined}
           >
@@ -438,7 +440,9 @@ export function ActivityCard({
         {mode === "resolved" && onMarkUnread ? (
           <div
             className={cn(
-              mobile ? cn(MOBILE_FIXED_FOOTER_CLASS, "bg-surface-elevated p-3") : "ml-12 mt-4",
+              mobile
+                ? cn(MOBILE_FIXED_FOOTER_CLASS, "shrink-0 bg-surface-elevated p-3")
+                : "ml-12 mt-4",
             )}
             data-testid={mobile ? "activity-card-footer" : undefined}
           >
