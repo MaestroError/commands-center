@@ -1,6 +1,5 @@
 import {
   useCallback,
-  useEffect,
   useRef,
   useState,
   type CSSProperties,
@@ -115,6 +114,7 @@ export function ActivityCard({
   const [dragging, setDragging] = useState(false);
   const [exitDirection, setExitDirection] = useState<-1 | 0 | 1>(0);
   const resolvedRef = useRef(false);
+  const markReadStartedRef = useRef(false);
   const dragRef = useRef<{
     pointerId: number;
     startX: number;
@@ -134,24 +134,18 @@ export function ActivityCard({
 
   const requestMarkRead = useCallback(
     (_id?: string, direction: -1 | 1 = -1) => {
-      if (!onMarkRead || archiving || exitDirection !== 0) {
+      if (!onMarkRead || archiving || markReadStartedRef.current) {
         return;
       }
+      markReadStartedRef.current = true;
       setDragging(false);
       setDragX(0);
       setExitDirection(direction);
+      const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+      window.setTimeout(finishMarkRead, reduceMotion ? 0 : EXIT_DURATION_MS);
     },
-    [archiving, exitDirection, onMarkRead],
+    [archiving, finishMarkRead, onMarkRead],
   );
-
-  useEffect(() => {
-    if (exitDirection === 0) {
-      return;
-    }
-    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
-    const timer = window.setTimeout(finishMarkRead, reduceMotion ? 0 : EXIT_DURATION_MS);
-    return () => window.clearTimeout(timer);
-  }, [exitDirection, finishMarkRead]);
 
   function onPointerDown(event: ReactPointerEvent<HTMLElement>): void {
     if (!pending || !onMarkRead || archiving || exitDirection !== 0) {

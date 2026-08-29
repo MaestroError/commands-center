@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Activity } from "@cc/shared/schemas";
 
@@ -87,6 +87,10 @@ beforeEach(() => {
   });
 });
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 describe("ActivityPanel", () => {
   it("shows all pending activities and excludes resolved activity from All", async () => {
     renderPanel();
@@ -130,6 +134,24 @@ describe("ActivityPanel", () => {
     expect(card).toHaveStyle({ transform: "translateX(-110%)" });
     await waitFor(() => expect(api.archiveActivity).toHaveBeenCalledWith("info-1"));
     await waitFor(() => expect(screen.queryByText("Digest completed")).not.toBeInTheDocument());
+  });
+
+  it("continues marking an activity read when its filter changes during exit", async () => {
+    renderPanel();
+    await screen.findByText("Digest completed");
+    vi.useFakeTimers();
+
+    fireEvent.click(
+      within(screen.getByTestId("activity-card-info-1")).getByRole("button", {
+        name: "Mark read",
+      }),
+    );
+    fireEvent.click(screen.getByTestId("activity-tab-attention"));
+    expect(screen.queryByText("Digest completed")).not.toBeInTheDocument();
+
+    await act(async () => vi.advanceTimersByTimeAsync(180));
+
+    expect(api.archiveActivity).toHaveBeenCalledWith("info-1");
   });
 
   it("requires confirmation before marking all activity read", async () => {
