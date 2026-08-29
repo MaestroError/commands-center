@@ -23,3 +23,10 @@
 1. Apply the shared read-state mutation lock to the activity bell and cover a same-ID mark-unread/mark-read crossing.
 2. Return the current unarchive response envelope from notification Playwright fixtures, including displaced IDs, and verify settled pending/resolved state.
 3. Run focused frontend tests, Playwright discovery, lint with fixes, formatting, typecheck, and broader relevant checks.
+
+## Continuation cycle 2
+
+1. Derive read-state error visibility from the latest shared mutation so a successful archive, unarchive, or archive-all retry clears an earlier cached failure.
+2. Bound and scroll long mobile review footers so their complete reply workflow remains reachable in short cards.
+3. Add focused regressions for failure-then-success recovery across all read-state mutations and long mobile review content.
+4. Run focused frontend tests, lint with fixes, formatting, design-system audit, typecheck, and broader relevant checks.

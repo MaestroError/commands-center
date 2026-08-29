@@ -233,6 +233,74 @@ test("keeps mobile card-internal controls at least 44px tall", async ({ page }) 
   await expect(suggestedReply).toHaveCSS("min-height", "44px");
 });
 
+test("keeps a long mobile review workflow reachable in a short viewport", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 480 });
+  const state = createTaskState();
+  const suggestedReplies = [
+    "Approve after checking every listed condition",
+    "Request revisions for the remaining edge cases",
+    "Pause until the additional evidence is available",
+    "Escalate the unresolved decision to the operator",
+  ];
+  const activities = [
+    createActivity("task_needs_review", 1, {
+      payload: {
+        taskId: "task-ready",
+        taskRunId: "run-1",
+        question:
+          "Review every condition in this detailed request before choosing a response. ".repeat(6),
+        suggestedReplies,
+      },
+    }),
+  ];
+  await mockActivitiesApi(page, activities, []);
+  await mockTaskApi(page, state);
+  await page.route("**/api/tasks/task-ready/runs/run-1/followups", async (route: Route) => {
+    if (route.request().method() === "POST") {
+      await route.fulfill(jsonResponse({ error: { message: "Reply failed." } }, 500));
+      return;
+    }
+    await route.fallback();
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: /Notifications/ }).click();
+  const footer = page.getByTestId("activity-card-footer");
+
+  await expect
+    .poll(() =>
+      footer.evaluate((element) => ({
+        clientHeight: element.clientHeight,
+        overflowY: getComputedStyle(element).overflowY,
+        scrollHeight: element.scrollHeight,
+      })),
+    )
+    .toMatchObject({ overflowY: "auto" });
+  expect(await footer.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(
+    true,
+  );
+
+  for (const reply of suggestedReplies) {
+    const action = footer.getByRole("button", { name: `Use suggested reply: ${reply}` });
+    await action.scrollIntoViewIfNeeded();
+    await expect(action).toBeVisible();
+  }
+  await footer
+    .getByRole("button", { name: `Use suggested reply: ${suggestedReplies.at(-1)}` })
+    .click();
+  const replyBox = footer.getByRole("textbox", { name: "Review reply" });
+  await expect(replyBox).toHaveValue(suggestedReplies.at(-1) ?? "");
+  await replyBox.fill("Please revise this work.");
+  await footer.getByRole("button", { name: "Reply" }).click();
+  const error = footer.getByText("Could not send the reply.");
+  await error.scrollIntoViewIfNeeded();
+
+  await expect(error).toHaveText("Could not send the reply.");
+  await footer.getByRole("button", { name: "Open task" }).scrollIntoViewIfNeeded();
+  await expect(footer.getByRole("button", { name: "Open task" })).toBeVisible();
+  await expect(footer.getByRole("button", { name: "Mark read" })).toBeVisible();
+});
+
 test("filters and repositions a multi-card mobile notification feed", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const activities = [

@@ -26,11 +26,14 @@ export function useActivityReadStateChanging(): boolean {
 }
 
 export function useActivityReadStateError(): boolean {
-  return (
-    useMutationState({
-      filters: { mutationKey: ACTIVITY_READ_STATE_MUTATION_KEY, status: "error" },
-    }).length > 0
-  );
+  const states = useMutationState({
+    filters: { mutationKey: ACTIVITY_READ_STATE_MUTATION_KEY },
+    select: (mutation) => mutation.state.status,
+  });
+  const latestSettled = [...states]
+    .reverse()
+    .find((status) => status === "error" || status === "success");
+  return latestSettled === "error";
 }
 
 export function useActivitiesQuery() {

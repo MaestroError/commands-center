@@ -418,6 +418,32 @@ describe("ActivityCard acceptance criteria", () => {
     );
   });
 
+  it("keeps long mobile review actions reachable in a bounded scrolling footer", () => {
+    renderCard(
+      activity({
+        id: "a1",
+        kind: "task_needs_review",
+        payload: {
+          taskId: "t1",
+          taskRunId: "run-1",
+          question: "Review this detailed request ".repeat(20),
+          suggestedReplies: [
+            "Approve after checking every listed condition",
+            "Request revisions for the remaining edge cases",
+            "Pause until the additional evidence is available",
+          ],
+        },
+      }),
+      { mobile: true },
+    );
+
+    const footer = screen.getByTestId("activity-card-footer");
+
+    expect(footer).toHaveClass("max-h-[60%]", "min-h-0", "overflow-y-auto", "overscroll-contain");
+    expect(within(footer).getByRole("textbox", { name: "Review reply" })).toBeInTheDocument();
+    expect(within(footer).getByRole("button", { name: "Mark read" })).toBeInTheDocument();
+  });
+
   it("uses the rounded reference surface and elevated header on mobile", () => {
     renderCard(activity({ id: "a1", kind: "specialist_warning" }), { mobile: true });
 

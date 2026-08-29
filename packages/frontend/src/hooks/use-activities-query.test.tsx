@@ -16,6 +16,7 @@ import { archiveActivity, archiveAllActivities, unarchiveActivity } from "@/lib/
 import { queryKeys } from "@/lib/query-keys";
 
 import {
+  useActivityReadStateError,
   useArchiveActivityMutation,
   useArchiveAllActivitiesMutation,
   useUnarchiveActivityMutation,
@@ -117,6 +118,51 @@ describe("activity read-state mutations", () => {
     expect(readResolved(queryClient)).toEqual(original.resolved);
   });
 
+  it("clears an earlier archive error after a successful retry", async () => {
+    vi.mocked(archiveActivity)
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce({ ...infoActivity, status: "archived" });
+    const queryClient = createQueryClient();
+    seedCaches(queryClient);
+    const { result } = renderHook(
+      () => ({ error: useActivityReadStateError(), mutation: useArchiveActivityMutation() }),
+      { wrapper: createWrapper(queryClient) },
+    );
+
+    act(() => result.current.mutation.mutate(infoActivity.id));
+    await waitFor(() => expect(result.current.error).toBe(true));
+
+    act(() => result.current.mutation.mutate(infoActivity.id));
+    await waitFor(() => expect(result.current.mutation.isSuccess).toBe(true));
+    expect(result.current.error).toBe(false);
+    expect(archiveActivity).toHaveBeenCalledTimes(2);
+  });
+
+  it("clears an earlier archive error after a different read-state operation succeeds", async () => {
+    vi.mocked(archiveActivity).mockRejectedValueOnce(new Error("offline"));
+    vi.mocked(unarchiveActivity).mockResolvedValueOnce({
+      activity: { ...resolvedAttentionActivity, status: "pending", archivedAt: null },
+      archivedActivityIds: [],
+    });
+    const queryClient = createQueryClient();
+    seedCaches(queryClient);
+    const { result } = renderHook(
+      () => ({
+        error: useActivityReadStateError(),
+        archive: useArchiveActivityMutation(),
+        unarchive: useUnarchiveActivityMutation(),
+      }),
+      { wrapper: createWrapper(queryClient) },
+    );
+
+    act(() => result.current.archive.mutate(infoActivity.id));
+    await waitFor(() => expect(result.current.error).toBe(true));
+
+    act(() => result.current.unarchive.mutate(resolvedAttentionActivity.id));
+    await waitFor(() => expect(result.current.unarchive.isSuccess).toBe(true));
+    expect(result.current.error).toBe(false);
+  });
+
   it("optimistically moves an archived activity to pending when unarchiving", async () => {
     const request = deferred<{ activity: Activity; archivedActivityIds: string[] }>();
     vi.mocked(unarchiveActivity).mockReturnValue(request.promise);
@@ -185,6 +231,29 @@ describe("activity read-state mutations", () => {
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(readPending(queryClient)).toEqual(original.pending);
     expect(readResolved(queryClient)).toEqual(original.resolved);
+  });
+
+  it("clears an earlier unarchive error after a successful retry", async () => {
+    vi.mocked(unarchiveActivity)
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce({
+        activity: { ...resolvedAttentionActivity, status: "pending", archivedAt: null },
+        archivedActivityIds: [],
+      });
+    const queryClient = createQueryClient();
+    seedCaches(queryClient);
+    const { result } = renderHook(
+      () => ({ error: useActivityReadStateError(), mutation: useUnarchiveActivityMutation() }),
+      { wrapper: createWrapper(queryClient) },
+    );
+
+    act(() => result.current.mutation.mutate(resolvedAttentionActivity.id));
+    await waitFor(() => expect(result.current.error).toBe(true));
+
+    act(() => result.current.mutation.mutate(resolvedAttentionActivity.id));
+    await waitFor(() => expect(result.current.mutation.isSuccess).toBe(true));
+    expect(result.current.error).toBe(false);
+    expect(unarchiveActivity).toHaveBeenCalledTimes(2);
   });
 
   it("serializes opposing read-state mutations across hook instances", async () => {
@@ -301,6 +370,26 @@ describe("activity read-state mutations", () => {
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(readPending(queryClient)).toEqual(original.pending);
     expect(readResolved(queryClient)).toEqual(original.resolved);
+  });
+
+  it("clears an earlier archive-all error after a successful retry", async () => {
+    vi.mocked(archiveAllActivities)
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce({ archivedCount: 2 });
+    const queryClient = createQueryClient();
+    seedCaches(queryClient);
+    const { result } = renderHook(
+      () => ({ error: useActivityReadStateError(), mutation: useArchiveAllActivitiesMutation() }),
+      { wrapper: createWrapper(queryClient) },
+    );
+
+    act(() => result.current.mutation.mutate());
+    await waitFor(() => expect(result.current.error).toBe(true));
+
+    act(() => result.current.mutation.mutate());
+    await waitFor(() => expect(result.current.mutation.isSuccess).toBe(true));
+    expect(result.current.error).toBe(false);
+    expect(archiveAllActivities).toHaveBeenCalledTimes(2);
   });
 
   it("serializes overlapping archives and rolls back only the failed activity", async () => {

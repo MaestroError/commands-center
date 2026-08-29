@@ -389,7 +389,10 @@ export function ActivityCard({
         {mobile && mode === "pending" && reviewQuestion && onMarkRead ? (
           <section
             aria-label="Review question and reply"
-            className={cn(MOBILE_FIXED_FOOTER_CLASS, "bg-surface-elevated p-3")}
+            className={cn(
+              MOBILE_FIXED_FOOTER_CLASS,
+              "max-h-[60%] min-h-0 overflow-y-auto overscroll-contain bg-surface-elevated p-3 [scrollbar-width:thin]",
+            )}
             data-testid="activity-card-footer"
           >
             <p className="flex items-start gap-2 break-words text-sm font-semibold leading-5 text-text-primary [overflow-wrap:anywhere]">
