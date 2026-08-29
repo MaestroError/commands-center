@@ -3,7 +3,10 @@ import { MemoryRouter } from "react-router";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { Activity } from "@cc/shared/schemas";
+import type { Activity, ActivityListResponse } from "@cc/shared/schemas";
+
+import { useUnarchiveActivityMutation } from "@/hooks/use-activities-query";
+import { queryKeys } from "@/lib/query-keys";
 
 import { ActivityBell } from "./ActivityBell";
 
@@ -13,10 +16,12 @@ vi.mock("@/lib/api", () => ({
   getActivities: vi.fn(),
   archiveActivity: vi.fn(),
   archiveAllActivities: vi.fn(),
+  unarchiveActivity: vi.fn(),
 }));
 
-function makeWrapper() {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+function makeWrapper(
+  queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+) {
   return ({ children }: { children: React.ReactNode }) => (
     <QueryClientProvider client={queryClient}>
       <MemoryRouter>{children}</MemoryRouter>
@@ -42,6 +47,7 @@ beforeEach(() => {
   vi.mocked(api.getActivities).mockReset();
   vi.mocked(api.archiveActivity).mockReset();
   vi.mocked(api.archiveAllActivities).mockReset();
+  vi.mocked(api.unarchiveActivity).mockReset();
 });
 
 describe("ActivityBell", () => {
@@ -92,5 +98,68 @@ describe("ActivityBell", () => {
     fireEvent.click(confirmButton);
 
     await waitFor(() => expect(api.archiveAllActivities).toHaveBeenCalledOnce());
+  });
+
+  it("blocks mark read for an activity being marked unread", async () => {
+    const archived = activity({
+      id: "a1",
+      title: "Secret needed: GITHUB_TOKEN",
+      status: "archived",
+      archivedAt: new Date().toISOString(),
+    });
+    let resolveUnarchive!: (value: { activity: Activity; archivedActivityIds: string[] }) => void;
+    vi.mocked(api.unarchiveActivity).mockReturnValue(
+      new Promise((resolve) => {
+        resolveUnarchive = resolve;
+      }),
+    );
+    vi.mocked(api.archiveActivity).mockResolvedValue({
+      ...archived,
+      status: "archived",
+    });
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        mutations: { retry: false },
+        queries: { retry: false, staleTime: Infinity },
+      },
+    });
+    queryClient.setQueryData<ActivityListResponse>(queryKeys.activities, {
+      activities: [],
+      actionRequiredCount: 0,
+    });
+    queryClient.setQueryData<ActivityListResponse>(queryKeys.activitiesResolved, {
+      activities: [archived],
+      actionRequiredCount: 0,
+    });
+
+    function StartMarkUnread() {
+      const mutation = useUnarchiveActivityMutation();
+      return <button onClick={() => mutation.mutate(archived.id)}>Start mark unread</button>;
+    }
+
+    render(
+      <>
+        <StartMarkUnread />
+        <ActivityBell />
+      </>,
+      { wrapper: makeWrapper(queryClient) },
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Start mark unread" }));
+    await waitFor(() => expect(api.unarchiveActivity).toHaveBeenCalledWith(archived.id));
+    fireEvent.click(screen.getByLabelText("Activity (1 need attention)"));
+
+    const markRead = screen.getByRole("button", { name: "Mark read" });
+    expect(markRead).toBeDisabled();
+    fireEvent.click(markRead);
+    expect(api.archiveActivity).not.toHaveBeenCalled();
+
+    resolveUnarchive({
+      activity: { ...archived, status: "pending", archivedAt: null },
+      archivedActivityIds: [],
+    });
+    await waitFor(() => expect(markRead).toBeEnabled());
+    fireEvent.click(markRead);
+    await waitFor(() => expect(api.archiveActivity).toHaveBeenCalledWith(archived.id));
   });
 });

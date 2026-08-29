@@ -17,3 +17,9 @@
 6. Restrict swipe completion to leftward gestures and add right-swipe snap-back coverage.
 7. Replace filter tabs with accessible pressed segmented buttons so no control references a missing tabpanel.
 8. Run focused and full tests, lint with fixes, formatting, design-system audit, typecheck, Knip, and applicable E2E checks.
+
+## Continuation cycle 1
+
+1. Apply the shared read-state mutation lock to the activity bell and cover a same-ID mark-unread/mark-read crossing.
+2. Return the current unarchive response envelope from notification Playwright fixtures, including displaced IDs, and verify settled pending/resolved state.
+3. Run focused frontend tests, Playwright discovery, lint with fixes, formatting, typecheck, and broader relevant checks.

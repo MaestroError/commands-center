@@ -2,7 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import { Bell } from "lucide-react";
 import { NavLink } from "react-router";
 
-import { useActivitiesQuery, useArchiveActivityMutation } from "@/hooks/use-activities-query";
+import {
+  useActivitiesQuery,
+  useActivityReadStateChanging,
+  useArchiveActivityMutation,
+} from "@/hooks/use-activities-query";
 
 import { ActivityCard } from "./ActivityCard";
 import { ArchiveAllActivitiesButton } from "./ArchiveAllActivitiesButton";
@@ -13,6 +17,7 @@ export function ActivityBell() {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const query = useActivitiesQuery();
   const archiveMutation = useArchiveActivityMutation();
+  const readStateChanging = useActivityReadStateChanging();
 
   const count = query.data?.actionRequiredCount ?? 0;
   const actionable = (query.data?.activities ?? []).filter(
@@ -95,9 +100,7 @@ export function ActivityBell() {
                     key={activity.id}
                     activity={activity}
                     mode="compact"
-                    archiving={
-                      archiveMutation.isPending && archiveMutation.variables === activity.id
-                    }
+                    archiving={readStateChanging}
                     onMarkRead={(id) => archiveMutation.mutate(id)}
                   />
                 ))}

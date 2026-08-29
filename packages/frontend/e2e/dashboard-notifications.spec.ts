@@ -47,7 +47,7 @@ test("filters action-required activity and restores resolved activity", async ({
     archivedAt: NOW,
   });
   const activities = [info, attention, resolved];
-  await mockActivitiesApi(page, activities, []);
+  await mockActivitiesApi(page, activities, [], { [resolved.id]: [attention.id] });
 
   await page.goto("/");
   await page.getByTestId("activity-tab-attention").click();
@@ -57,10 +57,20 @@ test("filters action-required activity and restores resolved activity", async ({
 
   await page.getByTestId("activity-tab-resolved").click();
   await page.getByRole("button", { name: "Mark unread" }).click();
-  await expect(page.getByText("Earlier update")).toHaveCount(0);
+  await expect
+    .poll(() => activities.map(({ id, status }) => ({ id, status })))
+    .toEqual([
+      { id: info.id, status: "pending" },
+      { id: attention.id, status: "archived" },
+      { id: resolved.id, status: "pending" },
+    ]);
 
   await page.getByTestId("activity-tab-all").click();
   await expect(page.getByText("Earlier update")).toBeVisible();
+  await expect(page.getByText("Review blocked")).toHaveCount(0);
+  await page.getByTestId("activity-tab-resolved").click();
+  await expect(page.getByText("Review blocked")).toBeVisible();
+  await expect(page.getByText("Earlier update")).toHaveCount(0);
 });
 
 test("opens the mobile notification feed", async ({ page }) => {
@@ -340,6 +350,10 @@ test("scrolls the mobile card body without marking it read", async ({ page }) =>
 test("marks a resolved mobile notification unread", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const activities = [
+    createActivity("specialist_warning", 2, {
+      level: "action_required",
+      title: "Displaced update",
+    }),
     createActivity("feedback_resolved", 1, {
       level: "info",
       status: "archived",
@@ -347,7 +361,7 @@ test("marks a resolved mobile notification unread", async ({ page }) => {
       archivedAt: NOW,
     }),
   ];
-  await mockActivitiesApi(page, activities, []);
+  await mockActivitiesApi(page, activities, [], { "activity-1": ["activity-2"] });
 
   await page.goto("/");
   await page.getByRole("button", { name: /Notifications/ }).click();
@@ -356,9 +370,18 @@ test("marks a resolved mobile notification unread", async ({ page }) => {
 
   await dialog.getByRole("button", { name: "Mark unread" }).click();
 
-  await expect(dialog.getByText("0 of 0")).toBeVisible();
+  await expect
+    .poll(() => activities.map(({ id, status }) => ({ id, status })))
+    .toEqual([
+      { id: "activity-2", status: "archived" },
+      { id: "activity-1", status: "pending" },
+    ]);
   await dialog.getByTestId("activity-mobile-tab-all").click();
   await expect(dialog.getByText("Earlier update")).toBeVisible();
+  await expect(dialog.getByText("Displaced update")).toHaveCount(0);
+  await dialog.getByTestId("activity-mobile-tab-resolved").click();
+  await expect(dialog.getByText("Displaced update")).toBeVisible();
+  await expect(dialog.getByText("Earlier update")).toHaveCount(0);
 });
 
 test("contains long notification content within the desktop panel", async ({ isMobile, page }) => {
@@ -408,6 +431,7 @@ async function mockActivitiesApi(
   page: Page,
   activities: Activity[],
   archivedIds: string[],
+  unarchiveDisplacedIds: Record<string, string[]> = {},
 ): Promise<void> {
   await page.route("**/api/specialists", async (route: Route) => {
     await route.fulfill(jsonResponse([]));
@@ -453,6 +477,19 @@ async function mockActivitiesApi(
       activity.updatedAt = NOW;
       if (archive) {
         archivedIds.push(id);
+      }
+      if (!archive) {
+        const displacedIds = unarchiveDisplacedIds[id] ?? [];
+        for (const displacedId of displacedIds) {
+          const displaced = activities.find((entry) => entry.id === displacedId);
+          if (displaced) {
+            displaced.status = "archived";
+            displaced.archivedAt = NOW;
+            displaced.updatedAt = NOW;
+          }
+        }
+        await route.fulfill(jsonResponse({ activity, archivedActivityIds: displacedIds }));
+        return;
       }
       await route.fulfill(jsonResponse(activity));
       return;
