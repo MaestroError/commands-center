@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import type { Logger } from "pino";
 
 import {
@@ -156,7 +156,11 @@ export function createActivityService(options: { db: AppDb; logger?: Logger }) {
             .update(activities)
             .set({ status: "archived", archived_at: now, updated_at: now })
             .where(
-              and(eq(activities.dedupe_key, existing.dedupe_key), eq(activities.status, "pending")),
+              and(
+                eq(activities.dedupe_key, existing.dedupe_key),
+                eq(activities.status, "pending"),
+                ne(activities.id, id),
+              ),
             )
             .returning({ id: activities.id })
             .all()

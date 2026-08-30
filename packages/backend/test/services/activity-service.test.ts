@@ -180,6 +180,24 @@ describe("activity service", () => {
     expect(await service.list()).toHaveLength(1);
   });
 
+  it("does not report the restored target archived when unarchive requests overlap", async () => {
+    const activity = await service.emit({
+      kind: "task_completed",
+      level: "info",
+      title: "Concurrent restore",
+      dedupeKey: "task_completed:concurrent-restore",
+    });
+    await service.archive(activity.id);
+
+    const results = await Promise.all([
+      service.unarchive(activity.id),
+      service.unarchive(activity.id),
+    ]);
+
+    expect(results.map(({ archivedActivityIds }) => archivedActivityIds)).toEqual([[], []]);
+    expect((await service.get(activity.id))?.status).toBe("pending");
+  });
+
   it("unarchive is idempotent and rejects unknown ids", async () => {
     const activity = await service.emit({
       kind: "feedback_resolved",
