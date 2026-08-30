@@ -266,7 +266,7 @@ test("keeps a long mobile review workflow reachable in a short viewport", async 
 
   await page.goto("/");
   await page.getByRole("button", { name: /Notifications/ }).click();
-  const card = page.getByTestId("activity-card-activity-1");
+  const card = page.getByTestId("activity-mobile-feed").getByTestId("activity-card-activity-1");
   const footer = page.getByTestId("activity-card-footer");
 
   await expect
