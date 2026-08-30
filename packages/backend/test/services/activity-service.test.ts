@@ -54,6 +54,26 @@ describe("activity service", () => {
     expect(list[0]?.title).toBe("Done v2");
   });
 
+  it("keeps one pending activity when matching emits overlap", async () => {
+    const [first, second] = await Promise.all([
+      service.emit({
+        kind: "task_completed",
+        level: "info",
+        title: "Done v1",
+        dedupeKey: "task_completed:overlap",
+      }),
+      service.emit({
+        kind: "task_completed",
+        level: "info",
+        title: "Done v2",
+        dedupeKey: "task_completed:overlap",
+      }),
+    ]);
+
+    expect(second.id).toBe(first.id);
+    expect(await service.list()).toHaveLength(1);
+  });
+
   it("lists pending newest-last and supports status=all and status=archived", async () => {
     const a = await service.emit({ kind: "task_completed", level: "info", title: "A" });
     const b = await service.emit({ kind: "task_completed", level: "info", title: "B" });
@@ -98,6 +118,97 @@ describe("activity service", () => {
     expect(again.status).toBe("archived");
 
     await expect(service.archive("nope")).rejects.toThrow(/not found/i);
+  });
+
+  it("unarchives an archived activity and clears its archived timestamp", async () => {
+    const activity = await service.emit({
+      kind: "task_completed",
+      level: "action_required",
+      title: "Done",
+    });
+    await service.archive(activity.id);
+
+    const { activity: unarchived, archivedActivityIds } = await service.unarchive(activity.id);
+
+    expect(unarchived.status).toBe("pending");
+    expect(unarchived.archivedAt).toBeNull();
+    expect(archivedActivityIds).toEqual([]);
+    expect(await service.actionRequiredCount()).toBe(1);
+  });
+
+  it("archives a newer pending dedupe collision when restoring an older activity", async () => {
+    const older = await service.emit({
+      kind: "task_completed",
+      level: "info",
+      title: "Older",
+      dedupeKey: "task_completed:run-1",
+    });
+    await service.archive(older.id);
+    const newer = await service.emit({
+      kind: "task_completed",
+      level: "info",
+      title: "Newer",
+      dedupeKey: "task_completed:run-1",
+    });
+
+    const result = await service.unarchive(older.id);
+
+    expect((await service.list()).map((activity) => activity.id)).toEqual([older.id]);
+    expect((await service.get(newer.id))?.status).toBe("archived");
+    expect(result.archivedActivityIds).toEqual([newer.id]);
+  });
+
+  it("keeps one pending activity when unarchive and emit overlap", async () => {
+    const older = await service.emit({
+      kind: "task_completed",
+      level: "info",
+      title: "Older",
+      dedupeKey: "task_completed:concurrent",
+    });
+    await service.archive(older.id);
+
+    await Promise.all([
+      service.unarchive(older.id),
+      service.emit({
+        kind: "task_completed",
+        level: "info",
+        title: "Concurrent update",
+        dedupeKey: "task_completed:concurrent",
+      }),
+    ]);
+
+    expect(await service.list()).toHaveLength(1);
+  });
+
+  it("does not report the restored target archived when unarchive requests overlap", async () => {
+    const activity = await service.emit({
+      kind: "task_completed",
+      level: "info",
+      title: "Concurrent restore",
+      dedupeKey: "task_completed:concurrent-restore",
+    });
+    await service.archive(activity.id);
+
+    const results = await Promise.all([
+      service.unarchive(activity.id),
+      service.unarchive(activity.id),
+    ]);
+
+    expect(results.map(({ archivedActivityIds }) => archivedActivityIds)).toEqual([[], []]);
+    expect((await service.get(activity.id))?.status).toBe("pending");
+  });
+
+  it("unarchive is idempotent and rejects unknown ids", async () => {
+    const activity = await service.emit({
+      kind: "feedback_resolved",
+      level: "info",
+      title: "Feedback",
+    });
+
+    const { activity: pending } = await service.unarchive(activity.id);
+
+    expect(pending.status).toBe("pending");
+    await expect(service.unarchive("nope")).rejects.toThrow(/not found/i);
   });
 
   it("archives all pending activities by dedupeKey", async () => {

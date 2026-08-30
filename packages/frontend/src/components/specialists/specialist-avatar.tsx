@@ -8,11 +8,12 @@ import {
 type SpecialistAvatarProps = {
   name: string;
   iconPath?: string;
-  size?: "sm" | "md" | "lg" | "xl";
+  size?: "xs" | "sm" | "md" | "lg" | "xl";
   className?: string;
 };
 
 const SIZE_CLASS_NAMES = {
+  xs: "h-5 w-5 rounded-md text-[10px]",
   sm: "h-8 w-8 rounded-md text-sm",
   md: "h-10 w-10 rounded-lg text-base",
   lg: "h-14 w-14 rounded-lg text-lg",

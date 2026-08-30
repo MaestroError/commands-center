@@ -2,15 +2,20 @@ import { mockAuthFlowApis, mockSidebarSmokeApis } from "./app-fixtures";
 import { expect, test } from "./fixtures";
 
 test.describe("sidebar route smoke coverage", { tag: "@smoke" }, () => {
-  test("renders the dashboard activity surface", async ({ page }) => {
+  test("renders the dashboard activity surface", async ({ isMobile, page }) => {
     await mockSidebarSmokeApis(page);
 
     await page.goto("/");
 
     await expect(
-      page.getByRole("main").getByRole("heading", { exact: true, name: "Dashboard" }),
+      page.getByRole("main").getByRole("heading", { exact: true, name: "Latest activity" }),
     ).toBeVisible();
-    await expect(page.getByText("Workspace ready")).toBeVisible();
+    if (isMobile) {
+      await page.getByRole("button", { name: /Notifications/ }).click();
+      await expect(page.getByRole("dialog").getByText("Workspace ready")).toBeVisible();
+    } else {
+      await expect(page.getByText("Workspace ready")).toBeVisible();
+    }
   });
 
   test("renders the documents editor surface", async ({ page }) => {

@@ -281,6 +281,20 @@
       "when": 1784717642897,
       "tag": "0039_flippant_dreadnoughts",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "6",
+      "when": 1787849325561,
+      "tag": "0040_reclassify_task_completed_info",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "6",
+      "when": 1787929844195,
+      "tag": "0041_dapper_unicorn",
+      "breakpoints": true
     }
   ]
 }

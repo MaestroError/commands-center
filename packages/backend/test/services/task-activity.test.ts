@@ -25,11 +25,62 @@ describe("buildTerminalActivity", () => {
     });
     expect(activity).toMatchObject({
       kind: "task_completed",
-      level: "action_required",
+      level: "info",
       title: "Task completed: Ship it",
       body: "all done",
+      payload: { sourceSpecialistId: "agent-1" },
       dedupeKey: "task_completed:run-1",
     });
+  });
+
+  it("separates the readable final message from distinct run output", () => {
+    const activity = buildTerminalActivity({
+      run: run({
+        status: "completed",
+        outcome: "success",
+        finalMessage: "The report is ready for review.",
+        resultText: "outcome: ready_for_review\nreport_path: reports/final.md",
+      }),
+      taskTitle: "Ship it",
+      isFeedbackSubtask: false,
+    });
+
+    expect(activity).toMatchObject({
+      body: "The report is ready for review.",
+      payload: {
+        sourceSpecialistId: "agent-1",
+        runOutput: "outcome: ready_for_review\nreport_path: reports/final.md",
+      },
+    });
+  });
+
+  it("omits run output when it duplicates the readable body", () => {
+    const activity = buildTerminalActivity({
+      run: run({
+        status: "completed",
+        outcome: "success",
+        finalMessage: "The report is ready.",
+        resultText: " The report is ready. ",
+      }),
+      taskTitle: "Ship it",
+      isFeedbackSubtask: false,
+    });
+
+    expect(activity?.payload).not.toHaveProperty("runOutput");
+  });
+
+  it("omits run output when no result text exists", () => {
+    const activity = buildTerminalActivity({
+      run: run({
+        status: "completed",
+        outcome: "success",
+        finalMessage: "The report is ready.",
+      }),
+      taskTitle: "Ship it",
+      isFeedbackSubtask: false,
+    });
+
+    expect(activity?.payload).not.toHaveProperty("runOutput");
   });
 
   it("includes artifacts in task_completed payloads", () => {

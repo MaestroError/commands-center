@@ -45,6 +45,27 @@ function setup(overrides?: {
 const context = { agentSlug: "researcher" };
 
 describe("notification tools", () => {
+  it.each([
+    ["notify_info", { title: "Heads up", markdown: "Details" }],
+    ["notify_warning", { title: "Blocked", markdown: "Details" }],
+    ["propose_task", { title: "Write summary", reason: "Needed" }],
+    ["propose_task_template", { title: "Weekly summary", reason: "Needed" }],
+    ["propose_run_task_template", { templateId: "tmpl_1", reason: "Needed" }],
+    ["propose_run_command", { command: "pnpm test", reason: "Verify" }],
+  ])("%s stamps the source specialist into its payload", async (toolName, args) => {
+    const { emit, byName } = setup({
+      template: { id: "tmpl_1", title: "Weekly digest" },
+    });
+
+    await byName(toolName).execute(args, context);
+
+    expect(emit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: expect.objectContaining({ sourceSpecialistSlug: "researcher" }),
+      }),
+    );
+  });
+
   it("notify_info emits an info-level activity carrying the markdown body", async () => {
     const { emit, byName } = setup();
     const result = await byName("notify_info").execute(
@@ -59,7 +80,10 @@ describe("notification tools", () => {
         level: "info",
         title: "Heads up",
         body: "**important** detail",
-        payload: expect.objectContaining({ proposedBySlug: "researcher" }),
+        payload: expect.objectContaining({
+          proposedBySlug: "researcher",
+          sourceSpecialistSlug: "researcher",
+        }),
       }),
     );
   });

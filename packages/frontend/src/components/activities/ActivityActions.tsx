@@ -11,6 +11,7 @@ import {
 } from "@cc/shared/schemas";
 
 import { createTaskPromptValue } from "@/components/tasks/task-prompt";
+import { buttonVariants } from "@/components/ui/button-variants";
 import { useFillSecretMutation } from "@/hooks/use-activities-query";
 import { useSpecialistsQuery } from "@/hooks/use-specialists-query";
 import { useTaskMutations } from "@/hooks/use-tasks-query";
@@ -18,16 +19,18 @@ import type {
   TaskCreationPrefill,
   TaskTemplateCreationPrefill,
 } from "@/services/task-prefill-service";
+import { cn } from "@/lib/cn";
 
 type ActivityActionsProps = {
   activity: Activity;
   onArchive: (id: string) => void;
+  onArchiveImmediately?: (id: string) => void;
   archiving?: boolean;
 };
 
 /**
  * Per-kind action buttons. The primary (highlighted) button is always the one
- * that resolves the activity — i.e. moves it from Unreads to Resolved.
+ * that resolves the activity — i.e. moves it from an unresolved view to Resolved.
  */
 export function ActivityActions(props: ActivityActionsProps) {
   switch (props.activity.kind) {
@@ -172,7 +175,7 @@ function ReviewReplyActions({ activity, onArchive, archiving }: ActivityActionsP
           {suggestedReplies.map((suggestedReply, index) => (
             <button
               aria-label={`Use suggested reply: ${suggestedReply}`}
-              className="rounded-md border border-border bg-surface px-2 py-1 text-xs text-text-primary transition hover:border-accent/50 hover:text-accent"
+              className="min-h-11 rounded-md border border-border bg-surface px-2 py-1 text-xs text-text-primary transition hover:border-accent/50 hover:text-accent md:min-h-0"
               key={`${index}-${suggestedReply}`}
               type="button"
               onClick={() => setReply(suggestedReply)}
@@ -262,7 +265,12 @@ function InfoActions({ activity, onArchive, archiving }: ActivityActionsProps) {
 // A specialist proposed creating a task. Confirming opens the real task
 // creation page prefilled with the proposal (title, prompt, proposed assignee);
 // the operator reviews and creates it there.
-function TaskProposalActions({ activity, onArchive, archiving }: ActivityActionsProps) {
+function TaskProposalActions({
+  activity,
+  onArchive,
+  onArchiveImmediately = onArchive,
+  archiving,
+}: ActivityActionsProps) {
   const navigate = useNavigate();
   const parsed = taskProposalPayloadSchema.safeParse(activity.payload);
   const specialists = useSpecialistsQuery().data ?? [];
@@ -284,7 +292,7 @@ function TaskProposalActions({ activity, onArchive, archiving }: ActivityActions
       // content — only an explicit prompt seeds the task body.
       prompt: createTaskPromptValue(parsed.data.taskDescription ?? ""),
     };
-    onArchive(activity.id);
+    onArchiveImmediately(activity.id);
     void navigate("/tasks/new", { state: { taskPrefill } });
   };
 
@@ -303,7 +311,12 @@ function TaskProposalActions({ activity, onArchive, archiving }: ActivityActions
 // A specialist proposed a recurring task template. Confirming opens the real
 // template creation page prefilled with the proposal (title, prompt, assignee,
 // recurrence); the operator reviews and creates it there.
-function TaskTemplateProposalActions({ activity, onArchive, archiving }: ActivityActionsProps) {
+function TaskTemplateProposalActions({
+  activity,
+  onArchive,
+  onArchiveImmediately = onArchive,
+  archiving,
+}: ActivityActionsProps) {
   const navigate = useNavigate();
   const parsed = taskTemplateProposalPayloadSchema.safeParse(activity.payload);
   const specialists = useSpecialistsQuery().data ?? [];
@@ -326,7 +339,7 @@ function TaskTemplateProposalActions({ activity, onArchive, archiving }: Activit
       description: parsed.data.taskDescription ?? "",
       recurrence: parsed.data.recurrence,
     };
-    onArchive(activity.id);
+    onArchiveImmediately(activity.id);
     void navigate("/tasks/templates/new", { state: { templatePrefill } });
   };
 
@@ -383,7 +396,12 @@ function RunTemplateProposalActions({ activity, onArchive, archiving }: Activity
 
 // A specialist proposed a terminal command. Confirming opens the global
 // terminal prefilled with the command (operator reviews and presses Enter).
-function RunCommandProposalActions({ activity, onArchive, archiving }: ActivityActionsProps) {
+function RunCommandProposalActions({
+  activity,
+  onArchive,
+  onArchiveImmediately = onArchive,
+  archiving,
+}: ActivityActionsProps) {
   const navigate = useNavigate();
   const parsed = runCommandProposalPayloadSchema.safeParse(activity.payload);
   const command = parsed.success ? parsed.data.command : undefined;
@@ -393,7 +411,7 @@ function RunCommandProposalActions({ activity, onArchive, archiving }: ActivityA
     if (!command) {
       return;
     }
-    onArchive(activity.id);
+    onArchiveImmediately(activity.id);
     // The terminal page opens a fresh session and prefills it from this state.
     void navigate("/terminal", { state: { runCommand: command } });
   };
@@ -403,8 +421,8 @@ function RunCommandProposalActions({ activity, onArchive, archiving }: ActivityA
   }
 
   return (
-    <div className="mt-1 grid gap-2">
-      <pre className="overflow-x-auto rounded-md border border-border bg-surface px-2 py-1.5 text-xs text-text-primary">
+    <div className="mt-1 grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
+      <pre className="min-w-0 max-w-full overflow-x-auto rounded-md border border-border bg-surface px-2 py-1.5 text-xs text-text-primary">
         <code>{command}</code>
       </pre>
       {confirming ? (
@@ -471,7 +489,7 @@ function stringField(activity: Activity, key: string): string | undefined {
 }
 
 function ActionRow({ children }: { children: ReactNode }) {
-  return <div className="flex flex-wrap items-center gap-2">{children}</div>;
+  return <div className="flex w-full flex-nowrap items-center gap-2 md:flex-wrap">{children}</div>;
 }
 
 function ActionButton({
@@ -487,12 +505,13 @@ function ActionButton({
   type?: "button" | "submit";
   variant: "primary" | "secondary" | "muted";
 }) {
-  const className =
-    variant === "primary"
-      ? "rounded-md bg-accent px-2.5 py-1 text-xs font-medium text-on-accent transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
-      : variant === "secondary"
-        ? "rounded-md border border-border bg-surface px-2.5 py-1 text-xs text-text-primary transition hover:border-accent/50 disabled:cursor-not-allowed disabled:opacity-50"
-        : "rounded-md px-2.5 py-1 text-xs text-text-secondary transition hover:text-text-primary disabled:opacity-50";
+  const className = cn(
+    buttonVariants({ variant: variant === "primary" ? "primary" : "secondary" }),
+    "min-h-11 min-w-0 md:min-h-0",
+    variant === "primary" ? "flex-1 md:flex-none" : "w-auto shrink-0",
+    variant === "muted" &&
+      "border-transparent bg-transparent text-text-secondary hover:bg-surface-elevated hover:text-text-primary",
+  );
   return (
     <button type={type} className={className} disabled={disabled} onClick={onClick}>
       {children}
@@ -501,5 +520,9 @@ function ActionButton({
 }
 
 function ActionError({ children }: { children: ReactNode }) {
-  return <span className="text-xs text-danger">{children}</span>;
+  return (
+    <span aria-live="assertive" className="text-xs text-danger" role="alert">
+      {children}
+    </span>
+  );
 }

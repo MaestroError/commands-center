@@ -2,7 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { Bell } from "lucide-react";
 import { NavLink } from "react-router";
 
-import { useActivitiesQuery, useArchiveActivityMutation } from "@/hooks/use-activities-query";
+import {
+  useActivitiesQuery,
+  useActivityReadStateChanging,
+  useActivityReadStateError,
+  useArchiveActivityMutation,
+} from "@/hooks/use-activities-query";
 
 import { ActivityCard } from "./ActivityCard";
 import { ArchiveAllActivitiesButton } from "./ArchiveAllActivitiesButton";
@@ -10,8 +15,11 @@ import { ArchiveAllActivitiesButton } from "./ArchiveAllActivitiesButton";
 export function ActivityBell() {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const query = useActivitiesQuery();
   const archiveMutation = useArchiveActivityMutation();
+  const readStateChanging = useActivityReadStateChanging();
+  const readStateError = useActivityReadStateError();
 
   const count = query.data?.actionRequiredCount ?? 0;
   const actionable = (query.data?.activities ?? []).filter(
@@ -41,14 +49,16 @@ export function ActivityBell() {
   }, [open]);
 
   return (
-    <div className="relative" ref={containerRef}>
+    <div className="relative" data-activity-surface ref={containerRef}>
       <button
         type="button"
         aria-label={count > 0 ? `Activity (${String(count)} need attention)` : "Activity"}
         aria-haspopup="true"
         aria-expanded={open}
         className="relative inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-surface text-text-secondary transition hover:border-accent/50 hover:text-text-primary"
+        data-activity-focus-fallback
         onClick={() => setOpen((value) => !value)}
+        ref={triggerRef}
       >
         <Bell className="h-4 w-4" />
         {count > 0 ? (
@@ -67,7 +77,11 @@ export function ActivityBell() {
           <div className="flex items-center justify-between border-b border-border px-3 py-2">
             <span className="text-sm font-semibold text-text-primary">Needs attention</span>
             <div className="flex items-center gap-3">
-              <ArchiveAllActivitiesButton count={query.data?.activities.length ?? 0} compact />
+              <ArchiveAllActivitiesButton
+                count={query.data?.activities.length ?? 0}
+                compact
+                successFocusRef={triggerRef}
+              />
               <NavLink
                 to="/"
                 className="text-xs text-accent hover:underline"
@@ -77,6 +91,14 @@ export function ActivityBell() {
               </NavLink>
             </div>
           </div>
+          {readStateError ? (
+            <p
+              className="border-b border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger"
+              role="alert"
+            >
+              Could not update the notification. Its previous state has been restored.
+            </p>
+          ) : null}
           <div className="max-h-[calc(100vh-10rem)] overflow-y-auto p-2 sm:max-h-96">
             {actionable.length === 0 ? (
               <p className="px-1 py-6 text-center text-sm text-text-secondary">
@@ -88,11 +110,9 @@ export function ActivityBell() {
                   <ActivityCard
                     key={activity.id}
                     activity={activity}
-                    compact
-                    archiving={
-                      archiveMutation.isPending && archiveMutation.variables === activity.id
-                    }
-                    onArchive={(id) => archiveMutation.mutate(id)}
+                    mode="compact"
+                    archiving={readStateChanging}
+                    onMarkRead={(id) => archiveMutation.mutate(id)}
                   />
                 ))}
               </div>
