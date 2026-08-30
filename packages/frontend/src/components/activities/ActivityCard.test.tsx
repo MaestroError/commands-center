@@ -456,6 +456,10 @@ describe("ActivityCard acceptance criteria", () => {
 
     expect(screen.getByTestId("activity-card-a1")).toHaveClass("rounded-xl", "border-l-[3px]");
     expect(screen.getByTestId("activity-card-header")).toHaveClass(
+      "max-h-[40%]",
+      "min-h-0",
+      "overflow-y-auto",
+      "shrink",
       "shadow-[var(--shadow-fixed-header)]",
     );
   });

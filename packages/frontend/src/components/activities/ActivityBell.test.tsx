@@ -162,4 +162,21 @@ describe("ActivityBell", () => {
     fireEvent.click(markRead);
     await waitFor(() => expect(api.archiveActivity).toHaveBeenCalledWith(archived.id));
   });
+
+  it("restores a card and reports archive failure in the open bell", async () => {
+    vi.mocked(api.getActivities).mockResolvedValue({
+      activities: [activity({ id: "a1", title: "Secret needed: GITHUB_TOKEN" })],
+      actionRequiredCount: 1,
+    });
+    vi.mocked(api.archiveActivity).mockRejectedValueOnce(new Error("offline"));
+
+    render(<ActivityBell />, { wrapper: makeWrapper() });
+    fireEvent.click(await screen.findByLabelText("Activity (1 need attention)"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Mark read" }));
+
+    await waitFor(() => expect(api.archiveActivity).toHaveBeenCalledWith("a1"));
+    expect(await screen.findByText("Secret needed: GITHUB_TOKEN")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("Could not update the notification");
+  });
 });

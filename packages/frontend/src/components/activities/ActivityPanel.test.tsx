@@ -136,6 +136,33 @@ describe("ActivityPanel", () => {
     await waitFor(() => expect(screen.queryByText("Digest completed")).not.toBeInTheDocument());
   });
 
+  it("moves focus to the next card after marking a focused activity read", async () => {
+    renderPanel();
+    await screen.findByText("Digest completed");
+    const markRead = within(screen.getByTestId("activity-card-info-1")).getByRole("button", {
+      name: "Mark read",
+    });
+    markRead.focus();
+
+    fireEvent.click(markRead);
+
+    await waitFor(() => expect(screen.getByTestId("activity-card-warning-1")).toHaveFocus());
+  });
+
+  it("moves focus to the active filter after marking the only resolved activity unread", async () => {
+    const user = userEvent.setup();
+    renderPanel();
+    await screen.findByText("Digest completed");
+    const resolvedFilter = screen.getByTestId("activity-tab-resolved");
+    await user.click(resolvedFilter);
+    const markUnread = await screen.findByRole("button", { name: "Mark unread" });
+    markUnread.focus();
+
+    fireEvent.click(markUnread);
+
+    await waitFor(() => expect(resolvedFilter).toHaveFocus());
+  });
+
   it("continues marking an activity read when its filter changes during exit", async () => {
     renderPanel();
     await screen.findByText("Digest completed");

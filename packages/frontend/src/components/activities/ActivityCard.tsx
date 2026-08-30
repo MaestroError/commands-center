@@ -113,6 +113,7 @@ export function ActivityCard({
   const [dragX, setDragX] = useState(0);
   const [dragging, setDragging] = useState(false);
   const [exitDirection, setExitDirection] = useState<-1 | 0 | 1>(0);
+  const cardRef = useRef<HTMLElement>(null);
   const resolvedRef = useRef(false);
   const markReadStartedRef = useRef(false);
   const dragRef = useRef<{
@@ -124,13 +125,29 @@ export function ActivityCard({
   const pending = mode !== "resolved";
   const compact = mode === "compact";
 
+  const moveFocusAfterRemoval = useCallback(() => {
+    const card = cardRef.current;
+    if (!card?.contains(document.activeElement)) {
+      return;
+    }
+    const surface = card.closest("[data-activity-surface]");
+    const cards = Array.from(surface?.querySelectorAll<HTMLElement>("[data-activity-card]") ?? []);
+    const index = cards.indexOf(card);
+    const nextFocus = cards[index + 1] ?? cards[index - 1];
+    const fallback = surface?.querySelector<HTMLElement>(
+      "[aria-pressed='true'], [data-activity-focus-fallback]",
+    );
+    (nextFocus ?? fallback)?.focus();
+  }, []);
+
   const finishMarkRead = useCallback(() => {
     if (resolvedRef.current || !onMarkRead) {
       return;
     }
     resolvedRef.current = true;
+    moveFocusAfterRemoval();
     onMarkRead(activity.id);
-  }, [activity.id, onMarkRead]);
+  }, [activity.id, moveFocusAfterRemoval, onMarkRead]);
 
   const requestMarkRead = useCallback(
     (_id?: string, direction: -1 | 1 = -1) => {
@@ -278,8 +295,12 @@ export function ActivityCard({
       ) : null}
       <article
         {...(!mobile ? swipeHandlers : {})}
+        aria-label={activity.title}
+        data-activity-card
         data-testid={`activity-card-${activity.id}`}
+        ref={cardRef}
         style={cardStyle}
+        tabIndex={-1}
         className={cn(
           "relative min-w-0 w-full max-w-full border border-l-[3px] border-border bg-surface",
           tone.edge,
@@ -295,7 +316,7 @@ export function ActivityCard({
           data-testid={mobile ? "activity-card-header" : undefined}
           className={cn(
             mobile
-              ? "relative z-10 shrink-0 cursor-grab touch-pan-y border-b border-border bg-surface p-4 shadow-[var(--shadow-fixed-header)] active:cursor-grabbing"
+              ? "relative z-10 max-h-[40%] min-h-0 shrink cursor-grab touch-pan-y overflow-y-auto overscroll-contain border-b border-border bg-surface p-4 shadow-[var(--shadow-fixed-header)] [scrollbar-width:thin] active:cursor-grabbing"
               : "flex items-start gap-3",
           )}
         >
@@ -446,7 +467,10 @@ export function ActivityCard({
                 "min-h-11 w-full md:min-h-0 md:w-auto",
               )}
               disabled={unarchiving}
-              onClick={() => onMarkUnread(activity.id)}
+              onClick={() => {
+                moveFocusAfterRemoval();
+                onMarkUnread(activity.id);
+              }}
               type="button"
             >
               {unarchiving ? "Marking…" : "Mark unread"}

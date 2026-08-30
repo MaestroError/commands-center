@@ -5,6 +5,7 @@ import { NavLink } from "react-router";
 import {
   useActivitiesQuery,
   useActivityReadStateChanging,
+  useActivityReadStateError,
   useArchiveActivityMutation,
 } from "@/hooks/use-activities-query";
 
@@ -18,6 +19,7 @@ export function ActivityBell() {
   const query = useActivitiesQuery();
   const archiveMutation = useArchiveActivityMutation();
   const readStateChanging = useActivityReadStateChanging();
+  const readStateError = useActivityReadStateError();
 
   const count = query.data?.actionRequiredCount ?? 0;
   const actionable = (query.data?.activities ?? []).filter(
@@ -47,13 +49,14 @@ export function ActivityBell() {
   }, [open]);
 
   return (
-    <div className="relative" ref={containerRef}>
+    <div className="relative" data-activity-surface ref={containerRef}>
       <button
         type="button"
         aria-label={count > 0 ? `Activity (${String(count)} need attention)` : "Activity"}
         aria-haspopup="true"
         aria-expanded={open}
         className="relative inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-surface text-text-secondary transition hover:border-accent/50 hover:text-text-primary"
+        data-activity-focus-fallback
         onClick={() => setOpen((value) => !value)}
         ref={triggerRef}
       >
@@ -88,6 +91,14 @@ export function ActivityBell() {
               </NavLink>
             </div>
           </div>
+          {readStateError ? (
+            <p
+              className="border-b border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger"
+              role="alert"
+            >
+              Could not update the notification. Its previous state has been restored.
+            </p>
+          ) : null}
           <div className="max-h-[calc(100vh-10rem)] overflow-y-auto p-2 sm:max-h-96">
             {actionable.length === 0 ? (
               <p className="px-1 py-6 text-center text-sm text-text-secondary">

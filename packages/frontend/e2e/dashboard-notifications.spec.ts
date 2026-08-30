@@ -244,8 +244,7 @@ test("keeps a long mobile review workflow reachable in a short viewport", async 
   ];
   const activities = [
     createActivity("task_needs_review", 1, {
-      title:
-        "A long review title that wraps across several lines in the notification header ".repeat(3),
+      title: "Maximum length mobile notification title ".repeat(20).slice(0, 500),
       payload: {
         taskId: "task-ready",
         taskRunId: "run-1",
@@ -267,6 +266,7 @@ test("keeps a long mobile review workflow reachable in a short viewport", async 
 
   await page.goto("/");
   await page.getByRole("button", { name: /Notifications/ }).click();
+  const card = page.getByTestId("activity-card-activity-1");
   const footer = page.getByTestId("activity-card-footer");
 
   await expect
@@ -281,6 +281,12 @@ test("keeps a long mobile review workflow reachable in a short viewport", async 
   expect(await footer.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(
     true,
   );
+  const cardBox = await card.boundingBox();
+  const footerBox = await footer.boundingBox();
+  expect(cardBox).not.toBeNull();
+  expect(footerBox).not.toBeNull();
+  expect(footerBox!.y).toBeGreaterThanOrEqual(cardBox!.y);
+  expect(footerBox!.y + footerBox!.height).toBeLessThanOrEqual(cardBox!.y + cardBox!.height);
 
   for (const reply of suggestedReplies) {
     const action = footer.getByRole("button", { name: `Use suggested reply: ${reply}` });

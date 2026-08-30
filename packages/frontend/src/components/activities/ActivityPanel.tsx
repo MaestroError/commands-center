@@ -107,7 +107,11 @@ export function ActivityPanel() {
 
   return (
     <>
-      <section className="cc-panel hidden min-w-0 p-5 md:block sm:p-6" data-testid="activity-panel">
+      <section
+        className="cc-panel hidden min-w-0 p-5 md:block sm:p-6"
+        data-activity-surface
+        data-testid="activity-panel"
+      >
         <div className="flex flex-wrap items-center gap-3">
           <ActivityFilterBar
             activeFilter={activeFilter}
@@ -162,7 +166,10 @@ export function ActivityPanel() {
       </button>
 
       <Dialog open={mobileOpen} onOpenChange={setMobileOpen}>
-        <DialogContent className="inset-0 left-0 top-0 h-dvh max-h-none w-full max-w-none translate-x-0 translate-y-0 rounded-none border-0 p-0 md:hidden">
+        <DialogContent
+          className="inset-0 left-0 top-0 h-dvh max-h-none w-full max-w-none translate-x-0 translate-y-0 rounded-none border-0 p-0 md:hidden"
+          data-activity-surface
+        >
           <div className="flex shrink-0 items-center gap-3 border-b border-border bg-surface px-3 py-3">
             <DialogClose asChild>
               <button
