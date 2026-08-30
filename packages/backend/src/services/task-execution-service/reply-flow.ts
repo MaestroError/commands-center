@@ -182,6 +182,7 @@ export function createTaskReplyFlow(ctx: TaskReplyFlowContext) {
           completed_at: null,
           cancelled_at: null,
           cancellation_reason: null,
+          started_at: timestamp,
           updated_at: timestamp,
         })
         .where(eq(task_runs.id, run.id))
