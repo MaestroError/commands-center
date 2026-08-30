@@ -62,7 +62,7 @@ export function ActivityFeed({
       onScroll={mobile ? onScroll : undefined}
     >
       {activities.map((activity) => {
-        const activityReadStateChanging =
+        const activityReadStateDisabled =
           readStateChanging || archivingId === activity.id || unarchivingId === activity.id;
         return (
           <div
@@ -74,12 +74,12 @@ export function ActivityFeed({
           >
             <ActivityCard
               activity={activity}
-              archiving={activityReadStateChanging}
+              archiving={activityReadStateDisabled}
               mobile={mobile}
               mode={mode}
               onMarkRead={onMarkRead}
               onMarkUnread={onMarkUnread}
-              unarchiving={activityReadStateChanging}
+              unarchiving={unarchivingId === activity.id}
             />
           </div>
         );

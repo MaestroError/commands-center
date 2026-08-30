@@ -337,7 +337,7 @@ describe("ActivityPanel", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
 
-  it("blocks mark unread while the same activity is being archived", async () => {
+  it("locks resolved actions without showing unrelated unarchive progress", async () => {
     const request = deferred<Activity>();
     vi.mocked(api.archiveActivity).mockReturnValueOnce(request.promise);
     const user = userEvent.setup();
@@ -350,8 +350,15 @@ describe("ActivityPanel", () => {
     await user.click(screen.getByTestId("activity-tab-resolved"));
 
     const movedCard = screen.getByTestId("activity-card-info-1");
-    expect(within(movedCard).getByRole("button", { name: "Marking…" })).toBeDisabled();
-    fireEvent.click(within(movedCard).getByRole("button", { name: "Marking…" }));
+    const movedCardAction = within(movedCard).getByRole("button", { name: "Mark unread" });
+    const existingCardAction = within(screen.getByTestId("activity-card-resolved-1")).getByRole(
+      "button",
+      { name: "Mark unread" },
+    );
+    expect(movedCardAction).toBeDisabled();
+    expect(existingCardAction).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Marking…" })).not.toBeInTheDocument();
+    fireEvent.click(existingCardAction);
     expect(api.unarchiveActivity).not.toHaveBeenCalled();
     request.resolve({ ...pendingInfo, status: "archived", archivedAt: pendingInfo.updatedAt });
   });

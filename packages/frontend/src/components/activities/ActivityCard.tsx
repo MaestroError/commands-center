@@ -466,7 +466,7 @@ export function ActivityCard({
                 buttonVariants({ variant: "secondary" }),
                 "min-h-11 w-full md:min-h-0 md:w-auto",
               )}
-              disabled={unarchiving}
+              disabled={archiving || unarchiving}
               onClick={() => {
                 moveFocusAfterRemoval();
                 onMarkUnread(activity.id);
