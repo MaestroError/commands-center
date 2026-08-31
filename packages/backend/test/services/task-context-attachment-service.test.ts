@@ -168,7 +168,7 @@ describe("createTaskContextAttachmentService", () => {
     },
   );
 
-  it.each(["../evil.md", "notes\u0000.md", "sub/dir/notes.md"])(
+  it.each(["../evil.md", "notes\u0000.md", "sub/dir/notes.md", "sub\\dir\\notes.md"])(
     "rejects the unsafe filename %j",
     async (filename) => {
       await withService(async ({ service, taskId }) => {

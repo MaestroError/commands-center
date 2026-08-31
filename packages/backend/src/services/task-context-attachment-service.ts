@@ -1,5 +1,5 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { basename, extname, join, relative, resolve, sep } from "node:path";
+import { extname, join, relative, resolve, sep } from "node:path";
 
 import {
   isTextualPayload,
@@ -195,11 +195,11 @@ async function storeAttachment(
 
 function validateFilename(input: string): string {
   const trimmed = input.trim();
-  const filename = basename(trimmed);
+  const filename = trimmed;
 
   if (
     filename.length === 0 ||
-    filename !== trimmed ||
+    /[\\/]/.test(filename) ||
     filename === "." ||
     filename === ".." ||
     filename.length > MAX_ATTACHMENT_FILENAME_LENGTH ||
