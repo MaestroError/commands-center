@@ -738,7 +738,14 @@ function isTextualAttachment(dataUrl: string): boolean {
     return true;
   }
 
-  return isTextualPayload(Buffer.from(match[1], "base64"));
+  const payload = match[1].replace(/\s+/g, "");
+
+  if (payload.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(payload)) {
+    return false;
+  }
+
+  const decoded = Buffer.from(payload, "base64");
+  return decoded.toString("base64") === payload && isTextualPayload(decoded);
 }
 
 function rewriteDataUrlMimeType(dataUrl: string, mimeType: string): string {

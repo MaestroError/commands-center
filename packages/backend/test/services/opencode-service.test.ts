@@ -269,6 +269,74 @@ describe("opencode-service", () => {
       });
     });
 
+    it("replaces malformed base64 with an explanatory note", async () => {
+      fetchMock.mockResolvedValue(jsonResponse(204));
+      const service = createOpenCodeService({
+        client: FAKE_CLIENT,
+        config: createConfig(),
+        logger: createLogger(),
+      });
+
+      await service.promptSessionAsync({
+        directory: "/work/agent-a",
+        sessionID: "sess-1",
+        agent: "build",
+        model: { providerID: "github-copilot", modelID: "gpt-5" },
+        text: "review",
+        attachments: [
+          {
+            type: "document",
+            filename: "notes.md",
+            mimeType: "text/markdown",
+            dataUrl: "data:text/markdown;base64,aGVsbG8=*",
+          },
+        ],
+      });
+
+      const body = JSON.parse((fetchMock.mock.calls[0]?.[1] as RequestInit).body as string) as {
+        parts: Array<Record<string, unknown>>;
+      };
+      expect(body.parts[1]).toEqual({
+        type: "text",
+        text: "[Attachment omitted: notes.md (text/markdown) is not a format this model can read.]",
+      });
+    });
+
+    it("normalizes wrapped base64 before checking textual content", async () => {
+      fetchMock.mockResolvedValue(jsonResponse(204));
+      const service = createOpenCodeService({
+        client: FAKE_CLIENT,
+        config: createConfig(),
+        logger: createLogger(),
+      });
+
+      await service.promptSessionAsync({
+        directory: "/work/agent-a",
+        sessionID: "sess-1",
+        agent: "build",
+        model: { providerID: "github-copilot", modelID: "gpt-5" },
+        text: "review",
+        attachments: [
+          {
+            type: "document",
+            filename: "notes.md",
+            mimeType: "text/markdown",
+            dataUrl: "data:text/markdown;base64,aGVs\nbG8=",
+          },
+        ],
+      });
+
+      const body = JSON.parse((fetchMock.mock.calls[0]?.[1] as RequestInit).body as string) as {
+        parts: Array<Record<string, unknown>>;
+      };
+      expect(body.parts[1]).toEqual({
+        type: "file",
+        mime: "text/plain",
+        filename: "notes.md",
+        url: "data:text/plain;base64,aGVs\nbG8=",
+      });
+    });
+
     it.each([
       {
         filename: "image.png",
