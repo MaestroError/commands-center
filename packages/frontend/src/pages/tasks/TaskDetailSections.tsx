@@ -5,6 +5,7 @@ import { AcceptanceCriteriaList } from "@/components/tasks/AcceptanceCriteria";
 import { formatDate, formatToken } from "@/components/tasks/task-format";
 import { StatusBadge } from "@/components/tasks/task-ui";
 import { useTaskMutations } from "@/hooks/use-tasks-query";
+import { TASK_CONTEXT_ATTACHMENT_EXTENSIONS } from "@cc/shared/lib";
 import type { Specialist, Task, TaskRun, TaskSubtask } from "@cc/shared/schemas";
 import { ChevronDown, ChevronRight, Trash2 } from "lucide-react";
 import { type ChangeEvent, useEffect, useState } from "react";
@@ -283,7 +284,7 @@ export function TaskContextPanelSection(props: {
             >
               Add attachment
               <input
-                accept=".txt,.md,.csv,.json,.pdf,.png,.jpg,.jpeg,.webp,.gif"
+                accept={TASK_CONTEXT_ATTACHMENT_EXTENSIONS.join(",")}
                 className="sr-only"
                 onChange={handleUpload}
                 type="file"
