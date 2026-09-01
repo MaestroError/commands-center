@@ -81,6 +81,7 @@ import {
 import {
   createArtifactToolDefinitions,
   addArtifactToolMetadata,
+  listUploadedFilesToolMetadata,
 } from "./groups/cc-default/tools/artifact-tools.js";
 import {
   createSelfConversationToolDefinitions,
@@ -425,6 +426,7 @@ export function createCcManagedMcpServerRegistry(options: {
         registerPrivateDocumentToolMetadata,
         movePrivateDocumentToolMetadata,
         addArtifactToolMetadata,
+        listUploadedFilesToolMetadata,
       ],
       tools: defaultTools,
     },

@@ -15,6 +15,7 @@ import { NotFoundError } from "../../src/lib/api-error";
 import { createConversationService } from "../../src/services/conversation-service";
 import { createSpecialistService } from "../../src/services/specialist-service";
 import { createTaskService } from "../../src/services/task-service";
+import type { ChatUploadService } from "../../src/services/chat-upload-service";
 import {
   OpenCodeRequestError,
   type OpenCodeService,
@@ -94,6 +95,7 @@ async function setup(
     watchdogRecoveryRetryDelaysMs?: readonly number[];
     opencodeRequestMs?: number;
     watchdogRecoveryListActiveChats?: () => Promise<(typeof conversations.$inferSelect)[]>;
+    chatUploadService?: ChatUploadService;
   } = {},
 ) {
   const testDb = await createTestDatabase();
@@ -116,6 +118,7 @@ async function setup(
     interactiveChatWatchdogService: options.watchdog ?? options.createWatchdog?.(opencodeService),
     watchdogRecoveryRetryDelaysMs: options.watchdogRecoveryRetryDelaysMs,
     watchdogRecoveryListActiveChats: options.watchdogRecoveryListActiveChats,
+    chatUploadService: options.chatUploadService,
   });
   const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
   const agent = await agentService.create({
@@ -640,6 +643,76 @@ describe("conversation-service delegating methods", () => {
     expect(firstCancel).not.toHaveBeenCalled();
     expect(secondArm).not.toHaveBeenCalled();
     expect(secondCancel).toHaveBeenCalledOnce();
+  });
+
+  it("persists async prompt attachments before OpenCode accepts them", async () => {
+    const rollback = vi.fn(() => Promise.resolve());
+    const chatUploadService = mockChatUploadService(rollback);
+    const { service, opencodeService, agent } = await setup({ chatUploadService });
+    const snapshot = await service.resolveCurrent(agent.id);
+    const uploaded = attachment("async.txt");
+
+    await service.sendPromptAsync(snapshot.current.id, {
+      text: "inspect",
+      attachments: [uploaded],
+    });
+
+    expect(chatUploadService.persist).toHaveBeenCalledWith({
+      agentId: agent.id,
+      conversationId: snapshot.current.id,
+      attachments: [uploaded],
+    });
+    expect(opencodeService.promptSessionAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ attachments: [uploaded] }),
+    );
+    expect(rollback).not.toHaveBeenCalled();
+  });
+
+  it("rolls back synchronous prompt uploads when OpenCode rejects the send", async () => {
+    const rollback = vi.fn(() => Promise.resolve());
+    const chatUploadService = mockChatUploadService(rollback);
+    const { service, opencodeService, agent } = await setup({ chatUploadService });
+    const snapshot = await service.resolveCurrent(agent.id);
+    opencodeService.promptSession = vi.fn(() =>
+      Promise.reject(new OpenCodeRequestError("prompt rejected", 400)),
+    );
+
+    await expect(
+      service.sendPrompt(snapshot.current.id, {
+        text: "inspect",
+        attachments: [attachment("sync.txt")],
+      }),
+    ).rejects.toThrow("prompt rejected");
+
+    expect(rollback).toHaveBeenCalledOnce();
+  });
+
+  it("rolls back command uploads when OpenCode rejects the command", async () => {
+    const rollback = vi.fn(() => Promise.resolve());
+    const chatUploadService = mockChatUploadService(rollback);
+    const { service, opencodeService, agent } = await setup({ chatUploadService });
+    const snapshot = await service.resolveCurrent(agent.id);
+    opencodeService.commandSession = vi.fn(() => Promise.reject(new Error("command rejected")));
+
+    await expect(
+      service.sendCommand(snapshot.current.id, {
+        command: "inspect",
+        arguments: "",
+        attachments: [attachment("command.txt")],
+      }),
+    ).rejects.toThrow("command rejected");
+
+    expect(rollback).toHaveBeenCalledOnce();
+  });
+
+  it("does not invoke upload storage for attachment-free sends", async () => {
+    const chatUploadService = mockChatUploadService(vi.fn(() => Promise.resolve()));
+    const { service, agent } = await setup({ chatUploadService });
+    const snapshot = await service.resolveCurrent(agent.id);
+
+    await service.sendPromptAsync(snapshot.current.id, { text: "plain", attachments: [] });
+
+    expect(chatUploadService.persist).not.toHaveBeenCalled();
   });
 
   it("runs command, shell, async prompt, and summarize on the current session", async () => {
@@ -1419,6 +1492,24 @@ describe("conversation-service delegating methods", () => {
     },
   );
 });
+
+function mockChatUploadService(rollback: () => Promise<void>): ChatUploadService {
+  return {
+    persist: vi.fn(() => Promise.resolve({ uploads: [], rollback })),
+    list: vi.fn(() => Promise.resolve([])),
+    removeForConversation: vi.fn(() => Promise.resolve()),
+  } as unknown as ChatUploadService;
+}
+
+function attachment(filename: string) {
+  return {
+    type: "document" as const,
+    filename,
+    mimeType: "text/plain",
+    dataUrl: "data:text/plain;base64,aGVsbG8=",
+    sizeBytes: 5,
+  };
+}
 
 function createDeferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
   let resolve!: (value: T) => void;

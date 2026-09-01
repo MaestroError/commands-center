@@ -463,7 +463,9 @@ describe("createSpecialistService", () => {
         catalog.ccManagedMcpServers
           ?.find((server) => server.name === "cc_default")
           ?.tools.map((tool) => tool.name),
-      ).toEqual(expect.arrayContaining(["list_specialists", "get_self_profile"]));
+      ).toEqual(
+        expect.arrayContaining(["list_specialists", "get_self_profile", "list_uploaded_files"]),
+      );
     } finally {
       await testDb.cleanup();
     }
