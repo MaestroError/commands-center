@@ -69,6 +69,14 @@ type AgentRuntimeRow = AgentRow & { workspace_path: string };
 type ConversationRow = typeof conversations.$inferSelect;
 type MessageRow = typeof messages.$inferSelect;
 
+const CONTINUABLE_TASK_RUN_STATUSES = new Set([
+  "completed",
+  "failed",
+  "error",
+  "cancelled",
+  "skipped",
+]);
+
 export type TaskRunSessionDiagnostic = {
   code: string;
   message: string;
@@ -438,8 +446,8 @@ export function createConversationService(options: {
         throw new NotFoundError("Task run not found.");
       }
 
-      if (run.status !== "completed" && run.status !== "failed" && run.status !== "error") {
-        throw new ConflictError("Only completed, failed, or error task runs can continue in chat.");
+      if (!CONTINUABLE_TASK_RUN_STATUSES.has(run.status)) {
+        throw new ConflictError("Only terminal task runs can continue in chat.");
       }
 
       const agent = await getAgent(conversation.agent_id);
@@ -455,10 +463,8 @@ export function createConversationService(options: {
           throw new NotFoundError("Task run not found.");
         }
 
-        if (run.status !== "completed" && run.status !== "failed" && run.status !== "error") {
-          throw new ConflictError(
-            "Only completed, failed, or error task runs can continue in chat.",
-          );
+        if (!CONTINUABLE_TASK_RUN_STATUSES.has(run.status)) {
+          throw new ConflictError("Only terminal task runs can continue in chat.");
         }
 
         const timestamp = new Date();

@@ -1069,6 +1069,58 @@ describe("createTaskService", () => {
     }
   });
 
+  it("omits an inactive conversation from a task run projection", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await service.create({ agentId: agent.id, title: "Inactive run chat" });
+      const run = await service.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        status: "completed",
+        triggerSource: "manual",
+        renderedPrompt: "Create a report.",
+      });
+      await seedRunConversation(testDb.client.db, run.id, agent.id);
+      await testDb.client.db
+        .update(conversations)
+        .set({ status: "archived" })
+        .where(eq(conversations.task_run_id, run.id));
+
+      expect((await service.getRun(task.id, run.id))?.conversation).toBeUndefined();
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("omits an inactive conversation from a task's latest run projection", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await service.create({ agentId: agent.id, title: "Inactive latest chat" });
+      const run = await service.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        status: "completed",
+        triggerSource: "manual",
+        renderedPrompt: "Create a report.",
+      });
+      await seedRunConversation(testDb.client.db, run.id, agent.id);
+      await testDb.client.db
+        .update(conversations)
+        .set({ status: "archived" })
+        .where(eq(conversations.task_run_id, run.id));
+
+      expect((await service.get(task.id))?.latestRunConversation).toBeUndefined();
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("rejects terminal-run artifacts when the converted chat is not current", async () => {
     const testDb = await createTestDatabase();
     const service = createTaskService({ db: testDb.client.db, config: testDb.config });

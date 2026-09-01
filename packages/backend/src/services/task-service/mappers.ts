@@ -334,7 +334,12 @@ async function getTaskRunConversationsByRunIds(
       convertedAt: conversationsTable.converted_at,
     })
     .from(conversationsTable)
-    .where(inArray(conversationsTable.task_run_id, uniqueRunIds));
+    .where(
+      and(
+        inArray(conversationsTable.task_run_id, uniqueRunIds),
+        eq(conversationsTable.status, "active"),
+      ),
+    );
 
   for (const row of rows) {
     if (row.runId) {

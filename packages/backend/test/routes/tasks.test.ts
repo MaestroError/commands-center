@@ -640,14 +640,35 @@ describe("task routes", () => {
       });
 
       expect(response.statusCode).toBe(409);
-      expect(response.json().error.message).toBe(
-        "Only completed, failed, or error task runs can continue in chat.",
-      );
+      expect(response.json().error.message).toBe("Only terminal task runs can continue in chat.");
       expect((await harness.taskService.getRunById(run.id))?.status).toBe("running");
     } finally {
       await harness.close();
     }
   });
+
+  it.each(["cancelled", "skipped"] as const)(
+    "opens a %s task run in chat when its session exists",
+    async (status) => {
+      const harness = await createTaskRouteHarness();
+
+      try {
+        const { task, run } = await createTerminalRunFixture(harness, `${status} chat`);
+        await harness.taskService.setRunStatus(run.id, status);
+
+        const response = await harness.server.inject({
+          method: "POST",
+          url: `/api/tasks/${task.id}/runs/${run.id}/open-in-chat`,
+        });
+
+        expect(response.statusCode).toBe(200);
+        expect(response.json().current.convertedAt).toBeDefined();
+        expect((await harness.taskService.getRunById(run.id))?.status).toBe(status);
+      } finally {
+        await harness.close();
+      }
+    },
+  );
 
   it("rejects opening a run through a different task path", async () => {
     const harness = await createTaskRouteHarness();

@@ -205,6 +205,22 @@ function ReviewReplyActions({ activity, onArchive, archiving }: ActivityActionsP
     );
   }
 
+  if (taskId && runId && runQuery.error) {
+    return (
+      <div className="grid gap-2">
+        <ActionError>Could not check whether this run continues in chat.</ActionError>
+        <ActionRow>
+          <ActionButton variant="muted" onClick={() => void navigate(openTaskPath(taskId))}>
+            Open task
+          </ActionButton>
+          <ActionButton variant="muted" disabled={archiving} onClick={() => onArchive(activity.id)}>
+            Mark read
+          </ActionButton>
+        </ActionRow>
+      </div>
+    );
+  }
+
   if (convertedConversation) {
     return (
       <div className="grid gap-2">

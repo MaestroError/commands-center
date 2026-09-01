@@ -25,6 +25,7 @@ const {
     () => {
       data?: Pick<TaskRun, "id" | "agentId"> & { conversation?: TaskRun["conversation"] };
       isLoading: boolean;
+      error?: Error | null;
     }
   >(),
   specialistsQuery: vi.fn<() => { data?: Array<{ id: string; slug: string; name: string }> }>(),
@@ -252,6 +253,27 @@ describe("ActivityActions", () => {
     expect(openInChatMutateAsync).toHaveBeenCalledWith({ taskId: "t1", runId: "r1" });
     expect(createRunFollowupMutateAsync).not.toHaveBeenCalled();
     expect(onArchive).not.toHaveBeenCalled();
+  });
+
+  it("task_needs_review: does not offer a reply when run metadata fails to load", () => {
+    taskRunQuery.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error("Could not load run"),
+    });
+    const { onArchive } = renderActions(
+      activity({
+        id: "a1",
+        kind: "task_needs_review",
+        payload: { taskId: "t1", taskRunId: "r1", question: "Publish it?" },
+      }),
+    );
+
+    expect(screen.getByText("Could not check whether this run continues in chat.")).toBeVisible();
+    expect(screen.queryByLabelText("Review reply")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Open task" })).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Mark read" }));
+    expect(onArchive).toHaveBeenCalledWith("a1");
   });
 
   it("task_run_failed: opens the task and marks read", () => {
