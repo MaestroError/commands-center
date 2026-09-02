@@ -5,6 +5,7 @@ import { createOpenCodeEventService } from "../../src/services/opencode-event-se
 
 describe("opencode-event-service", () => {
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -231,6 +232,286 @@ describe("opencode-event-service", () => {
     );
 
     subscribeForTest({ onEvent, signal: AbortSignal.timeout(25) });
+    await wait(40);
+
+    expect(onEvent).not.toHaveBeenCalled();
+  });
+
+  it("forwards interactions from verified nested descendants", async () => {
+    const onEvent = vi.fn();
+    const resolveSessionTree = vi
+      .fn<() => Promise<Set<string>>>()
+      .mockResolvedValueOnce(new Set(["sess-1", "child-session"]))
+      .mockResolvedValueOnce(new Set(["sess-1", "child-session", "nested-session"]));
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      makeSseResponse([
+        {
+          type: "permission.asked",
+          properties: {
+            id: "perm-1",
+            sessionID: "nested-session",
+            permission: "external_directory",
+            patterns: ["/shared/*"],
+          },
+        },
+      ]),
+    );
+
+    subscribeForTest({
+      onEvent,
+      signal: AbortSignal.timeout(50),
+      resolveSessionTree,
+    });
+
+    await vi.waitFor(() => {
+      expect(onEvent).toHaveBeenCalledWith({
+        type: "permission.asked",
+        properties: {
+          id: "perm-1",
+          sessionID: "nested-session",
+          permission: "external_directory",
+          patterns: ["/shared/*"],
+          metadata: {},
+          always: [],
+        },
+      });
+    });
+    expect(resolveSessionTree).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not open an event stream when initial ancestry resolution fails", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    const logger = createLogger();
+
+    subscribeForTest({
+      onEvent: vi.fn(),
+      signal: AbortSignal.timeout(25),
+      resolveSessionTree: () => Promise.reject(new Error("ancestry unavailable")),
+      logger,
+    });
+    await vi.waitFor(() => expect(logger.warn).toHaveBeenCalled());
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("cancels initial ancestry resolution when the subscription closes", async () => {
+    const controller = new AbortController();
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    let ancestrySignal: AbortSignal | undefined;
+
+    subscribeForTest({
+      onEvent: vi.fn(),
+      signal: controller.signal,
+      resolveSessionTree: (_directory, _sessionID, signal) => {
+        ancestrySignal = signal;
+        return new Promise((_resolve, reject) => {
+          signal.addEventListener("abort", () => reject(new Error("ancestry aborted")), {
+            once: true,
+          });
+        });
+      },
+    });
+    await vi.waitFor(() => expect(ancestrySignal).toBeDefined());
+
+    controller.abort();
+    await vi.waitFor(() => expect(ancestrySignal?.aborted).toBe(true));
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("signals readiness only after ancestry and the event stream are established", async () => {
+    const ancestry = createDeferred<Set<string>>();
+    const onReady = vi.fn();
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(makeSseResponse([]));
+
+    subscribeForTest({
+      onEvent: vi.fn(),
+      onReady,
+      signal: AbortSignal.timeout(50),
+      resolveSessionTree: () => ancestry.promise,
+    });
+    await Promise.resolve();
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(onReady).not.toHaveBeenCalled();
+
+    ancestry.resolve(new Set(["sess-1"]));
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(onReady).toHaveBeenCalledOnce());
+  });
+
+  it("signals readiness again when the upstream event stream reconnects", async () => {
+    const controller = new AbortController();
+    const onReady = vi.fn();
+    const openStream = new ReadableStream<Uint8Array>();
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(makeSseResponse([]))
+      .mockResolvedValueOnce(
+        new Response(openStream, {
+          status: 200,
+          headers: { "Content-Type": "text/event-stream" },
+        }),
+      );
+
+    subscribeForTest({
+      onEvent: vi.fn(),
+      onReady,
+      signal: controller.signal,
+    });
+
+    await vi.waitFor(() => expect(onReady).toHaveBeenCalledTimes(2), { timeout: 1_500 });
+    controller.abort();
+  });
+
+  it("backs off repeated empty successful streams", async () => {
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(makeSseResponse([]));
+
+    subscribeForTest({ onEvent: vi.fn(), signal: controller.signal });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(500);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(999);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+
+    controller.abort();
+  });
+
+  it("resets reconnect backoff after a valid event", async () => {
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(makeSseResponse([]))
+      .mockResolvedValueOnce(makeSseResponse([]))
+      .mockResolvedValueOnce(makeSseResponse([{ type: "server.connected", properties: {} }]))
+      .mockResolvedValue(makeSseResponse([]));
+
+    subscribeForTest({ onEvent: vi.fn(), signal: controller.signal });
+    await vi.advanceTimersByTimeAsync(1_500);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    await vi.advanceTimersByTimeAsync(499);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+
+    controller.abort();
+  });
+
+  it("resets reconnect backoff after a healthy stream lifetime", async () => {
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(makeSseResponse([]))
+      .mockResolvedValueOnce(makeSseResponse([]))
+      .mockImplementationOnce(() => Promise.resolve(makeTimedSseResponse(1_001)))
+      .mockResolvedValue(makeSseResponse([]));
+
+    subscribeForTest({ onEvent: vi.fn(), signal: controller.signal });
+    await vi.advanceTimersByTimeAsync(2_501);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    await vi.advanceTimersByTimeAsync(499);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+
+    controller.abort();
+  });
+
+  it("cancels the event reader when ancestry refresh fails", async () => {
+    const cancel = vi.fn();
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            'data: {"type":"permission.asked","properties":{"id":"perm-1","sessionID":"child"}}\n\n',
+          ),
+        );
+      },
+      cancel,
+    });
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(stream, { status: 200, headers: { "Content-Type": "text/event-stream" } }),
+    );
+    const resolveSessionTree = vi
+      .fn<() => Promise<Set<string>>>()
+      .mockResolvedValueOnce(new Set(["sess-1"]))
+      .mockRejectedValueOnce(new Error("ancestry unavailable"));
+
+    subscribeForTest({
+      onEvent: vi.fn(),
+      signal: AbortSignal.timeout(50),
+      resolveSessionTree,
+    });
+
+    await vi.waitFor(() => expect(cancel).toHaveBeenCalledOnce());
+  });
+
+  it("cancels ancestry refresh and the event reader when the subscription closes", async () => {
+    const controller = new AbortController();
+    const cancel = vi.fn();
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(streamController) {
+        streamController.enqueue(
+          encoder.encode(
+            'data: {"type":"permission.asked","properties":{"id":"perm-1","sessionID":"child"}}\n\n',
+          ),
+        );
+      },
+      cancel,
+    });
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(stream, { status: 200, headers: { "Content-Type": "text/event-stream" } }),
+    );
+    let refreshSignal: AbortSignal | undefined;
+    const resolveSessionTree = vi
+      .fn<(directory: string, rootSessionID: string, signal: AbortSignal) => Promise<Set<string>>>()
+      .mockResolvedValueOnce(new Set(["sess-1"]))
+      .mockImplementationOnce((_directory, _sessionID, signal) => {
+        refreshSignal = signal;
+        return new Promise((_resolve, reject) => {
+          signal.addEventListener("abort", () => reject(new Error("ancestry aborted")), {
+            once: true,
+          });
+        });
+      });
+
+    subscribeForTest({ onEvent: vi.fn(), signal: controller.signal, resolveSessionTree });
+    await vi.waitFor(() => expect(refreshSignal).toBeDefined());
+
+    controller.abort();
+    await vi.waitFor(() => expect(refreshSignal?.aborted).toBe(true));
+    await vi.waitFor(() => expect(cancel).toHaveBeenCalledOnce());
+  });
+
+  it("does not merge descendant message events into the root timeline", async () => {
+    const onEvent = vi.fn();
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      makeSseResponse([
+        {
+          type: "message.updated",
+          properties: {
+            sessionID: "child-session",
+            info: { id: "child-message", role: "assistant" },
+          },
+        },
+      ]),
+    );
+
+    subscribeForTest({
+      onEvent,
+      signal: AbortSignal.timeout(25),
+      resolveSessionTree: () => Promise.resolve(new Set(["sess-1", "child-session"])),
+    });
     await wait(40);
 
     expect(onEvent).not.toHaveBeenCalled();
@@ -469,6 +750,24 @@ describe("opencode-event-service", () => {
     });
   });
 
+  it("skips SSE events without object properties", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      makeSseResponse([
+        { type: "session.status" },
+        { type: "session.status", properties: null },
+        { type: "server.connected", properties: {} },
+      ]),
+    );
+    const onEvent = vi.fn();
+
+    subscribeForTest({ onEvent, signal: AbortSignal.timeout(25) });
+
+    await vi.waitFor(() => {
+      expect(onEvent).toHaveBeenCalledOnce();
+      expect(onEvent).toHaveBeenCalledWith({ type: "connected", properties: {} });
+    });
+  });
+
   it("logs and retries failed SSE responses until aborted", async () => {
     const logger = createLogger();
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("unavailable", { status: 503 }));
@@ -506,6 +805,18 @@ function makeSseResponse(events: unknown[]): Response {
   });
 }
 
+function makeTimedSseResponse(lifetimeMs: number): Response {
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      setTimeout(() => controller.close(), lifetimeMs);
+    },
+  });
+  return new Response(stream, {
+    status: 200,
+    headers: { "Content-Type": "text/event-stream" },
+  });
+}
+
 async function collectEvents(events: unknown[]) {
   const onEvent = vi.fn();
   vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(makeSseResponse(events));
@@ -520,19 +831,39 @@ async function collectEvents(events: unknown[]) {
 
 function subscribeForTest(options: {
   onEvent: (event: unknown) => void;
+  onReady?: () => void;
   signal: AbortSignal;
   onTitleUpdate?: (title: string) => void;
+  resolveSessionTree?: (
+    directory: string,
+    rootSessionID: string,
+    signal: AbortSignal,
+  ) => Promise<Set<string>>;
+  logger?: Logger;
 }) {
   createOpenCodeEventService({
-    config: { opencode: { baseUrl: "http://opencode.test:1234" } } as never,
-    logger: createLogger(),
+    config: {
+      opencode: { baseUrl: "http://opencode.test:1234" },
+      timeouts: { opencodeRequestMs: 30_000 },
+    } as never,
+    logger: options.logger ?? createLogger(),
+    resolveSessionTree: options.resolveSessionTree,
   }).subscribe({
     directory: "/work/agent-a",
     sessionID: "sess-1",
     signal: options.signal,
     onEvent: options.onEvent,
+    onReady: options.onReady,
     onTitleUpdate: options.onTitleUpdate,
   });
+}
+
+function createDeferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((promiseResolve) => {
+    resolve = promiseResolve;
+  });
+  return { promise, resolve };
 }
 
 function wait(ms: number): Promise<void> {

@@ -63,7 +63,9 @@ async function bootServer(
     apiTokenService: createApiTokenService({ db: testDb.client.db }),
     orchestrator: orchestrator(),
     opencodeService: opencodeService(),
-    openCodeEventService: { subscribe: () => {} },
+    openCodeEventService: {
+      subscribe: (options: { onReady?: () => void }) => options.onReady?.(),
+    },
     secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
     scheduler: createSchedulerService(),
     ...extra,
@@ -188,7 +190,8 @@ describe("server-sent event routes", () => {
     });
     const conversationId = await insertConversation(testDb.client.db, agent.id);
     const openCodeEventService = {
-      subscribe: vi.fn((opts: { onEvent: (event: unknown) => void }) => {
+      subscribe: vi.fn((opts: { onReady: () => void; onEvent: (event: unknown) => void }) => {
+        opts.onReady();
         opts.onEvent({ type: "message.updated", properties: { sessionID: "s" } });
       }),
     };
@@ -204,6 +207,40 @@ describe("server-sent event routes", () => {
     expect(chunk.indexOf('"type":"connected"')).toBeLessThan(
       chunk.indexOf('"type":"message.updated"'),
     );
+  });
+
+  it("announces an upstream reconnect on the existing browser stream", async () => {
+    const testDb = await createTestDatabase();
+    disposers.push(() => testDb.cleanup());
+    const agentService = createSpecialistService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: opencodeService(),
+    });
+    const agent = await agentService.create({
+      name: "Reconnected",
+      role: "chat",
+      instructions: "Exist.",
+      defaultModel: "openai/gpt-4.1",
+      capabilities: {},
+    });
+    const conversationId = await insertConversation(testDb.client.db, agent.id);
+    const openCodeEventService = {
+      subscribe: vi.fn((opts: { onReady: () => void }) => {
+        opts.onReady();
+        queueMicrotask(() => opts.onReady());
+      }),
+    };
+    const port = await bootServer(testDb, {
+      openCodeEventService: openCodeEventService as never,
+    });
+
+    const chunk = await readUntilText(
+      `http://127.0.0.1:${port}/api/conversations/${conversationId}/events`,
+      '"reconnected":true',
+    );
+
+    expect(chunk.match(/"type":"connected"/g)).toHaveLength(2);
   });
 
   it("streams opencode and live-request events for a conversation", async () => {
@@ -224,7 +261,8 @@ describe("server-sent event routes", () => {
     const conversationId = await insertConversation(testDb.client.db, agent.id);
 
     const openCodeEventService = {
-      subscribe: vi.fn((opts: { onEvent: (event: unknown) => void }) => {
+      subscribe: vi.fn((opts: { onReady: () => void; onEvent: (event: unknown) => void }) => {
+        opts.onReady();
         queueMicrotask(() =>
           opts.onEvent({ type: "message.updated", properties: { sessionID: "s" } }),
         );
@@ -247,6 +285,118 @@ describe("server-sent event routes", () => {
     );
     expect(chunk).toContain("message.updated");
     expect(liveRequestService.subscribe).toHaveBeenCalled();
+  });
+
+  it("replays a chat watchdog error after reconnect", async () => {
+    const testDb = await createTestDatabase();
+    disposers.push(() => testDb.cleanup());
+    const agentService = createSpecialistService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: opencodeService(),
+    });
+    const agent = await agentService.create({
+      name: "Stalled",
+      role: "chat",
+      instructions: "Exist.",
+      defaultModel: "openai/gpt-4.1",
+      capabilities: {},
+    });
+    const conversationId = await insertConversation(testDb.client.db, agent.id);
+    const interactiveChatWatchdogService = {
+      subscribe: vi.fn(),
+      getError: vi.fn(() => ({
+        type: "session.error",
+        properties: {
+          sessionID: "session-root",
+          error: {
+            name: "ChatNoProgressError",
+            message: "Response stopped automatically.",
+            data: { noProgressMs: 1_800_000 },
+          },
+        },
+      })),
+    };
+    const port = await bootServer(testDb, {
+      interactiveChatWatchdogService: interactiveChatWatchdogService as never,
+    });
+
+    const chunk = await readUntilText(
+      `http://127.0.0.1:${port}/api/conversations/${conversationId}/events`,
+      "ChatNoProgressError",
+    );
+
+    expect(chunk.indexOf('"type":"connected"')).toBeLessThan(
+      chunk.indexOf('"name":"ChatNoProgressError"'),
+    );
+    expect(interactiveChatWatchdogService.subscribe).toHaveBeenCalled();
+  });
+
+  it("replays a stored chat watchdog error after an upstream reconnect", async () => {
+    const testDb = await createTestDatabase();
+    disposers.push(() => testDb.cleanup());
+    const agentService = createSpecialistService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: opencodeService(),
+    });
+    const agent = await agentService.create({
+      name: "Reconnecting",
+      role: "chat",
+      instructions: "Exist.",
+      defaultModel: "openai/gpt-4.1",
+      capabilities: {},
+    });
+    const conversationId = await insertConversation(testDb.client.db, agent.id);
+    const openCodeEventService = {
+      subscribe: vi.fn((opts: { onReady: () => void }) => {
+        opts.onReady();
+        queueMicrotask(() => opts.onReady());
+      }),
+    };
+    const interactiveChatWatchdogService = {
+      subscribe: vi.fn(),
+      getError: vi
+        .fn()
+        .mockReturnValueOnce({
+          type: "session.error",
+          properties: {
+            sessionID: "session-root",
+            error: {
+              name: "ChatNoProgressError",
+              message: "Initial recovery error.",
+              data: { noProgressMs: 1_800_000 },
+            },
+          },
+        })
+        .mockReturnValue({
+          type: "session.error",
+          properties: {
+            sessionID: "session-root",
+            error: {
+              name: "ChatNoProgressError",
+              message: "Reconnected recovery error.",
+              data: { noProgressMs: 1_800_000 },
+            },
+          },
+        }),
+    };
+    const port = await bootServer(testDb, {
+      openCodeEventService: openCodeEventService as never,
+      interactiveChatWatchdogService: interactiveChatWatchdogService as never,
+    });
+
+    const chunk = await readUntilText(
+      `http://127.0.0.1:${port}/api/conversations/${conversationId}/events`,
+      "Reconnected recovery error.",
+    );
+
+    expect(chunk.match(/"type":"connected"/g)).toHaveLength(2);
+    expect(chunk).toContain('"reconnected":true');
+    expect(chunk.indexOf('"reconnected":true')).toBeLessThan(
+      chunk.indexOf("Reconnected recovery error."),
+    );
+    expect(interactiveChatWatchdogService.getError).toHaveBeenCalledTimes(2);
   });
 
   // A live request is published once, to whoever is subscribed at that instant.

@@ -40,6 +40,7 @@ import {
   type TaskRunTransportRetryConfig,
 } from "./task-run-support.js";
 import { buildOpenCodeSessionPermissions } from "./task-permission-service.js";
+import { createTaskRunOperationGuard } from "./task-run-operation-guard.js";
 import type {
   AcceptedPromptEvidence,
   TaskExecutionServiceOptions,
@@ -111,6 +112,8 @@ const DEFAULT_TASK_RUN_DEFER_CONFIG: TaskRunDeferConfig = {
 const MONITOR_RUNTIME_CACHE_MS = 10_000;
 
 export function createTaskExecutionService(options: TaskExecutionServiceOptions) {
+  const taskRunOperationGuard =
+    options.conversationService?.taskRunOperationGuard ?? createTaskRunOperationGuard();
   const taskRunContextService = createTaskRunContextService({ db: options.db });
   const monitorConfig: TaskRunMonitorConfig = {
     ...DEFAULT_TASK_RUN_MONITOR_CONFIG,
@@ -248,20 +251,32 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
 
     async cancel(runId: string, input: CancelTaskRunInput = {}): Promise<TaskRun> {
       const parsed = cancelTaskRunInputSchema.parse(input);
-      const run = await findRun(runId);
+      taskRunOperationGuard.requestCancellation(runId);
+      let guarded: { run: TaskRun; cancelled: TaskRun };
+      try {
+        guarded = await taskRunOperationGuard.runExclusive(runId, async () => {
+          const run = await findRun(runId);
 
-      if (!["queued", "running"].includes(run.status)) {
-        throw new BadRequestError("Only queued or running task runs can be cancelled.");
+          if (!["queued", "running"].includes(run.status)) {
+            throw new BadRequestError("Only queued or running task runs can be cancelled.");
+          }
+
+          const cancelled = await options.taskService.setRunStatus(run.id, "cancelled", {
+            cancelledAt: new Date().toISOString(),
+            cancellationReason: parsed.reason ?? "Cancelled by user.",
+          });
+
+          if (!cancelled) {
+            throw new NotFoundError("Task run not found.");
+          }
+
+          return { run, cancelled };
+        });
+      } finally {
+        taskRunOperationGuard.clearCancellationRequest(runId);
       }
 
-      const cancelled = await options.taskService.setRunStatus(run.id, "cancelled", {
-        cancelledAt: new Date().toISOString(),
-        cancellationReason: parsed.reason ?? "Cancelled by user.",
-      });
-
-      if (!cancelled) {
-        throw new NotFoundError("Task run not found.");
-      }
+      const { run, cancelled } = guarded;
 
       await abortOpenCodeTaskRun(run);
       notifyRunTerminal(cancelled);

@@ -14,7 +14,10 @@ vi.mock("../../src/lib/opencode-client.js", () => ({
 const BASE_URL = "http://opencode.test:1234";
 
 function createConfig(): RuntimeConfig {
-  return { opencode: { baseUrl: BASE_URL } } as unknown as RuntimeConfig;
+  return {
+    opencode: { baseUrl: BASE_URL },
+    timeouts: { opencodeRequestMs: 30_000 },
+  } as unknown as RuntimeConfig;
 }
 
 function createLogger() {
@@ -75,6 +78,43 @@ describe("opencode-service", () => {
       expect(url.pathname).toBe("/session/sess-1/prompt_async");
       expect(url.searchParams.get("directory")).toBe("/work/agent-a");
       expect(init.method).toBe("POST");
+    });
+
+    it("forwards a caller-provided request signal", async () => {
+      const hangingFetch = vi.fn(
+        (_url: URL, init: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            init.signal?.addEventListener(
+              "abort",
+              () =>
+                reject(
+                  init.signal?.reason instanceof Error ? init.signal.reason : new Error("aborted"),
+                ),
+              { once: true },
+            );
+          }),
+      );
+      vi.stubGlobal("fetch", hangingFetch);
+      const config = createConfig();
+      const service = createOpenCodeService({
+        client: FAKE_CLIENT,
+        config,
+        logger: createLogger(),
+      });
+
+      const controller = new AbortController();
+      const request = service.promptSessionAsync({
+        directory: "/work/agent-a",
+        sessionID: "sess-1",
+        agent: "build",
+        model: { providerID: "anthropic", modelID: "claude" },
+        text: "hello",
+        signal: controller.signal,
+      });
+      controller.abort();
+
+      await expect(request).rejects.toThrow();
+      expect((hangingFetch.mock.calls[0]?.[1] as RequestInit).signal).toBe(controller.signal);
     });
 
     it("includes `system` in the body only when provided", async () => {
@@ -707,10 +747,13 @@ describe("opencode-service", () => {
     });
 
     it("gets a session and lists messages", async () => {
-      fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "sess-1", time: { created: 1 } }));
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(200, { id: "sess-1", parentID: "root", time: { created: 1 } }),
+      );
       const service = makeService();
       await expect(service.getSession("/work/a", "sess-1")).resolves.toMatchObject({
         id: "sess-1",
+        parentID: "root",
       });
 
       fetchMock.mockResolvedValueOnce(
@@ -723,6 +766,110 @@ describe("opencode-service", () => {
       );
       const messages = await service.listSessionMessages("/work/a", "sess-1");
       expect(messages).toHaveLength(1);
+    });
+
+    it("resolves direct and nested descendants from verified parent relationships", async () => {
+      fetchMock
+        .mockResolvedValueOnce(
+          jsonResponse(200, [
+            { id: "child", parentID: "root", time: { created: 2 } },
+            { id: "unrelated", parentID: "other", time: { created: 3 } },
+          ]),
+        )
+        .mockResolvedValueOnce(
+          jsonResponse(200, [{ id: "nested", parentID: "child", time: { created: 4 } }]),
+        )
+        .mockResolvedValueOnce(
+          jsonResponse(200, [{ id: "child", parentID: "nested", time: { created: 2 } }]),
+        );
+      const service = makeService();
+
+      await expect(service.getSessionTreeIds("/work/a", "root")).resolves.toEqual(
+        new Set(["root", "child", "nested"]),
+      );
+
+      expect(fetchMock.mock.calls.map((call) => (call[0] as URL).pathname)).toEqual([
+        "/session/root/children",
+        "/session/child/children",
+        "/session/nested/children",
+      ]);
+    });
+
+    it("times out session-tree traversal using the configured request timeout", async () => {
+      const hangingFetch = vi.fn((_url: URL, init: RequestInit) => {
+        return new Promise<Response>((_resolve, reject) => {
+          init.signal?.addEventListener(
+            "abort",
+            () => {
+              const reason = init.signal?.reason;
+              reject(reason instanceof Error ? reason : new Error("aborted"));
+            },
+            { once: true },
+          );
+        });
+      });
+      vi.stubGlobal("fetch", hangingFetch);
+      const service = createOpenCodeService({
+        client: FAKE_CLIENT,
+        config: {
+          ...createConfig(),
+          timeouts: { ...createConfig().timeouts, opencodeRequestMs: 5 },
+        },
+        logger: createLogger(),
+      });
+
+      await expect(service.getSessionTreeIds("/work/a", "root")).rejects.toThrow();
+      expect((hangingFetch.mock.calls[0]?.[1] as RequestInit).signal).toBeInstanceOf(AbortSignal);
+    });
+
+    it("combines the caller signal with the session-tree timeout", async () => {
+      const hangingFetch = vi.fn((_url: URL, init: RequestInit) => {
+        return new Promise<Response>((_resolve, reject) => {
+          init.signal?.addEventListener(
+            "abort",
+            () => {
+              const reason = init.signal?.reason;
+              reject(reason instanceof Error ? reason : new Error("aborted"));
+            },
+            { once: true },
+          );
+        });
+      });
+      vi.stubGlobal("fetch", hangingFetch);
+      const caller = new AbortController();
+      const service = makeService();
+      const traversal = service.getSessionTreeIds("/work/a", "root", caller.signal);
+      await vi.waitFor(() => expect(hangingFetch).toHaveBeenCalledOnce());
+
+      caller.abort(new Error("caller cancelled"));
+
+      await expect(traversal).rejects.toThrow("caller cancelled");
+      expect((hangingFetch.mock.calls[0]?.[1] as RequestInit).signal).not.toBe(caller.signal);
+    });
+
+    it("rejects malformed child session payloads", async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, [{ id: "child", parentID: "root" }]));
+      const service = makeService();
+
+      await expect(service.listSessionChildren("/work/a", "root")).rejects.toThrow();
+    });
+
+    it("fails closed when a session tree exceeds the traversal limit", async () => {
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(
+          200,
+          Array.from({ length: 1_000 }, (_, index) => ({
+            id: `child-${String(index)}`,
+            parentID: "root",
+            time: { created: index + 1 },
+          })),
+        ),
+      );
+      const service = makeService();
+
+      await expect(service.getSessionTreeIds("/work/a", "root")).rejects.toThrow(
+        "OpenCode session tree exceeds 1000 sessions.",
+      );
     });
 
     it("prompts a session synchronously and returns the assistant message", async () => {
@@ -751,6 +898,38 @@ describe("opencode-service", () => {
       };
       expect(body.system).toBe("be brief");
       expect(body.parts).toHaveLength(2);
+    });
+
+    it("forwards a request signal to a synchronous prompt", async () => {
+      const hangingFetch = vi.fn(
+        (_url: URL, init: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            init.signal?.addEventListener(
+              "abort",
+              () =>
+                reject(
+                  init.signal?.reason instanceof Error ? init.signal.reason : new Error("aborted"),
+                ),
+              { once: true },
+            );
+          }),
+      );
+      vi.stubGlobal("fetch", hangingFetch);
+      const service = makeService();
+      const controller = new AbortController();
+
+      const request = service.promptSession({
+        directory: "/work/a",
+        sessionID: "sess-1",
+        agent: "build",
+        model: { providerID: "openai", modelID: "gpt-4.1" },
+        text: "go",
+        signal: controller.signal,
+      });
+      controller.abort();
+
+      await expect(request).rejects.toThrow();
+      expect((hangingFetch.mock.calls[0]?.[1] as RequestInit).signal).toBe(controller.signal);
     });
 
     it("issues command, summarize, shell, and abort/delete requests", async () => {
@@ -806,6 +985,39 @@ describe("opencode-service", () => {
         "/question/q-1/reject",
       ]);
     });
+
+    it.each(["reply", "reject"] as const)(
+      "forwards a request signal to a question %s",
+      async (action) => {
+        const hangingFetch = vi.fn(
+          (_url: URL, init: RequestInit) =>
+            new Promise<Response>((_resolve, reject) => {
+              init.signal?.addEventListener(
+                "abort",
+                () =>
+                  reject(
+                    init.signal?.reason instanceof Error
+                      ? init.signal.reason
+                      : new Error("aborted"),
+                  ),
+                { once: true },
+              );
+            }),
+        );
+        vi.stubGlobal("fetch", hangingFetch);
+        const service = makeService();
+        const controller = new AbortController();
+
+        const request =
+          action === "reply"
+            ? service.replyQuestion("/work/a", "q-1", [["yes"]], controller.signal)
+            : service.rejectQuestion("/work/a", "q-1", controller.signal);
+        controller.abort();
+
+        await expect(request).rejects.toThrow();
+        expect((hangingFetch.mock.calls[0]?.[1] as RequestInit).signal).toBe(controller.signal);
+      },
+    );
 
     it("treats a non-JSON 2xx response as success (true)", async () => {
       fetchMock.mockResolvedValue(new Response("OK", { status: 200 }));

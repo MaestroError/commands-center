@@ -1,0 +1,139 @@
+# Descendant Permission Deadlocks Implementation Plan
+
+Tracked by [CommandsCenter issue #181](https://github.com/MaestroError/commands-center/issues/181).
+
+## Goal
+
+Route direct and nested OpenCode descendant interactions through their owning root conversation, preserve the root permission mode, reject cross-conversation replies, and fail closed when an interactive chat produces no observable root-or-descendant progress for 30 minutes.
+
+## Constraints
+
+- Use OpenCode 1.18.23 session metadata and child endpoints as the ancestry source of truth.
+- Never trust an event or reply request merely because it shares a specialist directory.
+- Do not globally allow external directories or auto-approve descendants of manual chats.
+- Keep the dependency upgrade isolated in commit `024d383`.
+- Add no database migration, setting, or dependency.
+
+## Implementation
+
+### 1. Session ancestry and reply authorization
+
+- Extend `packages/backend/src/services/opencode-service.ts` to preserve `parentID`, list direct children, and recursively resolve a root session tree.
+- Add focused adapter tests for direct children, nested descendants, malformed payloads, and cycle/duplicate safety.
+- Change conversation permission/question reply methods to find the pending request and verify its session belongs to the resolved root tree before forwarding the reply.
+- Test root, descendant, unrelated, missing, and already-resolved requests.
+
+### 2. Descendant event routing and hydration
+
+- Seed each OpenCode event subscription with the verified root session tree.
+- Admit session-scoped events only for the root or verified descendants, refreshing ancestry when an unknown session emits an interaction.
+- Preserve the originating descendant `sessionID` in mapped events.
+- Filter chat and task-run pending permissions/questions against the complete verified tree.
+- Cover direct and nested descendants, reconnect hydration, and unrelated-session isolation.
+
+### 3. Permission-mode behavior and UI fallback
+
+- For task runs, reply `once` to verified descendant permission asks because task runs have an effective `auto_approve` policy.
+- If automatic task-run permission resolution fails, return the interaction to the existing blocked/review flow instead of hiding it.
+- Continue to route questions to review.
+- In interactive chat, keep the specialist-local frontend auto-approve toggle authoritative.
+- Catch live SSE auto-reply failures and dispatch the permission into the existing conversation-level `PermissionDock`; manual mode uses the same dock directly.
+- Keep interactions linked to tool rows when possible and rely on the existing conversation-level dock when the descendant call is not visible in the root timeline.
+
+### 4. Bounded interactive-chat recovery
+
+- Add a backend-owned interactive chat watchdog with a fixed 30-minute no-progress threshold and a short polling interval.
+- Arm it around accepted asynchronous chat prompts and keep it independent of browser SSE connections.
+- Build progress snapshots across root and recursive descendants; message, part, or descendant changes reset the deadline while status flapping and failed reads do not.
+- On timeout, perform one final reconciliation, abort only the root session with a bounded request, and publish one explanatory `session.error` for active and reconnecting browser streams.
+- Dispose watchdog handles during runtime shutdown.
+- Test root/direct/nested progress, timeout, final reconciliation, abort failure, replay, replacement by a new prompt, and disposal.
+
+### 5. Exact-head review maintenance
+
+- Serialize watchdog replacement with an in-flight root abort so an older timeout cannot abort a newer prompt.
+- Bound watchdog baseline reads with the configured OpenCode request timeout and fail open for prompt submission when preparation times out.
+- Treat task-run permission auto-reply `NotFoundError` responses as resolved list/reply races while continuing to surface transient failures.
+- Reconcile pending interactions authoritatively after SSE reconnect while preserving union semantics for the initial fetch/SSE race.
+- Cover each race with focused backend or frontend regression tests.
+
+### 6. Subscription, permission, and conversation lifecycle fencing
+
+- Delay the browser-facing SSE readiness signal until the OpenCode event stream is established, then begin initial pending-interaction hydration so descendant asks raised during deferred ancestry are observable by either the stream or snapshot.
+- Give each complete `getSessionTreeIds()` traversal one configured OpenCode request-timeout budget, combined with any caller signal.
+- Share a per-task-run guard between cancellation and descendant permission auto-approval, and revalidate the persisted running state immediately before replying while holding that guard.
+- Suppress live and hydrated auto-reply failure fallback when a matching terminal permission event has already been observed.
+- Generalize the per-conversation prompt queue to serialize asynchronous sends, manual aborts, and deletion; load the conversation inside the queued operation so sends behind deletion fail with the existing not-found behavior.
+- Cover deferred initial ancestry, cancellation during permission discovery, terminal-event-before-HTTP-failure ordering, abort during prompt acceptance, no-signal hanging ancestry, and deletion with queued sends.
+
+### 7. Authoritative reconnect fallback fencing
+
+- Advance an auto-approve fallback generation whenever a successful reconnect snapshot becomes authoritative.
+- Capture the current generation for each live-event or hydrated permission auto-reply and surface a transient failure only while that generation remains current.
+- Preserve existing behavior for current-generation transient failures, stale 404/410 replies, and terminal SSE replies.
+- Cover older live-event and initial-hydration auto-replies whose HTTP responses fail only after an authoritative reconnect has removed the permission.
+
+### 8. Upstream reconnect reconciliation
+
+- Announce each internal OpenCode event-stream reconnection to the existing browser SSE stream so the frontend performs a new authoritative pending-interaction hydration.
+- Apply a successful authoritative pending snapshot independently of conversation-detail refresh failure.
+- Cover upstream reconnection without a browser reconnect and deferred live or initially hydrated auto-reply failures after a successful pending snapshot and failed detail refresh.
+
+### 9. Repeated timeout, snapshot ordering, and restart recovery
+
+- Preserve the original no-progress deadline when bounded watchdog polls time out, distinguish an internal poll timeout from handle cancellation, and still attempt the bounded root abort after the deadline.
+- Fence initial and reconnect pending-interaction snapshots by request generation so only the newest requested reconciliation may update permissions, questions, live requests, or auto-approve fallback state.
+- After OpenCode starts, find persisted active chat conversations whose sessions are still busy or retrying and re-arm their watchdogs from a fresh bounded baseline.
+- Keep restart recovery best-effort per conversation, exclude task-run and idle sessions, and do not let recovery failure consume the OpenCode startup retry budget.
+- Cover repeated timed-out polls after the deadline, initial-after-reconnect and overlapping-reconnect completion order, recovered settled turns, and startup recovery failure isolation.
+
+### 10. Exact-head hydration, notification, and restart hardening
+
+- Preserve permission, question, and live-request events opened after an authoritative pending snapshot begins, while retaining terminal-event and cross-snapshot ordering fences.
+- Sequence auto-approve fallback against the authoritative snapshot boundary so a newer permission remains manually actionable after a transient reply failure.
+- Isolate watchdog subscriber failures so the recovery event remains replayable, later subscribers are notified, and the stopped handle cannot poll again.
+- Retry only failed restart watchdog restorations with bounded backoff, independently of OpenCode startup retries, and cancel pending recovery during runtime drain.
+- Add positive direct and nested descendant manual permission/question reply coverage and an explicit disabled-auto-approve UI-path regression.
+
+### 11. Exact-head policy and recovery completion
+
+- Gate task-run permission auto-replies on the run's frozen `auto_approve` policy; preserve manual review for every other or malformed policy.
+- Keep fail-open chat submission bounded by preparing a fallback watchdog when baseline capture fails and retaining it when prompt acceptance times out ambiguously.
+- Make restart watchdog recovery reads cancellable and time-bounded, then continue failed-chat retries at a capped delay until recovery, inactivity, deletion, or runtime drain.
+- Back off repeatedly short-lived OpenCode event streams and reset the delay only after a stream demonstrates health.
+- Record successful local question replies/rejections as terminal interaction events so older pending snapshots cannot restore them.
+- Fence reconnect detail snapshots against newer SSE events and overlapping detail requests.
+- Cover all six exact-head findings with focused backend and frontend regressions.
+
+### 12. Exact-head operation and hydration completion
+
+- Give each task-run pending-interaction cycle one configured OpenCode request budget and pass its signal through permission/question listing, ancestry traversal, and descendant permission replies so cancellation cannot wait forever on the task-run guard.
+- Apply the configured OpenCode request timeout to serialized manual abort and best-effort remote deletion so a stalled mutation releases the conversation operation queue.
+- Fence pending-interaction hydration by the newest successful request rather than the newest started request, allowing an older successful snapshot to reconcile state when a newer request fails.
+- Record successful and stale manual permission replies as terminal interaction events so in-flight snapshots cannot restore an already-resolved permission.
+- Cover unresolved task-run replies, stalled abort/delete requests, newer-failure/older-success hydration, and manual permission reply/reconnect ordering.
+
+### 13. Exact-head prompt and interaction request budgets
+
+- Protect synchronous interactive prompts with the same serialized watchdog preparation and configured OpenCode request budget used by asynchronous prompts, while preserving the synchronous response contract.
+- Keep watchdog protection armed after an ambiguous synchronous prompt timeout and cancel it after success or definitive rejection.
+- Give chat pending-interaction hydration and each manual permission/question reply one configured OpenCode request budget spanning listing, ancestry verification, and mutation.
+- Extend OpenCode question reply/reject operations to accept and forward abort signals.
+- Replay a stored watchdog error after every upstream OpenCode reconnect before reconnect detail hydration can clear the displayed error.
+- Cover stalled synchronous prompts, stalled pending hydration and manual replies, adapter signal forwarding, and watchdog error replay after an upstream reconnect.
+
+### 14. Final readiness reconciliation
+
+- After an ambiguous task-run permission auto-reply failure, use a fresh bounded request budget to verify that the permission still exists in the current root session tree before surfacing it as blocked.
+- Retry failed chat pending-interaction hydration while the event stream remains connected, using one generation-fenced retry chain with capped exponential delay.
+- Cover an applied reply with a failed HTTP response and a hidden pre-subscription descendant permission recovered by hydration retry.
+
+## Verification
+
+1. Run focused backend adapter, event, conversation, monitor, route, and watchdog tests.
+2. Run focused frontend conversation and permission-dock tests.
+3. Run ESLint with fixes on changed TypeScript files and Prettier on the plan/manifests.
+4. Run repository type checking, lint, formatting, knip, unit/integration tests, and CLI build.
+5. Review `git diff staging...HEAD`, status, generated files, and secret/debug-artifact scans.
+6. Commit all functional changes and tests as `fix: handle descendant session interactions`.
+7. Push the dedicated branch and open a draft pull request targeting `staging`.

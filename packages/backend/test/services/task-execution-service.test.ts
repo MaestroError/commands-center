@@ -435,6 +435,7 @@ describe("createTaskExecutionService", () => {
         status: "running",
         triggerSource: "manual",
         renderedPrompt: "Initial run.",
+        startedAt: "2026-06-01T06:00:00.000Z",
       });
       const conversation = await conversationService.createTaskRunConversation({
         agentId: agent.id,
@@ -464,11 +465,148 @@ describe("createTaskExecutionService", () => {
       expect(followup.body).toBe("Ship option A.");
       expect(prompts.map((prompt) => prompt.text)).toEqual(["Ship option A."]);
       expect(refreshed?.status).toBe("running");
+      expect(Date.parse(refreshed?.startedAt ?? "")).toBeGreaterThan(
+        Date.parse(run.startedAt ?? ""),
+      );
       expect(refreshed?.needsHumanReview).toBe(false);
       expect(refreshed?.reviewQuestion).toBeUndefined();
       expect(refreshed?.hasActiveReply).toBe(true);
       expect(taskAfter?.status).toBe("queued");
       expect(followups.map((entry) => entry.status)).toEqual(["sending"]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("times out a reply continuation from its reactivation timestamp", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService({ statusSequence: [{ type: "busy" }] }),
+    });
+    const executionService = createTaskExecutionService({
+      db: testDb.client.db,
+      taskService,
+      conversationService,
+      monitor: {
+        initialPollMs: 1,
+        maxPollMs: 1,
+        maxLifetimeMs: 30,
+        noProgressMs: 0,
+      },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Reply lifetime" });
+      const run = await taskService.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        status: "completed",
+        triggerSource: "manual",
+        renderedPrompt: "Initial run.",
+        startedAt: "2026-06-01T06:00:00.000Z",
+        completedAt: "2026-06-01T12:00:00.000Z",
+      });
+      const conversation = await conversationService.createTaskRunConversation({
+        agentId: agent.id,
+        taskId: task.id,
+        taskRunId: run.id,
+        title: "Task: Reply lifetime",
+      });
+      await taskService.updateRun(run.id, { opencodeSessionId: conversation.opencodeSessionId });
+
+      const followup = await executionService.sendRunReply(run.id, { body: "Keep working." });
+
+      expect((await taskService.getRunById(run.id))?.status).toBe("running");
+      await expectRunStatus(taskService, run.id, "error");
+      const timedOut = await taskService.getRunById(run.id);
+      const finalizedFollowup = (await taskService.listFollowups(run.id)).find(
+        (entry) => entry.id === followup.id,
+      );
+
+      expect(timedOut?.errorDetails).toMatchObject({
+        stage: "monitor_timeout",
+        elapsedRunMs: expect.any(Number),
+      });
+      expect(Number(timedOut?.errorDetails?.["elapsedRunMs"])).toBeGreaterThanOrEqual(30);
+      expect(Number(timedOut?.errorDetails?.["elapsedRunMs"])).toBeLessThan(30_000);
+      expect(finalizedFollowup?.status).toBe("failed");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("resumes a reply continuation after restart with its persisted lifetime baseline", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const opencodeService = createMockOpenCodeService({
+      completeAsyncPrompt: true,
+      statusSequence: [{ type: "idle" }],
+    });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const beforeRestart = createTaskExecutionService({
+      db: testDb.client.db,
+      taskService,
+      conversationService,
+      monitor: { autoStart: false },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Restarted reply" });
+      const run = await taskService.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        status: "completed",
+        triggerSource: "manual",
+        renderedPrompt: "Initial run.",
+        startedAt: "2026-06-01T06:00:00.000Z",
+        completedAt: "2026-06-01T12:00:00.000Z",
+      });
+      const conversation = await conversationService.createTaskRunConversation({
+        agentId: agent.id,
+        taskId: task.id,
+        taskRunId: run.id,
+        title: "Task: Restarted reply",
+      });
+      await taskService.updateRun(run.id, { opencodeSessionId: conversation.opencodeSessionId });
+
+      const followup = await beforeRestart.sendRunReply(run.id, { body: "Finish after restart." });
+      const reactivated = await taskService.getRunById(run.id);
+      beforeRestart.dispose();
+
+      const afterRestart = createTaskExecutionService({
+        db: testDb.client.db,
+        taskService,
+        conversationService,
+        monitor: {
+          initialPollMs: 1,
+          maxPollMs: 1,
+          idlePolls: 1,
+          maxLifetimeMs: 1_000,
+        },
+      });
+      await afterRestart.resumeRunningTaskRuns();
+      await expectRunStatus(taskService, run.id, "completed");
+
+      const completed = await taskService.getRunById(run.id);
+      const answeredFollowup = (await taskService.listFollowups(run.id)).find(
+        (entry) => entry.id === followup.id,
+      );
+
+      expect(Date.parse(reactivated?.startedAt ?? "")).toBeGreaterThan(
+        Date.parse(run.startedAt ?? ""),
+      );
+      expect(completed?.opencodeSessionId).toBe(conversation.opencodeSessionId);
+      expect(answeredFollowup?.status).toBe("answered");
+      expect(answeredFollowup?.answerBody).toContain("Finish after restart.");
     } finally {
       await testDb.cleanup();
     }
@@ -1727,6 +1865,78 @@ describe("createTaskExecutionService", () => {
 
       expect(cancelled.status).toBe("cancelled");
       expect(opencodeService.abortSession).toHaveBeenCalledWith(expect.any(String), "session-1");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("does not auto-approve a descendant permission after cancellation starts", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const opencodeService = createMockOpenCodeService();
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const taskPermissionService = createTaskPermissionService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      taskPermissionService,
+      monitor: { autoStart: false },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Permission race",
+        permissionProfile: { approvalPolicy: "auto_approve" },
+      });
+      const run = await executionService.queue(task.id, { triggerSource: "manual" });
+      await expectRunStatus(taskService, run.id, "running");
+      opencodeService.listPendingPermissions = vi.fn(() =>
+        Promise.resolve([
+          {
+            id: "perm-after-cancel",
+            sessionID: "child-session",
+            permission: "external_directory",
+            patterns: ["/shared/*"],
+            always: [],
+            metadata: {},
+          },
+        ]),
+      );
+      opencodeService.getSessionTreeIds = vi.fn(() =>
+        Promise.resolve(new Set(["session-1", "child-session"])),
+      );
+      opencodeService.replyPermission = vi.fn(() => Promise.resolve());
+      const statusRead = createDeferred<void>();
+      const releaseStatusRead = createDeferred<void>();
+      const taskRunQuery = testDb.client.db.query.task_runs;
+      const findFirst = taskRunQuery.findFirst.bind(taskRunQuery);
+      const delayedFindFirst = async (query: Parameters<typeof findFirst>[0]) => {
+        const result = await findFirst(query);
+        statusRead.resolve();
+        await releaseStatusRead.promise;
+        return result;
+      };
+      vi.spyOn(taskRunQuery, "findFirst").mockImplementationOnce(delayedFindFirst as never);
+
+      const pending = conversationService.listTaskRunPendingInteractions(task.id, run.id);
+      await statusRead.promise;
+      const cancellation = executionService.cancel(run.id, { reason: "Stop before approval." });
+      releaseStatusRead.resolve();
+
+      await expect(pending).resolves.toEqual([]);
+      await cancellation;
+      expect(opencodeService.replyPermission).not.toHaveBeenCalled();
+      await expectRunStatus(taskService, run.id, "cancelled");
     } finally {
       await testDb.cleanup();
     }
@@ -3535,7 +3745,9 @@ async function expectRunStatus(
   runId: string,
   status: string,
 ): Promise<void> {
-  await expect.poll(async () => (await taskService.getRunById(runId))?.status).toBe(status);
+  await expect
+    .poll(async () => (await taskService.getRunById(runId))?.status, { timeout: 5_000 })
+    .toBe(status);
 }
 
 async function expectRunRuntimeState(
@@ -3742,6 +3954,22 @@ function createMockOpenCodeService(
       }
 
       return Promise.resolve(session);
+    },
+    listSessionChildren: (_directory: string, sessionID: string) =>
+      Promise.resolve([...sessions.values()].filter((session) => session.parentID === sessionID)),
+    getSessionTreeIds: (_directory: string, rootSessionID: string) => {
+      const sessionIDs = new Set([rootSessionID]);
+      let foundChild = true;
+      while (foundChild) {
+        foundChild = false;
+        for (const session of sessions.values()) {
+          if (session.parentID && sessionIDs.has(session.parentID) && !sessionIDs.has(session.id)) {
+            sessionIDs.add(session.id);
+            foundChild = true;
+          }
+        }
+      }
+      return Promise.resolve(sessionIDs);
     },
     listSessionMessages: (_directory: string, sessionID: string) => {
       const error = listSessionMessagesErrors.shift();

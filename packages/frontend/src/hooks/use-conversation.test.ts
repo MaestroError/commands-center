@@ -809,6 +809,39 @@ describe("SSE_EVENT: question.asked / question.replied / question.rejected", () 
     const next = conversationReducer(state, { type: "SSE_EVENT", event: rejected });
     expect(next.pendingQuestion).toBeNull();
   });
+
+  it("promotes the next pending question when the displayed question is resolved", () => {
+    const secondAsked: ChatEvent = {
+      type: "question.asked",
+      properties: {
+        id: "q-2",
+        sessionID: "child",
+        questions: [{ question: "Continue?", options: [{ label: "Yes" }] }],
+      },
+    };
+    const state = conversationReducer(
+      conversationReducer(initialState, { type: "SSE_EVENT", event: askedEvent }),
+      { type: "SSE_EVENT", event: secondAsked },
+    );
+    const replied: ChatEvent = {
+      type: "question.replied",
+      properties: { sessionID: "s", requestID: "q-1" },
+    };
+
+    const next = conversationReducer(state, { type: "SSE_EVENT", event: replied });
+
+    expect(next.pendingQuestion?.id).toBe("q-2");
+    expect(next.queuedQuestions).toEqual([]);
+  });
+
+  it("does not queue a duplicate event for the displayed question", () => {
+    const state = conversationReducer(initialState, { type: "SSE_EVENT", event: askedEvent });
+
+    const next = conversationReducer(state, { type: "SSE_EVENT", event: askedEvent });
+
+    expect(next.pendingQuestion?.id).toBe("q-1");
+    expect(next.queuedQuestions).toEqual([]);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -913,6 +946,91 @@ describe("HYDRATE_PENDING", () => {
 
     expect(next.pendingPermissions.map((permission) => permission.id)).toEqual(["sse-perm"]);
     expect(next.pendingQuestion?.id).toBe("sse-q");
+  });
+
+  it("removes interactions absent from an authoritative reconnect snapshot", () => {
+    const stateWithDisconnectedInteractions: ConversationState = {
+      ...initialState,
+      pendingPermissions: [
+        {
+          id: "stale-permission",
+          sessionID: "s",
+          permission: "read",
+          patterns: [],
+          metadata: {},
+          always: [],
+        },
+      ],
+      pendingQuestion: { id: "stale-question", sessionID: "s", questions: [] },
+      liveRequests: [
+        {
+          id: "stale-live-request",
+          conversationId: "conversation-1",
+          kind: "add_secret",
+          presentation: { title: "Secret", cancelLabel: "Cancel" },
+          fields: [],
+          actions: [],
+          metadata: {},
+          closable: false,
+          createdAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    };
+
+    const next = conversationReducer(stateWithDisconnectedInteractions, {
+      type: "HYDRATE_PENDING",
+      pending: { permissions: [], question: null, liveRequests: [] },
+      authoritative: true,
+    });
+
+    expect(next.pendingPermissions).toEqual([]);
+    expect(next.pendingQuestion).toBeNull();
+    expect(next.liveRequests).toEqual([]);
+  });
+
+  it("preserves interactions opened after an authoritative snapshot began", () => {
+    const stateWithNewerInteractions: ConversationState = {
+      ...initialState,
+      pendingPermissions: [
+        {
+          id: "new-permission",
+          sessionID: "child",
+          permission: "read",
+          patterns: [],
+          metadata: {},
+          always: [],
+        },
+      ],
+      pendingQuestion: { id: "new-question", sessionID: "child", questions: [] },
+      liveRequests: [
+        {
+          id: "new-live-request",
+          conversationId: "conversation-1",
+          kind: "add_secret",
+          presentation: { title: "Secret", cancelLabel: "Cancel" },
+          fields: [],
+          actions: [],
+          metadata: {},
+          closable: false,
+          createdAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    };
+
+    const next = conversationReducer(stateWithNewerInteractions, {
+      type: "HYDRATE_PENDING",
+      pending: { permissions: [], question: null, liveRequests: [] },
+      authoritative: true,
+      openedAfterSnapshot: {
+        permissionIds: ["new-permission"],
+        questionIds: ["new-question"],
+        liveRequestIds: ["new-live-request"],
+      },
+    });
+
+    expect(next.pendingPermissions.map(({ id }) => id)).toEqual(["new-permission"]);
+    expect(next.pendingQuestion?.id).toBe("new-question");
+    expect(next.liveRequests.map(({ id }) => id)).toEqual(["new-live-request"]);
   });
 });
 

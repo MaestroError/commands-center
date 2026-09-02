@@ -46,6 +46,7 @@ export function registerConversationRoutes(server: AppServer, context: RuntimeCo
     archiveService: context.sessionArchiveService,
     archiveSettingsService: context.sessionArchiveSettingsService,
     systemPromptService: context.systemPromptService,
+    interactiveChatWatchdogService: context.interactiveChatWatchdogService,
   });
   const artifactService = createArtifactService({
     db: context.database.db,
@@ -256,13 +257,14 @@ export function registerConversationRoutes(server: AppServer, context: RuntimeCo
       },
     },
     async (request) => {
-      const { permissions, question } = await service.listPendingInteractions(
+      const { permissions, question, questions } = await service.listPendingInteractions(
         request.params.conversationId,
       );
 
       return {
         permissions,
         question,
+        questions,
         liveRequests:
           context.liveRequestService?.listByConversation(request.params.conversationId) ?? [],
       };
