@@ -39,6 +39,8 @@ export function RunHistory(props: {
   subtasks?: TaskSubtask[];
   isLoading: boolean;
   error: unknown;
+  navigationSearch?: string;
+  readOnly?: boolean;
 }) {
   const [openReplyRunId, setOpenReplyRunId] = useState<string>();
 
@@ -113,28 +115,30 @@ export function RunHistory(props: {
                         <Link
                           className={buttonVariants({ variant: "secondary" })}
                           data-testid={`task-run-inspect-${run.id}`}
-                          to={`/tasks/${props.taskId}/runs/${run.id}`}
+                          to={`/tasks/${props.taskId}/runs/${run.id}${props.navigationSearch ?? ""}`}
                         >
                           Inspect
                         </Link>
-                        <Button
-                          variant="secondary"
-                          data-testid={`task-run-reply-${run.id}`}
-                          disabled={!run.opencodeSessionId}
-                          onClick={() =>
-                            setOpenReplyRunId((current) =>
-                              current === run.id ? undefined : run.id,
-                            )
-                          }
-                          title={
-                            run.opencodeSessionId
-                              ? undefined
-                              : "Replies require a recorded OpenCode session."
-                          }
-                          type="button"
-                        >
-                          Reply
-                        </Button>
+                        {props.readOnly ? null : (
+                          <Button
+                            variant="secondary"
+                            data-testid={`task-run-reply-${run.id}`}
+                            disabled={!run.opencodeSessionId}
+                            onClick={() =>
+                              setOpenReplyRunId((current) =>
+                                current === run.id ? undefined : run.id,
+                              )
+                            }
+                            title={
+                              run.opencodeSessionId
+                                ? undefined
+                                : "Replies require a recorded OpenCode session."
+                            }
+                            type="button"
+                          >
+                            Reply
+                          </Button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -191,7 +195,11 @@ export function TaskRunDetail(props: {
             >
               Back to task
             </Link>
-            {sessionQuery.data?.canOpenInChat && props.taskId && props.runId && agentSlug ? (
+            {sessionQuery.data?.canOpenInChat &&
+            !props.task?.archived &&
+            props.taskId &&
+            props.runId &&
+            agentSlug ? (
               <Button onClick={() => void openInChat()} type="button">
                 Continue in chat
               </Button>

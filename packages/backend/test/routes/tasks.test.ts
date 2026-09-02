@@ -108,6 +108,10 @@ describe("task routes", () => {
         method: "POST",
         url: `/api/tasks/${task.id}/archive`,
       });
+      const fetchedArchived = await server.inject({
+        method: "GET",
+        url: `/api/tasks/${task.id}`,
+      });
       const restored = await server.inject({
         method: "POST",
         url: `/api/tasks/${task.id}/restore`,
@@ -163,6 +167,8 @@ describe("task routes", () => {
       expect(enabled.statusCode).toBe(200);
       expect(archived.statusCode).toBe(200);
       expect(archived.json().status).toBe("archived");
+      expect(fetchedArchived.statusCode).toBe(200);
+      expect(fetchedArchived.json()).toMatchObject({ id: task.id, archived: true });
       expect(restored.statusCode).toBe(200);
       expect(restored.json().archived).toBe(false);
       expect(contextUpdated.statusCode).toBe(200);

@@ -43,6 +43,8 @@ export function TaskFeedbackPanelSection(props: {
   agent?: Specialist;
   agents: Specialist[];
   runs: TaskRun[];
+  navigationSearch?: string;
+  readOnly?: boolean;
 }) {
   const feedbackQuery = useTaskFeedbackQuery(props.taskId);
   const catalogQuery = useSpecialistCatalogQuery();
@@ -86,8 +88,10 @@ export function TaskFeedbackPanelSection(props: {
           })
         }
         parentRuns={props.runs}
+        navigationSearch={props.navigationSearch}
         skills={feedbackSkills}
         task={props.task}
+        readOnly={props.readOnly}
       />
     </section>
   );
@@ -108,6 +112,8 @@ function TaskFeedbackSection(props: {
     options: { requeue: boolean; onSuccess: () => void },
   ) => Promise<void>;
   onUpdateFeedback: (feedbackId: string, input: { body: string }) => Promise<unknown>;
+  navigationSearch?: string;
+  readOnly?: boolean;
 }) {
   const [prompt, setPrompt] = useState<TaskPromptValue>(() => createTaskPromptValue());
   const [isEditorOpen, setIsEditorOpen] = useState(false);
@@ -165,7 +171,7 @@ function TaskFeedbackSection(props: {
 
   return (
     <div className="grid gap-4">
-      {isEditorOpen ? (
+      {props.readOnly ? null : isEditorOpen ? (
         <form
           className="grid gap-3 rounded-lg border border-border bg-surface p-3"
           onSubmit={handleSubmit}
@@ -238,7 +244,7 @@ function TaskFeedbackSection(props: {
             if (item.type === "feedback") {
               const entry = item.feedback;
               const isEditing = editingFeedbackId === entry.id;
-              const canEdit = canEditFeedback(entry, props.parentRuns);
+              const canEdit = !props.readOnly && canEditFeedback(entry, props.parentRuns);
               return (
                 <article
                   className="grid gap-3"
@@ -306,7 +312,12 @@ function TaskFeedbackSection(props: {
                       </div>
                     ) : null}
                   </FeedbackComment>
-                  <FeedbackReplies agents={props.agents} subtasks={entry.subtasks} />
+                  <FeedbackReplies
+                    agents={props.agents}
+                    navigationSearch={props.navigationSearch}
+                    readOnly={props.readOnly}
+                    subtasks={entry.subtasks}
+                  />
                 </article>
               );
             }
@@ -325,7 +336,7 @@ function TaskFeedbackSection(props: {
                     <span>{formatDate(readRunCommentAt(run))}</span>
                     <Link
                       className="font-medium text-accent underline-offset-4 hover:underline"
-                      to={`/tasks/${props.task.id}/runs/${run.id}`}
+                      to={`/tasks/${props.task.id}/runs/${run.id}${props.navigationSearch ?? ""}`}
                     >
                       Open run
                     </Link>
@@ -335,8 +346,14 @@ function TaskFeedbackSection(props: {
                 taskId={props.task.id}
                 runId={run.id}
                 tone="agent"
+                readOnly={props.readOnly}
               >
-                <RunReplyPanel agent={agent} run={run} taskId={props.task.id} />
+                <RunReplyPanel
+                  agent={agent}
+                  readOnly={props.readOnly}
+                  run={run}
+                  taskId={props.task.id}
+                />
               </FeedbackComment>
             );
           })}
@@ -380,7 +397,12 @@ function SendButtons(props: {
   );
 }
 
-export function RunReplyPanel(props: { taskId: string; run: TaskRun; agent?: Specialist }) {
+export function RunReplyPanel(props: {
+  taskId: string;
+  run: TaskRun;
+  agent?: Specialist;
+  readOnly?: boolean;
+}) {
   const [isComposerOpen, setIsComposerOpen] = useState(false);
   const [body, setBody] = useState("");
   const [error, setError] = useState<string>();
@@ -418,6 +440,10 @@ export function RunReplyPanel(props: { taskId: string; run: TaskRun; agent?: Spe
       ? "Replies require a recorded OpenCode session."
       : undefined;
 
+  if (props.readOnly && !followupsQuery.isLoading && followups.length === 0) {
+    return null;
+  }
+
   return (
     <div className="mt-3 grid gap-3 rounded-lg border border-border bg-surface p-3">
       {followupsQuery.isLoading ? (
@@ -431,31 +457,33 @@ export function RunReplyPanel(props: { taskId: string; run: TaskRun; agent?: Spe
         </div>
       ) : null}
 
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <p className="text-sm font-medium text-text-primary">Reply to this run</p>
-          <p className="text-xs text-text-secondary">
-            Replies are sent immediately into this run&apos;s existing session.
-          </p>
+      {props.readOnly ? null : (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="text-sm font-medium text-text-primary">Reply to this run</p>
+            <p className="text-xs text-text-secondary">
+              Replies are sent immediately into this run&apos;s existing session.
+            </p>
+          </div>
+          <Button
+            variant="secondary"
+            disabled={!canReply}
+            onClick={() => setIsComposerOpen((current) => !current)}
+            title={disabledReason}
+            type="button"
+          >
+            Reply
+          </Button>
         </div>
-        <Button
-          variant="secondary"
-          disabled={!canReply}
-          onClick={() => setIsComposerOpen((current) => !current)}
-          title={disabledReason}
-          type="button"
-        >
-          Reply
-        </Button>
-      </div>
+      )}
 
-      {disabledReason ? (
+      {!props.readOnly && disabledReason ? (
         <p className="rounded-md border border-border bg-surface-muted px-3 py-2 text-sm text-text-secondary">
           {disabledReason}
         </p>
       ) : null}
 
-      {isComposerOpen ? (
+      {!props.readOnly && isComposerOpen ? (
         <div className="grid gap-2">
           <Textarea
             aria-label={`Reply to run ${props.run.id}`}
@@ -542,6 +570,7 @@ function FeedbackComment(props: {
   meta: ReactNode;
   tone: "operator" | "agent";
   children?: ReactNode;
+  readOnly?: boolean;
 }) {
   return (
     <div className="flex gap-3 rounded-lg border border-border bg-surface-elevated p-3 shadow-sm">
@@ -572,6 +601,7 @@ function FeedbackComment(props: {
           artifacts={props.artifacts ?? []}
           taskId={props.taskId}
           runId={props.runId}
+          readOnly={props.readOnly}
         />
         {props.children}
       </div>
@@ -579,7 +609,12 @@ function FeedbackComment(props: {
   );
 }
 
-function RunArtifactAttachments(props: { artifacts: Artifact[]; taskId?: string; runId?: string }) {
+function RunArtifactAttachments(props: {
+  artifacts: Artifact[];
+  taskId?: string;
+  runId?: string;
+  readOnly?: boolean;
+}) {
   if (props.artifacts.length === 0) {
     return null;
   }
@@ -608,7 +643,7 @@ function RunArtifactAttachments(props: { artifacts: Artifact[]; taskId?: string;
               <span className="mt-2 block text-xs text-text-secondary">
                 {artifact.description ?? artifact.title}
               </span>
-              {props.taskId ? (
+              {props.taskId && !props.readOnly ? (
                 <ArtifactShareControls artifact={artifact} taskId={props.taskId} />
               ) : null}
             </span>
@@ -639,6 +674,8 @@ function useTaskComposerSkills(
 
 function FeedbackReplies(props: {
   agents: Specialist[];
+  navigationSearch?: string;
+  readOnly?: boolean;
   subtasks: TaskFeedbackThread["subtasks"];
 }) {
   const replies = props.subtasks.flatMap((subtask) =>
@@ -665,13 +702,14 @@ function FeedbackReplies(props: {
                 <span>{formatDate(readRunCommentAt(reply.run))}</span>
                 <Link
                   className="font-medium text-accent underline-offset-4 hover:underline"
-                  to={`/tasks/${reply.run.taskId}/runs/${reply.run.id}`}
+                  to={`/tasks/${reply.run.taskId}/runs/${reply.run.id}${props.navigationSearch ?? ""}`}
                 >
                   Open run
                 </Link>
               </>
             }
             artifacts={reply.run.artifacts}
+            readOnly={props.readOnly}
             taskId={reply.run.taskId}
             runId={reply.run.id}
             tone="agent"
