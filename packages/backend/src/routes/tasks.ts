@@ -443,7 +443,7 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
       },
     },
     async (request) => {
-      const task = await service.get(request.params.id);
+      const task = await service.get(request.params.id, { includeArchived: true });
 
       if (!task) {
         throw new NotFoundError("Task not found.");
