@@ -32,3 +32,9 @@ Make a converted task-run conversation the sole continuation surface while prese
 ## Non-Goals
 
 - No schema migration, dependency change, automatic task acceptance/archive, run-result merge, arbitrary historical artifact mutation, or change to normal unconverted reply behavior.
+
+## Review Maintenance
+
+1. Disable run-history and run-detail chat actions while conversion is pending or the specialist slug is unavailable, and label the pending state `Opening...`.
+2. Catch open-in-chat failures on both surfaces and render the mutation error without navigating.
+3. Add focused regressions for pending, rejected, and unavailable-specialist behavior on each surface.

@@ -3303,13 +3303,13 @@ describe("TaskDetailPage", () => {
     expect(screen.queryByRole("button", { name: "Continue in chat" })).not.toBeInTheDocument();
   });
 
-  it("hides continue in chat when the specialist slug cannot be resolved", async () => {
+  it("disables continue in chat when the specialist slug cannot be resolved", async () => {
     mockFetch({ agentsPayload: [] });
 
     renderWithRouter(<TaskDetailPage mode="run" />, "/tasks/task-1/runs/run-1");
 
     await screen.findByRole("tab", { name: "Session" });
-    expect(screen.queryByRole("button", { name: "Continue in chat" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Continue in chat" })).toBeDisabled();
   });
 
   it("renders the session log without converting the run to chat", async () => {
