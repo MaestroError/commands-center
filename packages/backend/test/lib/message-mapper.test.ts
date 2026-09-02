@@ -43,8 +43,15 @@ describe("message-mapper", () => {
     expect(mapped.content).toBe("first\n\nsecond");
     expect(mapped.attachments).toHaveLength(1);
     expect(mapped.createdAtMs).toBe(1000);
+    expect(mapped.completedAt).toBeUndefined();
     // No completed time falls back to createdAt.
     expect(mapped.updatedAtMs).toBe(1000);
+  });
+
+  it("preserves explicit assistant completion evidence", () => {
+    const mapped = mapRemoteMessage("conv-1", message());
+
+    expect(mapped.completedAt).toBe(new Date(2000).toISOString());
   });
 
   it("reads only non-empty text parts", () => {

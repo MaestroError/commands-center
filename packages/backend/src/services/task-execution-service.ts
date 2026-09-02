@@ -35,6 +35,7 @@ import {
   DEFAULT_TRANSPORT_RETRY_CONFIG,
   formatTaskRunErrorMessage,
   mergeOpencodeMonitorMetadata,
+  readLatestAssistantMessage,
   readOptionalOpencodeMonitorMetadata,
   type TaskRunTransportRetryConfig,
 } from "./task-run-support.js";
@@ -142,6 +143,7 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
   const {
     queueFallbackRun,
     finalizeStalledRun,
+    finalizeInterruptedRun,
     finalizeBlockedInteraction,
     finalizeUsageLimitRun,
     finalizeModelNotFoundRun,
@@ -751,6 +753,35 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
     const evidence = await readAcceptedPromptEvidence(run);
 
     if (evidence) {
+      const monitorMetadata = readOptionalOpencodeMonitorMetadata(run);
+      const latestAssistant = readLatestAssistantMessage(
+        evidence.conversation.messages.slice(monitorMetadata?.baselineMessageCount ?? 0),
+      );
+      let statusType = evidence.statusType;
+
+      if (statusType === undefined) {
+        try {
+          statusType = (await transport.getSessionStatus(run)).type;
+        } catch (error) {
+          options.logger?.warn(
+            {
+              err: error,
+              taskId: run.taskId,
+              taskRunId: run.id,
+              opencodeSessionId: run.opencodeSessionId,
+            },
+            "task run startup recovery status read failed; resuming monitor",
+          );
+        }
+      }
+
+      if (statusType === "unknown" && !latestAssistant?.completedAt) {
+        await finalizeInterruptedRun(run, {
+          lastAssistantMessageId: latestAssistant?.id,
+        });
+        return;
+      }
+
       await resumeAcceptedPromptRun(run, evidence);
       return;
     }

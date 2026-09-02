@@ -260,6 +260,71 @@ export function createTaskRetryPolicy(ctx: TaskRetryPolicyContext) {
     scheduleAgentDrain(cancelled.agentId);
   }
 
+  async function finalizeInterruptedRun(
+    run: TaskRun,
+    details: { lastAssistantMessageId?: string },
+  ): Promise<void> {
+    const latest = await options.taskService.getRunById(run.id);
+
+    if (!latest || latest.status !== "running") {
+      return;
+    }
+
+    await abortOpenCodeTaskRun(latest);
+
+    const requeue = await resolveRequeueSettings();
+    const nextRequeueCount = readRequeueCount(latest) + 1;
+    const willRequeue = requeue.enabled && nextRequeueCount <= requeue.limit;
+    const limitReached = requeue.enabled && !willRequeue;
+    const cancellationReason =
+      "Automatically cancelled: OpenCode no longer reported the session after restart while " +
+      "the latest assistant turn was incomplete." +
+      `${latest.opencodeSessionId ? ` Session ${latest.opencodeSessionId}.` : ""}` +
+      `${limitReached ? ` Requeue limit (${String(requeue.limit)}) reached; not requeued.` : ""}`;
+    const cancelled = await options.taskService.setRunStatus(latest.id, "cancelled", {
+      cancelledAt: new Date().toISOString(),
+      cancellationReason,
+      errorMessage: cancellationReason,
+      errorDetails: {
+        errorName: "TaskRunEngineInterrupted",
+        stage: "task_session_interrupted",
+        opencodeSessionId: latest.opencodeSessionId,
+        lastAssistantMessageId: details.lastAssistantMessageId,
+      },
+    });
+
+    if (!cancelled) {
+      throw new NotFoundError("Task run not found.");
+    }
+
+    notifyRunTerminal(cancelled);
+
+    if (willRequeue) {
+      try {
+        const requeued = await requeueInterruptedRun(cancelled, nextRequeueCount);
+        options.logger?.warn(
+          {
+            taskId: cancelled.taskId,
+            cancelledRunId: cancelled.id,
+            requeuedRunId: requeued.id,
+            requeueAttempt: nextRequeueCount,
+            requeueLimit: requeue.limit,
+            opencodeSessionId: cancelled.opencodeSessionId,
+          },
+          "interrupted task run cancelled and requeued",
+        );
+        return;
+      } catch (error) {
+        options.logger?.error(
+          { err: error, taskId: cancelled.taskId, cancelledRunId: cancelled.id },
+          "failed to requeue interrupted task run; leaving it cancelled",
+        );
+      }
+    }
+
+    scheduleAgentDrain(cancelled.agentId);
+  }
+
   async function finalizeBlockedInteraction(
     run: TaskRun,
     details: TaskRunBlockedInteractionDetails,
@@ -578,6 +643,30 @@ export function createTaskRetryPolicy(ctx: TaskRetryPolicyContext) {
     });
   }
 
+  async function requeueInterruptedRun(cancelled: TaskRun, requeueCount: number): Promise<TaskRun> {
+    return queueTask(cancelled.taskId, {
+      agentId: cancelled.agentId,
+      subtaskId: cancelled.subtaskId,
+      triggerSource: "system",
+      model: cancelled.model,
+      fallbackModels: cancelled.fallbackModels,
+      retryOfRunId: cancelled.id,
+      context: {
+        text: [
+          "The previous run was interrupted because OpenCode stopped during an incomplete assistant turn.",
+          `Previous run id: ${cancelled.id}`,
+          "It may have already changed workspace files. Inspect the current state before continuing, avoid redoing completed work, and finish the original task goal.",
+        ].join("\n"),
+        attachments: [],
+      },
+      metadata: {
+        requeuedFromRunId: cancelled.id,
+        requeueReason: "engine_interruption",
+        requeueCount,
+      },
+    });
+  }
+
   /**
    * Queue a fallback-model run for a provider/model error when one is eligible.
    * Used by both the synchronous start path and the async monitor. Returns the
@@ -735,6 +824,7 @@ export function createTaskRetryPolicy(ctx: TaskRetryPolicyContext) {
   return {
     queueFallbackRun,
     finalizeStalledRun,
+    finalizeInterruptedRun,
     finalizeBlockedInteraction,
     finalizeUsageLimitRun,
     finalizeModelNotFoundRun,

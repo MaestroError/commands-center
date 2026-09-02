@@ -2022,6 +2022,229 @@ describe("createTaskExecutionService", () => {
     }
   });
 
+  it("does not complete an idle session whose assistant tool is still running", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService({ incompleteAsyncPrompt: true }),
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitor: {
+        initialPollMs: 1,
+        maxPollMs: 1,
+        idlePolls: 1,
+        noProgressMs: 60_000,
+        maxLifetimeMs: 60_000,
+      },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Incomplete tool" });
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      expect((await taskService.getRunById(run.id))?.status).toBe("running");
+    } finally {
+      executionService.dispose();
+      await testDb.cleanup();
+    }
+  });
+
+  it("completes a missing session status only with a completed assistant turn", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService({
+        completeAsyncPrompt: true,
+        missingSessionStatus: true,
+      }),
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitor: { initialPollMs: 1, maxPollMs: 1, idlePolls: 1 },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Completed missing status",
+      });
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, run.id, "completed");
+    } finally {
+      executionService.dispose();
+      await testDb.cleanup();
+    }
+  });
+
+  it("finalizes a recovered incomplete assistant turn as an engine interruption", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const opencodeService = createMockOpenCodeService({
+      incompleteAsyncPrompt: true,
+      missingSessionStatus: true,
+    });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitor: { autoStart: false },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Interrupted turn" });
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, run.id, "running");
+      await expect
+        .poll(
+          async () => (await taskService.getRunById(run.id))?.triggerMetadata?.["opencodeMonitor"],
+        )
+        .toBeDefined();
+      await executionService.resumeRunningTaskRuns();
+
+      const interrupted = await taskService.getRunById(run.id);
+      expect(interrupted?.status).toBe("cancelled");
+      expect(interrupted?.finalMessage).toBeUndefined();
+      expect(interrupted?.errorDetails).toMatchObject({
+        errorName: "TaskRunEngineInterrupted",
+        stage: "task_session_interrupted",
+        opencodeSessionId: "session-1",
+        lastAssistantMessageId: "message-2",
+      });
+      expect(opencodeService.abortSession).toHaveBeenCalledWith(expect.any(String), "session-1");
+    } finally {
+      executionService.dispose();
+      await testDb.cleanup();
+    }
+  });
+
+  it("requeues a recovered engine interruption within the configured bound", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService({
+        incompleteAsyncPrompt: true,
+        missingSessionStatus: true,
+      }),
+    });
+    const monitorSettingsService = {
+      get: vi.fn(() =>
+        Promise.resolve({
+          taskRunMonitorRequeueAfterStall: true,
+          taskRunMonitorRequeueLimit: 1,
+        }),
+      ),
+      update: vi.fn(),
+    } as unknown as TaskRunMonitorSettingsService;
+    const orchestrator = createMockOrchestrator({ healthy: true });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitorSettingsService,
+      orchestrator,
+      monitor: { autoStart: false },
+      defer: { initialDelayMs: 10, maxDelayMs: 10, jitterRatio: 0 },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Retry interruption" });
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, run.id, "running");
+      await expect
+        .poll(
+          async () => (await taskService.getRunById(run.id))?.triggerMetadata?.["opencodeMonitor"],
+        )
+        .toBeDefined();
+      orchestrator.setHealthy(false);
+      await executionService.resumeRunningTaskRuns();
+      await expect.poll(async () => taskService.listRuns(task.id)).toHaveLength(2);
+      const runs = await taskService.listRuns(task.id);
+      const requeued = runs.find((entry) => entry.retryOfRunId === run.id);
+
+      expect(requeued?.status).toBe("queued");
+      expect(requeued?.triggerMetadata).toMatchObject({
+        requeueReason: "engine_interruption",
+        requeueCount: 1,
+      });
+    } finally {
+      executionService.dispose();
+      await testDb.cleanup();
+    }
+  });
+
+  it("stops requeueing recovered engine interruptions at the configured bound", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService({
+        incompleteAsyncPrompt: true,
+        missingSessionStatus: true,
+      }),
+    });
+    const monitorSettingsService = {
+      get: vi.fn(() =>
+        Promise.resolve({
+          taskRunMonitorRequeueAfterStall: true,
+          taskRunMonitorRequeueLimit: 1,
+        }),
+      ),
+      update: vi.fn(),
+    } as unknown as TaskRunMonitorSettingsService;
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitorSettingsService,
+      monitor: { autoStart: false },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Bound interruption" });
+      const run = await executionService.trigger(task.id, {
+        triggerSource: "manual",
+        metadata: { requeueCount: 1 },
+      });
+
+      await expectRunStatus(taskService, run.id, "running");
+      await expect
+        .poll(
+          async () => (await taskService.getRunById(run.id))?.triggerMetadata?.["opencodeMonitor"],
+        )
+        .toBeDefined();
+      await executionService.resumeRunningTaskRuns();
+
+      const runs = await taskService.listRuns(task.id);
+      expect(runs).toHaveLength(1);
+      expect(runs[0]?.status).toBe("cancelled");
+      expect(runs[0]?.cancellationReason).toContain("Requeue limit (1) reached");
+    } finally {
+      executionService.dispose();
+      await testDb.cleanup();
+    }
+  });
+
   it("recovers missing monitor metadata when a running run is resumed", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
@@ -3660,6 +3883,8 @@ function createMockOpenCodeService(
     listSessionMessagesErrors?: Error[];
     sessionStatusErrors?: Error[];
     completeAsyncPrompt?: boolean;
+    incompleteAsyncPrompt?: boolean;
+    missingSessionStatus?: boolean;
     // Complete async prompts only once this many have been accepted (0-indexed).
     // Lets a test stall the first run but let a requeued run finish.
     completeAsyncPromptAfter?: number;
@@ -3764,6 +3989,9 @@ function createMockOpenCodeService(
       }
 
       options.onStatus?.();
+      if (options.missingSessionStatus) {
+        return Promise.resolve({ type: "unknown" as const });
+      }
       const perSession = statusSequenceBySession.get(sessionID);
       return Promise.resolve(perSession?.shift() ?? statusSequence.shift() ?? { type: "idle" });
     },
@@ -3865,6 +4093,7 @@ function createMockOpenCodeService(
 
       const shouldComplete =
         options.completeAsyncPrompt === true ||
+        options.incompleteAsyncPrompt === true ||
         (options.completeAsyncPromptAfter !== undefined &&
           promptIndex >= options.completeAsyncPromptAfter);
       if (shouldComplete) {
@@ -3876,6 +4105,7 @@ function createMockOpenCodeService(
             assistantMessageId,
             text,
             error,
+            completed: !options.incompleteAsyncPrompt,
           }),
         );
       }
@@ -3895,13 +4125,17 @@ function createMockOpenCodeService(
     assistantMessageId: string;
     text: string;
     error?: { name: string; message: string; data?: Record<string, unknown> };
+    completed?: boolean;
   }): OpenCodeSessionMessage {
     return {
       info: {
         id: input.assistantMessageId,
         sessionID: input.sessionID,
         role: "assistant",
-        time: { created: nextTime(), completed: nextTime() },
+        time:
+          input.completed === false
+            ? { created: nextTime() }
+            : { created: nextTime(), completed: nextTime() },
         ...(input.error
           ? {
               error: {
@@ -3912,13 +4146,22 @@ function createMockOpenCodeService(
             }
           : {}),
       },
-      parts: [
-        {
-          id: `part-${input.assistantMessageId}`,
-          type: "text",
-          text: `Task finished: ${input.text}`,
-        },
-      ],
+      parts:
+        input.completed === false
+          ? [
+              {
+                id: `part-${input.assistantMessageId}`,
+                type: "tool",
+                state: { status: "running" },
+              },
+            ]
+          : [
+              {
+                id: `part-${input.assistantMessageId}`,
+                type: "text",
+                text: `Task finished: ${input.text}`,
+              },
+            ],
     };
   }
 }

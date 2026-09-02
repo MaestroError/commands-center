@@ -53,7 +53,7 @@ import type {
   OpenCodePendingQuestion,
   OpenCodeService,
   OpenCodeSessionPermissionRule,
-  OpenCodeSessionStatus,
+  OpenCodeTaskSessionStatus,
 } from "./opencode-service.js";
 import type { SessionArchiveService } from "./session-archive-service.js";
 import type { SessionArchiveSettingsService } from "./session-archive-settings-service.js";
@@ -418,7 +418,7 @@ export function createConversationService(options: {
     async getTaskRunSessionStatus(
       taskId: string,
       taskRunId: string,
-    ): Promise<OpenCodeSessionStatus> {
+    ): Promise<OpenCodeTaskSessionStatus> {
       const conversation = await getTaskRunConversationRow(taskId, taskRunId);
 
       if (!conversation) {
@@ -1622,6 +1622,7 @@ export function createConversationService(options: {
             : null,
         created_at: new Date(message.createdAtMs),
         updated_at: new Date(message.updatedAtMs),
+        completed_at: message.completedAt ? new Date(message.completedAt) : null,
       })),
     );
 
@@ -1764,6 +1765,7 @@ function mapConversationMessage(row: MessageRow): ConversationMessage {
     parts: parseJson(row.parts_json, []),
     attachments: parseJson(row.attachments_json, []),
     error: parseJson(row.error_json, undefined),
+    completedAt: row.completed_at?.toISOString(),
     systemPromptSnapshot: parseJson(row.system_prompt_snapshot_json, undefined),
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),

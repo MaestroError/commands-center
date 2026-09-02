@@ -42,6 +42,7 @@ export const conversationMessageSchema = z.object({
   attachments: z.array(conversationAttachmentSchema),
   parentId: z.string().min(1).optional(),
   error: conversationMessageErrorSchema.optional(),
+  completedAt: z.string().datetime().optional(),
   // The system prompts composed and sent with this message, captured at send
   // time. Present on user messages once captured; absent on older messages.
   systemPromptSnapshot: z.array(resolvedSystemPromptSchema).optional(),
