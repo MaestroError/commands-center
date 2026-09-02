@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { createSpecialistService } from "../../src/services/specialist-service";
 import { createConversationService } from "../../src/services/conversation-service";
 import { createSessionArchiveService } from "../../src/services/session-archive-service";
+import { createChatUploadService } from "../../src/services/chat-upload-service";
 import type { SessionArchiveSettingsService } from "../../src/services/session-archive-settings-service";
 import type {
   OpenCodeService,
@@ -86,6 +87,12 @@ describe("createConversationService", () => {
       expect(fresh.previous).toHaveLength(1);
       expect(fresh.previous[0]?.id).toBe(opened.current.id);
       expect(fresh.previous[0]?.messageCount).toBe(2);
+      await expect(
+        createChatUploadService({ config: testDb.config }).list({
+          agentId: agent.id,
+          conversationId: opened.current.id,
+        }),
+      ).resolves.toHaveLength(1);
     } finally {
       await testDb.cleanup();
     }
@@ -451,7 +458,15 @@ describe("createConversationService", () => {
       const opened = await service.resolveCurrent(agent.id);
       await service.sendPrompt(opened.current.id, {
         text: "Archive this please.",
-        attachments: [],
+        attachments: [
+          {
+            type: "document",
+            filename: "archive.txt",
+            mimeType: "text/plain",
+            dataUrl: "data:text/plain;base64,YXJjaGl2ZQ==",
+            sizeBytes: 7,
+          },
+        ],
       });
       await archiveService.flush();
 
@@ -467,9 +482,15 @@ describe("createConversationService", () => {
       };
       expect(metadata.kind).toBe("chat");
       expect(metadata.messageCount).toBe(2);
+      const [upload] = await createChatUploadService({ config: testDb.config }).list({
+        agentId: agent.id,
+        conversationId: opened.current.id,
+      });
+      await expect(stat(upload!.absolutePath)).resolves.toBeTruthy();
 
       await service.deleteConversation(agent.id, opened.current.id);
       await expect(stat(archivePath)).rejects.toThrow();
+      await expect(stat(upload!.absolutePath)).rejects.toThrow();
     } finally {
       await testDb.cleanup();
     }
@@ -526,6 +547,75 @@ describe("createConversationService", () => {
       // Archive folder and metadata exist, but no messages.jsonl because appending is off.
       await expect(stat(join(archivePath, "metadata.json"))).resolves.toBeTruthy();
       await expect(stat(join(archivePath, "messages.jsonl"))).rejects.toThrow();
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("persists uploads when session archiving is disabled", async () => {
+    const testDb = await createTestDatabase();
+    const opencodeService = createMockOpenCodeService();
+    const archiveService = createSessionArchiveService({ config: testDb.config });
+    const agentService = createSpecialistService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+      skillRoot: `${testDb.cwd}/builtin-skills`,
+    });
+    const disabledSettingsService: SessionArchiveSettingsService = {
+      get: () =>
+        Promise.resolve({
+          sessionArchiveEnabled: false,
+          sessionArchiveAppendMode: "debounced" as const,
+          sessionArchiveMaterializeIntervalMinutes: 1440,
+        }),
+      update: () => Promise.reject(new Error("unexpected update call")),
+    };
+    const service = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+      archiveService,
+      archiveSettingsService: disabledSettingsService,
+    });
+
+    try {
+      const agent = await agentService.create({
+        name: "Disabled Archive Specialist",
+        role: "retain uploads",
+        instructions: "Be useful.",
+        defaultModel: "openai/gpt-4.1",
+        capabilities: {
+          builtInSkills: [],
+          customTools: [],
+          mcpServers: [],
+          toolPermissions: [],
+        },
+      });
+      const opened = await service.resolveCurrent(agent.id);
+      await service.sendPrompt(opened.current.id, {
+        text: "Keep this upload.",
+        attachments: [
+          {
+            type: "document",
+            filename: "kept.txt",
+            mimeType: "text/plain",
+            dataUrl: "data:text/plain;base64,a2VwdA==",
+            sizeBytes: 4,
+          },
+        ],
+      });
+      const [upload] = await createChatUploadService({ config: testDb.config }).list({
+        agentId: agent.id,
+        conversationId: opened.current.id,
+      });
+      const archivePath = archiveService.resolveChatArchivePath({
+        agentId: agent.id,
+        conversationId: opened.current.id,
+      });
+
+      await expect(readFile(upload!.absolutePath, "utf8")).resolves.toBe("kept");
+      await expect(stat(join(archivePath, "metadata.json"))).rejects.toThrow();
     } finally {
       await testDb.cleanup();
     }

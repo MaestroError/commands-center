@@ -58,6 +58,11 @@ import type {
 import type { SessionArchiveService } from "./session-archive-service.js";
 import type { SessionArchiveSettingsService } from "./session-archive-settings-service.js";
 import type { InteractiveChatWatchdogService } from "./interactive-chat-watchdog-service.js";
+import {
+  createChatUploadService,
+  type ChatUploadPersistence,
+  type ChatUploadService,
+} from "./chat-upload-service.js";
 import { createTaskRunOperationGuard } from "./task-run-operation-guard.js";
 import { APP_NAME } from "../system-prompts/constants.js";
 import {
@@ -143,12 +148,16 @@ export function createConversationService(options: {
   archiveSettingsService?: SessionArchiveSettingsService;
   systemPromptService?: SystemPromptService;
   interactiveChatWatchdogService?: InteractiveChatWatchdogService;
+  chatUploadService?: ChatUploadService;
   watchdogRecoveryRetryDelaysMs?: readonly number[];
   watchdogRecoveryListActiveChats?: () => Promise<ConversationRow[]>;
 }) {
   const systemPromptService =
     options.systemPromptService ??
     createSystemPromptService({ config: options.config, logger: options.logger });
+  const chatUploadService =
+    options.chatUploadService ??
+    createChatUploadService({ config: options.config, logger: options.logger });
 
   // The composed snapshot for a just-sent user message, keyed by conversation.
   // syncConversation attaches it to the new user message once OpenCode echoes it
@@ -466,6 +475,7 @@ export function createConversationService(options: {
         const loaded = await getConversationAgent(conversationId);
         const watchdog = await prepareInteractiveChatWatchdog(loaded);
         let promptStarted = false;
+        let uploadPersistence: ChatUploadPersistence | undefined;
         try {
           await setCurrentConversation(loaded.agent.id, loaded.conversation.id);
           const { system, snapshot } = await composeSystem(
@@ -478,6 +488,11 @@ export function createConversationService(options: {
             loaded.agent.workspace_path,
             parsed.model,
             loaded.agent.default_model,
+          );
+          uploadPersistence = await persistChatUploads(
+            loaded.agent.id,
+            loaded.conversation.id,
+            parsed.attachments,
           );
           promptStarted = true;
           watchdog?.arm();
@@ -497,6 +512,9 @@ export function createConversationService(options: {
           return getConversationDetail(loaded.conversation.id);
         } catch (error) {
           if (!promptStarted || error instanceof OpenCodeRequestError) {
+            await rollbackChatUploads(uploadPersistence, loaded.conversation.id);
+          }
+          if (!promptStarted || error instanceof OpenCodeRequestError) {
             watchdog?.cancel();
           }
           throw error;
@@ -509,20 +527,37 @@ export function createConversationService(options: {
       input: SendConversationCommandInput,
     ): Promise<ConversationDetail> {
       const parsed = sendConversationCommandInputSchema.parse(input);
-      const loaded = await getConversationAgent(conversationId);
+      return serializeConversationOperation(conversationId, async () => {
+        const loaded = await getConversationAgent(conversationId);
+        let commandStarted = false;
+        let uploadPersistence: ChatUploadPersistence | undefined;
 
-      await setCurrentConversation(loaded.agent.id, loaded.conversation.id);
-      await options.opencodeService.commandSession({
-        directory: loaded.agent.workspace_path,
-        sessionID: loaded.conversation.opencode_session_id,
-        agent: resolveOpenCodeAgent(loaded.agent.slug),
-        model: loaded.agent.default_model,
-        command: parsed.command,
-        arguments: parsed.arguments,
-        attachments: parsed.attachments,
+        try {
+          await setCurrentConversation(loaded.agent.id, loaded.conversation.id);
+          uploadPersistence = await persistChatUploads(
+            loaded.agent.id,
+            loaded.conversation.id,
+            parsed.attachments,
+          );
+          commandStarted = true;
+          await options.opencodeService.commandSession({
+            directory: loaded.agent.workspace_path,
+            sessionID: loaded.conversation.opencode_session_id,
+            agent: resolveOpenCodeAgent(loaded.agent.slug),
+            model: loaded.agent.default_model,
+            command: parsed.command,
+            arguments: parsed.arguments,
+            attachments: parsed.attachments,
+          });
+          await syncConversation(loaded.agent, loaded.conversation);
+          return getConversationDetail(loaded.conversation.id);
+        } catch (error) {
+          if (!commandStarted || error instanceof OpenCodeRequestError) {
+            await rollbackChatUploads(uploadPersistence, loaded.conversation.id);
+          }
+          throw error;
+        }
       });
-      await syncConversation(loaded.agent, loaded.conversation);
-      return getConversationDetail(loaded.conversation.id);
     },
 
     async summarize(conversationId: string): Promise<ConversationDetail> {
@@ -569,6 +604,7 @@ export function createConversationService(options: {
         const watchdog = await prepareInteractiveChatWatchdog(loaded);
 
         let promptStarted = false;
+        let uploadPersistence: ChatUploadPersistence | undefined;
         try {
           await setCurrentConversation(loaded.agent.id, loaded.conversation.id);
           const { system, snapshot } = await composeSystem(
@@ -581,6 +617,11 @@ export function createConversationService(options: {
             loaded.agent.workspace_path,
             parsed.model,
             loaded.agent.default_model,
+          );
+          uploadPersistence = await persistChatUploads(
+            loaded.agent.id,
+            loaded.conversation.id,
+            parsed.attachments,
           );
           promptStarted = true;
           await options.opencodeService.promptSessionAsync({
@@ -598,6 +639,9 @@ export function createConversationService(options: {
           pendingSnapshots.set(loaded.conversation.id, snapshot);
           watchdog?.arm();
         } catch (error) {
+          if (!promptStarted || error instanceof OpenCodeRequestError) {
+            await rollbackChatUploads(uploadPersistence, loaded.conversation.id);
+          }
           if (promptStarted && !(error instanceof OpenCodeRequestError)) {
             watchdog?.arm();
           } else {
@@ -931,6 +975,10 @@ export function createConversationService(options: {
           // ignore
         }
 
+        await chatUploadService.removeForConversation({
+          agentId: agent.id,
+          conversationId: conversation.id,
+        });
         await removeConversationArchive(agent, conversation);
 
         // Delete dependents before the conversation row. Artifacts (and their
@@ -1049,6 +1097,29 @@ export function createConversationService(options: {
       if (failures.length === 0 || signal.aborted) return;
       pending = failures.map(({ conversation }) => conversation);
       if (!(await waitForAbortableDelay(nextDelayMs, signal))) return;
+    }
+  }
+
+  async function persistChatUploads(
+    agentId: string,
+    conversationId: string,
+    attachments: SendConversationPromptInput["attachments"],
+  ): Promise<ChatUploadPersistence | undefined> {
+    if (attachments.length === 0) return undefined;
+    return chatUploadService.persist({ agentId, conversationId, attachments });
+  }
+
+  async function rollbackChatUploads(
+    persistence: ChatUploadPersistence | undefined,
+    conversationId: string,
+  ): Promise<void> {
+    if (!persistence) return;
+
+    try {
+      await persistence.rollback();
+    } catch {
+      options.logger?.error({ conversationId }, "rejected chat upload rollback failed");
+      throw new Error("Rejected uploaded files could not be cleaned up.");
     }
   }
 
