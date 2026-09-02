@@ -475,7 +475,6 @@ export function createConversationService(options: {
         const loaded = await getConversationAgent(conversationId);
         const watchdog = await prepareInteractiveChatWatchdog(loaded);
         let promptStarted = false;
-        let promptAccepted = false;
         let uploadPersistence: ChatUploadPersistence | undefined;
         try {
           await setCurrentConversation(loaded.agent.id, loaded.conversation.id);
@@ -507,13 +506,14 @@ export function createConversationService(options: {
             system,
             signal: openCodeRequestSignal(),
           });
-          promptAccepted = true;
           watchdog?.cancel();
           pendingSnapshots.set(loaded.conversation.id, snapshot);
           await syncConversation(loaded.agent, loaded.conversation);
           return getConversationDetail(loaded.conversation.id);
         } catch (error) {
-          if (!promptAccepted) await rollbackChatUploads(uploadPersistence, loaded.conversation.id);
+          if (!promptStarted || error instanceof OpenCodeRequestError) {
+            await rollbackChatUploads(uploadPersistence, loaded.conversation.id);
+          }
           if (!promptStarted || error instanceof OpenCodeRequestError) {
             watchdog?.cancel();
           }
@@ -527,33 +527,37 @@ export function createConversationService(options: {
       input: SendConversationCommandInput,
     ): Promise<ConversationDetail> {
       const parsed = sendConversationCommandInputSchema.parse(input);
-      const loaded = await getConversationAgent(conversationId);
-      let commandAccepted = false;
-      let uploadPersistence: ChatUploadPersistence | undefined;
+      return serializeConversationOperation(conversationId, async () => {
+        const loaded = await getConversationAgent(conversationId);
+        let commandStarted = false;
+        let uploadPersistence: ChatUploadPersistence | undefined;
 
-      try {
-        await setCurrentConversation(loaded.agent.id, loaded.conversation.id);
-        uploadPersistence = await persistChatUploads(
-          loaded.agent.id,
-          loaded.conversation.id,
-          parsed.attachments,
-        );
-        await options.opencodeService.commandSession({
-          directory: loaded.agent.workspace_path,
-          sessionID: loaded.conversation.opencode_session_id,
-          agent: resolveOpenCodeAgent(loaded.agent.slug),
-          model: loaded.agent.default_model,
-          command: parsed.command,
-          arguments: parsed.arguments,
-          attachments: parsed.attachments,
-        });
-        commandAccepted = true;
-        await syncConversation(loaded.agent, loaded.conversation);
-        return getConversationDetail(loaded.conversation.id);
-      } catch (error) {
-        if (!commandAccepted) await rollbackChatUploads(uploadPersistence, loaded.conversation.id);
-        throw error;
-      }
+        try {
+          await setCurrentConversation(loaded.agent.id, loaded.conversation.id);
+          uploadPersistence = await persistChatUploads(
+            loaded.agent.id,
+            loaded.conversation.id,
+            parsed.attachments,
+          );
+          commandStarted = true;
+          await options.opencodeService.commandSession({
+            directory: loaded.agent.workspace_path,
+            sessionID: loaded.conversation.opencode_session_id,
+            agent: resolveOpenCodeAgent(loaded.agent.slug),
+            model: loaded.agent.default_model,
+            command: parsed.command,
+            arguments: parsed.arguments,
+            attachments: parsed.attachments,
+          });
+          await syncConversation(loaded.agent, loaded.conversation);
+          return getConversationDetail(loaded.conversation.id);
+        } catch (error) {
+          if (!commandStarted || error instanceof OpenCodeRequestError) {
+            await rollbackChatUploads(uploadPersistence, loaded.conversation.id);
+          }
+          throw error;
+        }
+      });
     },
 
     async summarize(conversationId: string): Promise<ConversationDetail> {
@@ -600,7 +604,6 @@ export function createConversationService(options: {
         const watchdog = await prepareInteractiveChatWatchdog(loaded);
 
         let promptStarted = false;
-        let promptAccepted = false;
         let uploadPersistence: ChatUploadPersistence | undefined;
         try {
           await setCurrentConversation(loaded.agent.id, loaded.conversation.id);
@@ -631,13 +634,14 @@ export function createConversationService(options: {
             system,
             signal: AbortSignal.timeout(options.config.timeouts.opencodeRequestMs),
           });
-          promptAccepted = true;
           // Streaming send does not sync here; the snapshot is attached by the next
           // syncConversation once OpenCode echoes the user message back.
           pendingSnapshots.set(loaded.conversation.id, snapshot);
           watchdog?.arm();
         } catch (error) {
-          if (!promptAccepted) await rollbackChatUploads(uploadPersistence, loaded.conversation.id);
+          if (!promptStarted || error instanceof OpenCodeRequestError) {
+            await rollbackChatUploads(uploadPersistence, loaded.conversation.id);
+          }
           if (promptStarted && !(error instanceof OpenCodeRequestError)) {
             watchdog?.arm();
           } else {

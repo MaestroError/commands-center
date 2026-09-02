@@ -687,12 +687,48 @@ describe("conversation-service delegating methods", () => {
     expect(rollback).toHaveBeenCalledOnce();
   });
 
+  it("keeps synchronous prompt uploads when acceptance fails ambiguously", async () => {
+    const rollback = vi.fn(() => Promise.resolve());
+    const chatUploadService = mockChatUploadService(rollback);
+    const { service, opencodeService, agent } = await setup({ chatUploadService });
+    const snapshot = await service.resolveCurrent(agent.id);
+    opencodeService.promptSession = vi.fn(() => Promise.reject(new TypeError("network lost")));
+
+    await expect(
+      service.sendPrompt(snapshot.current.id, {
+        text: "inspect",
+        attachments: [attachment("sync.txt")],
+      }),
+    ).rejects.toThrow("network lost");
+
+    expect(rollback).not.toHaveBeenCalled();
+  });
+
+  it("keeps streaming prompt uploads when acceptance fails ambiguously", async () => {
+    const rollback = vi.fn(() => Promise.resolve());
+    const chatUploadService = mockChatUploadService(rollback);
+    const { service, opencodeService, agent } = await setup({ chatUploadService });
+    const snapshot = await service.resolveCurrent(agent.id);
+    opencodeService.promptSessionAsync = vi.fn(() => Promise.reject(new TypeError("network lost")));
+
+    await expect(
+      service.sendPromptAsync(snapshot.current.id, {
+        text: "inspect",
+        attachments: [attachment("async.txt")],
+      }),
+    ).rejects.toThrow("network lost");
+
+    expect(rollback).not.toHaveBeenCalled();
+  });
+
   it("rolls back command uploads when OpenCode rejects the command", async () => {
     const rollback = vi.fn(() => Promise.resolve());
     const chatUploadService = mockChatUploadService(rollback);
     const { service, opencodeService, agent } = await setup({ chatUploadService });
     const snapshot = await service.resolveCurrent(agent.id);
-    opencodeService.commandSession = vi.fn(() => Promise.reject(new Error("command rejected")));
+    opencodeService.commandSession = vi.fn(() =>
+      Promise.reject(new OpenCodeRequestError("command rejected", 400)),
+    );
 
     await expect(
       service.sendCommand(snapshot.current.id, {
@@ -703,6 +739,24 @@ describe("conversation-service delegating methods", () => {
     ).rejects.toThrow("command rejected");
 
     expect(rollback).toHaveBeenCalledOnce();
+  });
+
+  it("keeps command uploads when acceptance fails ambiguously", async () => {
+    const rollback = vi.fn(() => Promise.resolve());
+    const chatUploadService = mockChatUploadService(rollback);
+    const { service, opencodeService, agent } = await setup({ chatUploadService });
+    const snapshot = await service.resolveCurrent(agent.id);
+    opencodeService.commandSession = vi.fn(() => Promise.reject(new TypeError("network lost")));
+
+    await expect(
+      service.sendCommand(snapshot.current.id, {
+        command: "inspect",
+        arguments: "",
+        attachments: [attachment("command.txt")],
+      }),
+    ).rejects.toThrow("network lost");
+
+    expect(rollback).not.toHaveBeenCalled();
   });
 
   it("does not invoke upload storage for attachment-free sends", async () => {
@@ -1189,6 +1243,28 @@ describe("conversation-service delegating methods", () => {
     await deletion;
     await expect(sending).rejects.toThrow("Conversation not found.");
     expect(opencodeService.promptSessionAsync).not.toHaveBeenCalled();
+  });
+
+  it("serializes conversation deletion after an accepted command", async () => {
+    const command = createDeferred<void>();
+    const { service, opencodeService, agent } = await setup();
+    const snapshot = await service.resolveCurrent(agent.id);
+    opencodeService.commandSession = vi.fn(() => command.promise);
+
+    const sending = service.sendCommand(snapshot.current.id, {
+      command: "inspect",
+      arguments: "",
+      attachments: [attachment("command.txt")],
+    });
+    await vi.waitFor(() => expect(opencodeService.commandSession).toHaveBeenCalledOnce());
+    const deletion = service.deleteConversation(agent.id, snapshot.current.id);
+
+    expect(opencodeService.deleteSession).not.toHaveBeenCalled();
+
+    command.resolve();
+    await sending;
+    await deletion;
+    expect(opencodeService.deleteSession).toHaveBeenCalledOnce();
   });
 
   it("completes local deletion when the OpenCode delete request stalls", async () => {
