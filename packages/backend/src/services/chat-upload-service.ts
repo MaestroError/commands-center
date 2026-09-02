@@ -84,31 +84,23 @@ export function createChatUploadService(options: { config: RuntimeConfig; logger
         input.agentId,
         input.conversationId,
       );
-      const exists = await ensureSecureUploadDirectory(
+      const secureDirectory = await ensureSecureUploadDirectory(
         uploadDirectory,
         options.config.paths.subdirectories.sessions,
         false,
       );
-      if (!exists) return [];
-      const manifest = await readManifest(uploadDirectory);
+      if (!secureDirectory) return [];
+      const manifest = await readValidatedManifest(options.config, input, secureDirectory);
 
-      return Promise.all(
-        [...manifest.uploads]
-          .sort(
-            (left, right) =>
-              right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id),
-          )
-          .map(async (upload) => {
-            const absolutePath = resolveStoragePath(options.config, input, upload);
-            const file = await lstat(absolutePath).catch(() => undefined);
-
-            if (!file?.isFile() || file.isSymbolicLink() || file.size !== upload.sizeBytes) {
-              throw new Error("Uploaded file metadata references an unavailable file.");
-            }
-
-            return { ...upload, absolutePath };
-          }),
-      );
+      return [...manifest.uploads]
+        .sort(
+          (left, right) =>
+            right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id),
+        )
+        .map((upload) => ({
+          ...upload,
+          absolutePath: resolveStoragePath(options.config, input, upload),
+        }));
     },
 
     async removeForConversation(input: { agentId: string; conversationId: string }): Promise<void> {
@@ -119,16 +111,41 @@ export function createChatUploadService(options: { config: RuntimeConfig; logger
           input.agentId,
           input.conversationId,
         );
-        const exists = await ensureSecureUploadDirectory(
+        const secureDirectory = await ensureSecureUploadDirectory(
           uploadDirectory,
           options.config.paths.subdirectories.sessions,
           false,
         );
-        if (!exists) return;
-        await rm(uploadDirectory, {
-          force: true,
-          recursive: true,
-        });
+        if (!secureDirectory) return;
+        const directory = await lstat(secureDirectory);
+        const realRoot = await realpath(options.config.paths.subdirectories.sessions);
+        const quarantinePath = resolve(realRoot, `.chat-upload-${randomUUID()}.deleting`);
+        await rename(secureDirectory, quarantinePath);
+        try {
+          const quarantined = await lstat(quarantinePath);
+          const realQuarantinePath = await realpath(quarantinePath);
+
+          if (
+            !quarantined.isDirectory() ||
+            quarantined.isSymbolicLink() ||
+            quarantined.dev !== directory.dev ||
+            quarantined.ino !== directory.ino ||
+            realQuarantinePath !== quarantinePath
+          ) {
+            throw new Error("Chat upload directory changed during deletion.");
+          }
+
+          await rm(realQuarantinePath, {
+            force: true,
+            recursive: true,
+          });
+        } catch (error) {
+          options.logger?.warn(
+            { agentId: input.agentId, conversationId: input.conversationId },
+            "chat upload deletion quarantine could not be removed",
+          );
+          throw error;
+        }
       });
     },
   };
@@ -150,7 +167,7 @@ export function createChatUploadService(options: { config: RuntimeConfig; logger
         uploadDirectory,
         options.config.paths.subdirectories.sessions,
       );
-      const current = await readManifest(uploadDirectory);
+      const current = await readValidatedManifest(options.config, input, uploadDirectory);
 
       for (const attachment of input.attachments) {
         const id = createId();
@@ -170,15 +187,16 @@ export function createChatUploadService(options: { config: RuntimeConfig; logger
         const absolutePath = resolve(uploadDirectory, storedFilename);
         ensureDescendant(absolutePath, uploadDirectory);
         await writeFile(absolutePath, content, { flag: "wx", mode: 0o600 });
-        await chmod(absolutePath, 0o600);
-        created.push({
+        const upload = {
           id,
           filename,
           mimeType,
           sizeBytes: content.byteLength,
           storageKey,
           createdAt: new Date().toISOString(),
-        });
+        };
+        created.push(upload);
+        await chmod(absolutePath, 0o600);
       }
 
       await writeManifest(uploadDirectory, {
@@ -212,19 +230,20 @@ export function createChatUploadService(options: { config: RuntimeConfig; logger
       input.agentId,
       input.conversationId,
     );
-    await ensureSecureUploadDirectory(
+    const secureDirectory = await ensureSecureUploadDirectory(
       uploadDirectory,
       options.config.paths.subdirectories.sessions,
       true,
     );
-    const manifest = await readManifest(uploadDirectory);
+    if (!secureDirectory) throw new Error("Chat upload directory is unavailable.");
+    const manifest = await readValidatedManifest(options.config, input, secureDirectory);
     const rollbackIds = new Set(uploads.map((upload) => upload.id));
     const retained = manifest.uploads.filter((upload) => !rollbackIds.has(upload.id));
 
     if (retained.length === 0) {
-      await rm(resolve(uploadDirectory, MANIFEST_FILENAME), { force: true });
+      await rm(resolve(secureDirectory, MANIFEST_FILENAME), { force: true });
     } else {
-      await writeManifest(uploadDirectory, { version: 1, uploads: retained });
+      await writeManifest(secureDirectory, { version: 1, uploads: retained });
     }
 
     await Promise.all(
@@ -232,7 +251,7 @@ export function createChatUploadService(options: { config: RuntimeConfig; logger
         rm(resolveStoragePath(options.config, input, upload), { force: true }),
       ),
     );
-    await rmdir(uploadDirectory).catch((error: unknown) => {
+    await rmdir(secureDirectory).catch((error: unknown) => {
       if (!isFilesystemError(error, "ENOENT") && !isFilesystemError(error, "ENOTEMPTY")) {
         throw error;
       }
@@ -284,6 +303,27 @@ async function readManifest(uploadDirectory: string) {
   }
 }
 
+async function readValidatedManifest(
+  config: RuntimeConfig,
+  owner: { agentId: string; conversationId: string },
+  uploadDirectory: string,
+) {
+  const manifest = await readManifest(uploadDirectory);
+
+  await Promise.all(
+    manifest.uploads.map(async (upload) => {
+      const absolutePath = resolveStoragePath(config, owner, upload);
+      const file = await lstat(absolutePath).catch(() => undefined);
+
+      if (!file?.isFile() || file.isSymbolicLink() || file.size !== upload.sizeBytes) {
+        throw new Error("Uploaded file metadata references an unavailable file.");
+      }
+    }),
+  );
+
+  return manifest;
+}
+
 async function writeManifest(
   uploadDirectory: string,
   manifest: z.infer<typeof chatUploadManifestSchema>,
@@ -299,9 +339,9 @@ async function writeManifest(
     });
     await chmod(tempPath, 0o600);
     await rename(tempPath, manifestPath);
-    await chmod(manifestPath, 0o600);
-  } finally {
-    await rm(tempPath, { force: true });
+  } catch (error) {
+    await rm(tempPath, { force: true }).catch(() => undefined);
+    throw error;
   }
 }
 
@@ -427,7 +467,7 @@ async function ensureSecureUploadDirectory(
   uploadDirectory: string,
   sessionsRoot: string,
   required: boolean,
-): Promise<boolean> {
+): Promise<string | false> {
   const directory = await lstat(uploadDirectory).catch((error: unknown) => {
     if (isFilesystemError(error, "ENOENT")) return undefined;
     throw new Error("Chat upload directory could not be inspected.");
@@ -446,7 +486,11 @@ async function ensureSecureUploadDirectory(
     realpath(uploadDirectory),
   ]);
   ensureDescendant(realDirectory, realRoot);
-  return true;
+  const expectedDirectory = resolve(realRoot, relative(sessionsRoot, uploadDirectory));
+  if (realDirectory !== expectedDirectory) {
+    throw new Error("Chat upload directory is invalid.");
+  }
+  return realDirectory;
 }
 
 async function createSecureUploadDirectory(
@@ -457,10 +501,12 @@ async function createSecureUploadDirectory(
   const realRoot = await realpath(sessionsRoot);
   const segments = relative(sessionsRoot, uploadDirectory).split(sep);
   let current = sessionsRoot;
+  let expected = realRoot;
 
   for (const segment of segments) {
     assertSafeSegment(segment);
     current = resolve(current, segment);
+    expected = resolve(expected, segment);
     await mkdir(current).catch((error: unknown) => {
       if (!isFilesystemError(error, "EEXIST")) throw error;
     });
@@ -468,7 +514,11 @@ async function createSecureUploadDirectory(
     if (!directory.isDirectory() || directory.isSymbolicLink()) {
       throw new Error("Chat upload directory is invalid.");
     }
-    ensureDescendant(await realpath(current), realRoot);
+    const realCurrent = await realpath(current);
+    ensureDescendant(realCurrent, realRoot);
+    if (realCurrent !== expected) {
+      throw new Error("Chat upload directory is invalid.");
+    }
   }
 }
 
