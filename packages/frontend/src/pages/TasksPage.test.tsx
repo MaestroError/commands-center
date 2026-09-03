@@ -3527,6 +3527,15 @@ describe("TaskDetailPage", () => {
   it("shows when a task run has already continued in chat", async () => {
     mockFetch({
       sessionPayload: {
+        run: {
+          ...run,
+          conversation: {
+            id: conversation.id,
+            source: "task_run",
+            isCurrent: true,
+            convertedAt: "2026-01-01T00:05:00.000Z",
+          },
+        },
         conversation: {
           ...conversation,
           source: "task_run",

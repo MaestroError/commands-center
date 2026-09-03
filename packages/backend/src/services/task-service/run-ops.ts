@@ -28,6 +28,14 @@ import {
   stringifyOptional,
 } from "./mappers.js";
 
+const TERMINAL_RUN_STATUSES: ReadonlySet<string> = new Set([
+  "completed",
+  "failed",
+  "error",
+  "cancelled",
+  "skipped",
+]);
+
 export function createTaskRunOps(ctx: TaskServiceContext, service: TaskServiceRef) {
   const {
     applyTaskStatusForTerminalRun,
@@ -351,7 +359,14 @@ export function createTaskRunOps(ctx: TaskServiceContext, service: TaskServiceRe
         throw new NotFoundError("Task run session not found.");
       }
 
-      if (run.status !== "running" && !(conversation.converted_at && conversation.is_current)) {
+      if (
+        !(run.status === "running" && !conversation.converted_at) &&
+        !(
+          TERMINAL_RUN_STATUSES.has(run.status) &&
+          conversation.converted_at &&
+          conversation.is_current
+        )
+      ) {
         throw new ConflictError("Only running task runs can be updated by an agent.");
       }
 
@@ -363,9 +378,7 @@ export function createTaskRunOps(ctx: TaskServiceContext, service: TaskServiceRe
           type: parsed.artifact.type,
           link: parsed.artifact.link,
         },
-        run.status === "running"
-          ? undefined
-          : { agentId, currentConvertedTaskRunId: parsed.taskRunId },
+        { agentId, currentConvertedTaskRunId: parsed.taskRunId },
       );
 
       const refreshed = await service.getRunById(run.id);

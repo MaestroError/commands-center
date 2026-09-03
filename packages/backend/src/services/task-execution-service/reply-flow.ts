@@ -74,13 +74,18 @@ export function createTaskReplyFlow(ctx: TaskReplyFlowContext) {
           operators.eq(table.task_run_id, run.id),
           operators.eq(table.status, "active"),
         ),
-      columns: { converted_at: true },
+      columns: { id: true, converted_at: true },
     });
 
-    if (conversationState?.converted_at) {
+    if (!conversationState) {
+      throw new NotFoundError("Task run session not found.");
+    }
+
+    if (conversationState.converted_at) {
       throw new ConflictError("This task run was continued in chat. Open its chat to continue.");
     }
 
+    const resumed = await reactivateRunForReply(run);
     const inspection = await options.conversationService.inspectTaskRunConversation(
       run.taskId,
       run.id,
@@ -91,7 +96,6 @@ export function createTaskReplyFlow(ctx: TaskReplyFlowContext) {
       throw new NotFoundError("Task run session not found.");
     }
 
-    const resumed = await reactivateRunForReply(run);
     const followup = await options.taskService.insertFollowup(resumed, input);
 
     // Once the prompt has reached OpenCode the reply is in flight; a failure in

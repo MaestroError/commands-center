@@ -95,7 +95,7 @@ function buildRun(overrides: Partial<TaskRun> = {}): TaskRun {
   } as TaskRun;
 }
 
-function buildConvertedRun(): TaskRun {
+function buildConvertedRun(overrides: Partial<TaskRun> = {}): TaskRun {
   return buildRun({
     conversation: {
       id: "conversation-1",
@@ -103,6 +103,7 @@ function buildConvertedRun(): TaskRun {
       isCurrent: false,
       convertedAt: "2026-08-26T08:00:00.000Z",
     },
+    ...overrides,
   });
 }
 
@@ -424,7 +425,7 @@ describe("TaskDetailPage run mode", () => {
   it("renders the session and details tabs for a completed run and opens it in chat", async () => {
     mockUseTaskQuery.mockReturnValue({ data: buildTask(), isLoading: false, error: null });
     mockUseTaskRunQuery.mockReturnValue({
-      data: buildRun({
+      data: buildConvertedRun({
         errorMessage: "a warning",
         errorDetails: { code: "E1" },
         renderedPrompt: "Do the work",
@@ -486,6 +487,40 @@ describe("TaskDetailPage run mode", () => {
     await waitFor(() => {
       expect(navigateMock).toHaveBeenCalledWith("/chat/planner/conv-9");
     });
+  });
+
+  it("shows a converted run chat action while session inspection is loading", () => {
+    mockUseTaskQuery.mockReturnValue({ data: buildTask(), isLoading: false, error: null });
+    mockUseTaskRunQuery.mockReturnValue({
+      data: buildConvertedRun(),
+      isLoading: false,
+      error: null,
+    });
+    mockUseTaskRunSessionQuery.mockReturnValue({ data: undefined, isLoading: true, error: null });
+
+    renderPage("run");
+
+    expect(screen.getByRole("button", { name: "Open chat" })).toBeInTheDocument();
+    expect(screen.getByText(/^Continued /)).toBeInTheDocument();
+  });
+
+  it("shows a converted run chat action when session inspection fails", () => {
+    mockUseTaskQuery.mockReturnValue({ data: buildTask(), isLoading: false, error: null });
+    mockUseTaskRunQuery.mockReturnValue({
+      data: buildConvertedRun(),
+      isLoading: false,
+      error: null,
+    });
+    mockUseTaskRunSessionQuery.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error("session unavailable"),
+    });
+
+    renderPage("run");
+
+    expect(screen.getByRole("button", { name: "Open chat" })).toBeInTheDocument();
+    expect(screen.getByText(/^Continued /)).toBeInTheDocument();
   });
 
   it("disables the run-detail chat action while it is opening", () => {

@@ -220,6 +220,7 @@ export function TaskRunDetail(props: {
   const agentSlug = props.agents?.find(
     (entry) => entry.id === (run?.agentId ?? props.task?.agentId),
   )?.slug;
+  const convertedConversation = run?.conversation?.convertedAt;
 
   return (
     <div className="grid gap-4" data-testid="task-run-inspector">
@@ -236,7 +237,9 @@ export function TaskRunDetail(props: {
             >
               Back to task
             </Link>
-            {sessionQuery.data?.canOpenInChat && props.taskId && props.runId ? (
+            {(convertedConversation || sessionQuery.data?.canOpenInChat) &&
+            props.taskId &&
+            props.runId ? (
               <Button
                 disabled={!agentSlug || mutations.openInChat.isPending}
                 onClick={() => void openInChat()}
@@ -244,7 +247,7 @@ export function TaskRunDetail(props: {
               >
                 {mutations.openInChat.isPending
                   ? "Opening..."
-                  : sessionQuery.data.conversation?.convertedAt
+                  : convertedConversation
                     ? "Open chat"
                     : "Continue in chat"}
               </Button>
@@ -306,11 +309,8 @@ export function TaskRunDetail(props: {
             <Metric label="Started" value={formatDate(run.startedAt)} />
             <Metric label="Completed" value={formatDate(run.completedAt)} />
             <Metric label="Session" value={run.opencodeSessionId ?? "No session"} />
-            {sessionQuery.data?.conversation?.convertedAt ? (
-              <Metric
-                label="Chat"
-                value={`Continued ${formatDate(sessionQuery.data.conversation.convertedAt)}`}
-              />
+            {convertedConversation ? (
+              <Metric label="Chat" value={`Continued ${formatDate(convertedConversation)}`} />
             ) : null}
             {run.errorMessage ? <TextBlock label="Error" value={run.errorMessage} /> : null}
             <JsonBlock label="Error details" value={run.errorDetails} />

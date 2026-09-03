@@ -788,6 +788,81 @@ describe("createTaskExecutionService", () => {
     }
   });
 
+  it("lets a concurrent conversion win before reply inspection without mutating the run", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const opencodeService = createMockOpenCodeService();
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    let convertBeforeReactivation = true;
+    let conversionRaceRunId: string | undefined;
+    const taskServiceWithConversionRace = {
+      ...taskService,
+      getRunningRunForAgent: async (
+        ...args: Parameters<typeof taskService.getRunningRunForAgent>
+      ): ReturnType<typeof taskService.getRunningRunForAgent> => {
+        if (convertBeforeReactivation) {
+          convertBeforeReactivation = false;
+          const run = conversionRaceRunId
+            ? await taskService.getRunById(conversionRaceRunId)
+            : undefined;
+          if (!run) throw new Error("Expected conversion race run.");
+          await conversationService.openTaskRunConversationInChat(run.taskId, run.id);
+        }
+
+        return taskService.getRunningRunForAgent(...args);
+      },
+    };
+    const inspect = vi.spyOn(conversationService, "inspectTaskRunConversation");
+    const executionService = createTaskExecutionService({
+      db: testDb.client.db,
+      taskService: taskServiceWithConversionRace,
+      conversationService,
+      monitor: { autoStart: false },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Conversion race" });
+      const run = await taskService.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        status: "running",
+        triggerSource: "manual",
+        renderedPrompt: "Initial run.",
+      });
+      conversionRaceRunId = run.id;
+      const conversation = await conversationService.createTaskRunConversation({
+        agentId: agent.id,
+        taskId: task.id,
+        taskRunId: run.id,
+        title: "Task: Conversion race",
+      });
+      await taskService.updateRun(run.id, { opencodeSessionId: conversation.opencodeSessionId });
+      await taskService.setRunStatus(run.id, "completed", {
+        completedAt: "2026-06-01T12:00:00.000Z",
+      });
+      inspect.mockClear();
+
+      await expect(
+        executionService.sendRunReply(run.id, { body: "Continue this run." }),
+      ).rejects.toMatchObject({
+        code: "conflict",
+        statusCode: 409,
+        message: "This task run was continued in chat. Open its chat to continue.",
+      });
+
+      expect(inspect).not.toHaveBeenCalled();
+      expect((await taskService.getRunById(run.id))?.status).toBe("completed");
+      expect(await taskService.listFollowups(run.id)).toEqual([]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("reports the blocking run when a reply hits the running-run constraint", async () => {
     const testDb = await createTestDatabase();
     const prompts: { model?: { providerID: string; modelID: string }; text: string }[] = [];
