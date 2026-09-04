@@ -21,6 +21,7 @@ import type {
   OpenCodeService,
   OpenCodeSession,
   OpenCodeSessionMessage,
+  OpenCodeSessionPermissionRule,
 } from "../../src/services/opencode-service";
 import { createTestDatabase } from "../helpers/db";
 
@@ -1011,17 +1012,23 @@ function createMockOpenCodeService(): OpenCodeService {
     startOauth: vi.fn(),
     completeOauth: vi.fn(() => Promise.resolve(true)),
     disconnectProvider: vi.fn(() => Promise.resolve(true)),
-    createSession: vi.fn((_directory: string, sessionOptions?: { title?: string }) => {
-      sessionCount += 1;
-      const session: OpenCodeSession = {
-        id: `session-${String(sessionCount)}`,
-        title: sessionOptions?.title,
-        time: { created: nextTime(), updated: nextTime() },
-      };
-      sessions.set(session.id, session);
-      messages.set(session.id, []);
-      return Promise.resolve(session);
-    }),
+    createSession: vi.fn(
+      (
+        _directory: string,
+        sessionOptions?: { title?: string; permission?: OpenCodeSessionPermissionRule[] },
+      ) => {
+        sessionCount += 1;
+        const session: OpenCodeSession = {
+          id: `session-${String(sessionCount)}`,
+          title: sessionOptions?.title,
+          permission: sessionOptions?.permission,
+          time: { created: nextTime(), updated: nextTime() },
+        };
+        sessions.set(session.id, session);
+        messages.set(session.id, []);
+        return Promise.resolve(session);
+      },
+    ),
     getSession: vi.fn((_directory: string, sessionID: string) => {
       const session = sessions.get(sessionID);
 
@@ -1031,6 +1038,18 @@ function createMockOpenCodeService(): OpenCodeService {
 
       return Promise.resolve(session);
     }),
+    updateSessionPermissions: vi.fn(
+      (_directory: string, sessionID: string, permission: OpenCodeSessionPermissionRule[]) => {
+        const session = sessions.get(sessionID);
+
+        if (!session) {
+          throw new Error("Session not found.");
+        }
+
+        session.permission = permission;
+        return Promise.resolve(session);
+      },
+    ),
     listSessionMessages: vi.fn((_directory: string, sessionID: string) =>
       Promise.resolve(messages.get(sessionID) ?? []),
     ),

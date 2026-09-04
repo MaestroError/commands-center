@@ -76,6 +76,11 @@ const CONTINUABLE_TASK_RUN_STATUSES = new Set([
   "cancelled",
   "skipped",
 ]);
+const CONVERTED_CHAT_SESSION_PERMISSIONS = [
+  { permission: "cc_default_add_task_artifact", pattern: "*", action: "allow" },
+  { permission: "cc_default_set_task_result", pattern: "*", action: "deny" },
+  { permission: "cc_default_mark_needs_human_review", pattern: "*", action: "deny" },
+] satisfies OpenCodeSessionPermissionRule[];
 
 export type TaskRunSessionDiagnostic = {
   code: string;
@@ -452,35 +457,55 @@ export function createConversationService(options: {
 
       const agent = await getAgent(conversation.agent_id);
       await syncConversation(agent, conversation);
-      options.db.transaction((tx) => {
-        const run = tx
-          .select({ status: task_runs.status })
-          .from(task_runs)
-          .where(and(eq(task_runs.id, taskRunId), eq(task_runs.task_id, taskId)))
-          .get();
+      const session = await options.opencodeService.getSession(
+        agent.workspace_path,
+        conversation.opencode_session_id,
+      );
+      await options.opencodeService.updateSessionPermissions(
+        agent.workspace_path,
+        conversation.opencode_session_id,
+        CONVERTED_CHAT_SESSION_PERMISSIONS,
+      );
+      try {
+        options.db.transaction((tx) => {
+          const run = tx
+            .select({ status: task_runs.status })
+            .from(task_runs)
+            .where(and(eq(task_runs.id, taskRunId), eq(task_runs.task_id, taskId)))
+            .get();
 
-        if (!run) {
-          throw new NotFoundError("Task run not found.");
+          if (!run) {
+            throw new NotFoundError("Task run not found.");
+          }
+
+          if (!CONTINUABLE_TASK_RUN_STATUSES.has(run.status)) {
+            throw new ConflictError("Only terminal task runs can continue in chat.");
+          }
+
+          const timestamp = new Date();
+          tx.update(conversations)
+            .set({ is_current: false })
+            .where(eq(conversations.agent_id, agent.id))
+            .run();
+          tx.update(conversations)
+            .set({
+              is_current: true,
+              converted_at: conversation.converted_at ?? timestamp,
+              updated_at: timestamp,
+            })
+            .where(eq(conversations.id, conversation.id))
+            .run();
+        });
+      } catch (error) {
+        if (session.permission) {
+          await options.opencodeService.updateSessionPermissions(
+            agent.workspace_path,
+            conversation.opencode_session_id,
+            session.permission,
+          );
         }
-
-        if (!CONTINUABLE_TASK_RUN_STATUSES.has(run.status)) {
-          throw new ConflictError("Only terminal task runs can continue in chat.");
-        }
-
-        const timestamp = new Date();
-        tx.update(conversations)
-          .set({ is_current: false })
-          .where(eq(conversations.agent_id, agent.id))
-          .run();
-        tx.update(conversations)
-          .set({
-            is_current: true,
-            converted_at: conversation.converted_at ?? timestamp,
-            updated_at: timestamp,
-          })
-          .where(eq(conversations.id, conversation.id))
-          .run();
-      });
+        throw error;
+      }
 
       return getSnapshot(agent.id, conversation.id);
     },

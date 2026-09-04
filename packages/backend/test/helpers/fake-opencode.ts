@@ -7,6 +7,7 @@ import type {
   OpenCodePendingQuestion,
   OpenCodeSession,
   OpenCodeSessionMessage,
+  OpenCodeSessionPermissionRule,
   OpenCodeSessionStatus,
 } from "../../src/services/opencode-service.js";
 
@@ -99,6 +100,18 @@ export function createMockOpenCodeService(
 
       return Promise.resolve(session);
     },
+    updateSessionPermissions: vi.fn(
+      (_directory: string, sessionID: string, permission: OpenCodeSessionPermissionRule[]) => {
+        const session = sessions.get(sessionID);
+
+        if (!session) {
+          throw new Error("Session not found.");
+        }
+
+        session.permission = permission;
+        return Promise.resolve(session);
+      },
+    ),
     listSessionMessages: (_directory: string, sessionID: string) => {
       const error = listSessionMessagesErrors.shift();
 

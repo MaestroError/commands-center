@@ -22,6 +22,7 @@ import type {
   OpenCodePendingQuestion,
   OpenCodeSession,
   OpenCodeSessionMessage,
+  OpenCodeSessionPermissionRule,
   OpenCodeSessionStatus,
 } from "../../src/services/opencode-service";
 import { createTestDatabase } from "../helpers/db";
@@ -1793,7 +1794,16 @@ describe("createTaskExecutionService", () => {
       config: testDb.config,
       opencodeService,
     });
-    const executionService = createTaskExecutionService({ taskService, conversationService });
+    const taskPermissionService = createTaskPermissionService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      taskPermissionService,
+    });
 
     try {
       const agent = await insertAgent(testDb.client.db);
@@ -1805,6 +1815,18 @@ describe("createTaskExecutionService", () => {
       const run = await executionService.trigger(task.id, { triggerSource: "manual" });
       await expectRunStatus(taskService, run.id, "running");
       await expectTaskRunInspectionMessageCount(conversationService, task.id, run.id, 1);
+      const runningRun = await taskService.getRunById(run.id);
+      const taskSessionDirectory = vi.mocked(opencodeService.createSession).mock.calls[0]?.[0];
+      expect(taskSessionDirectory).toBeDefined();
+      const taskSession = await opencodeService.getSession(
+        taskSessionDirectory ?? "",
+        runningRun?.opencodeSessionId ?? "",
+      );
+      expect(taskSession.permission).toContainEqual({
+        permission: "cc_default_add_artifact",
+        pattern: "*",
+        action: "deny",
+      });
       await taskService.setRunStatus(run.id, "completed", {
         completedAt: "2026-06-01T12:00:00.000Z",
       });
@@ -1824,6 +1846,27 @@ describe("createTaskExecutionService", () => {
       expect(conversations[0]?.taskRunId).toBe(run.id);
       expect(current.current.id).toBe(opened.current.id);
       expect(runAfter?.status).toBe("completed");
+      expect(
+        (
+          await opencodeService.getSession(
+            taskSessionDirectory ?? "",
+            inspection.conversation?.opencodeSessionId ?? "",
+          )
+        ).permission,
+      ).toEqual([
+        { permission: "cc_default_add_task_artifact", pattern: "*", action: "allow" },
+        { permission: "cc_default_set_task_result", pattern: "*", action: "deny" },
+        { permission: "cc_default_mark_needs_human_review", pattern: "*", action: "deny" },
+      ]);
+      expect(opencodeService.updateSessionPermissions).toHaveBeenCalledWith(
+        expect.any(String),
+        inspection.conversation?.opencodeSessionId,
+        [
+          { permission: "cc_default_add_task_artifact", pattern: "*", action: "allow" },
+          { permission: "cc_default_set_task_result", pattern: "*", action: "deny" },
+          { permission: "cc_default_mark_needs_human_review", pattern: "*", action: "deny" },
+        ],
+      );
       expect(await taskService.get(task.id)).toMatchObject({
         status: taskBefore?.status,
         latestRunConversation: {
@@ -3850,6 +3893,7 @@ function createMockOpenCodeService(
       const session: OpenCodeSession = {
         id: `session-${String(sessionCount)}`,
         title: sessionOptions?.title,
+        permission: sessionOptions?.permission,
         time: { created: nextTime(), updated: nextTime() },
       };
       sessions.set(session.id, session);
@@ -3865,6 +3909,18 @@ function createMockOpenCodeService(
 
       return Promise.resolve(session);
     },
+    updateSessionPermissions: vi.fn(
+      (_directory: string, sessionID: string, permission: OpenCodeSessionPermissionRule[]) => {
+        const session = sessions.get(sessionID);
+
+        if (!session) {
+          throw new Error("Session not found.");
+        }
+
+        session.permission = permission;
+        return Promise.resolve(session);
+      },
+    ),
     listSessionMessages: (_directory: string, sessionID: string) => {
       const error = listSessionMessagesErrors.shift();
 

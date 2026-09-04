@@ -746,6 +746,7 @@ function createMockOpenCodeService(
       const session: OpenCodeSession = {
         id,
         title: sessionOptions?.title,
+        permission: sessionOptions?.permission,
         time: {
           created: nextTime(),
           updated: nextTime(),
@@ -762,6 +763,11 @@ function createMockOpenCodeService(
         throw new Error(`Unknown session ${sessionID}`);
       }
 
+      return Promise.resolve(session);
+    },
+    updateSessionPermissions: (_directory, sessionID, permission) => {
+      const session = mustSession(sessionID);
+      session.permission = permission;
       return Promise.resolve(session);
     },
     listSessionStatuses: () => Promise.resolve({}),

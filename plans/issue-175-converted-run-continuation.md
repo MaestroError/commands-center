@@ -41,3 +41,4 @@ Make a converted task-run conversation the sole continuation surface while prese
 4. Restrict converted-chat artifact compatibility to terminal runs in both the initial service check and the artifact insertion transaction, with non-terminal and revalidation coverage.
 5. Acquire reply continuation ownership before session inspection so a concurrent conversion either wins before any reply synchronization or loses to the running-run boundary.
 6. Derive converted run-detail actions and status from the run projection so session loading, sync diagnostics, or request failures cannot hide the existing chat continuation.
+7. Replace the converted OpenCode session's frozen task permissions with chat-compatible rules that allow the artifact compatibility alias while denying terminal result and human-review mutations.
