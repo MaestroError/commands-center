@@ -515,6 +515,44 @@ describe("useTaskMutations", () => {
     });
   });
 
+  it("updates chat caches when a task run is opened in chat", async () => {
+    const queryClient = createQueryClient();
+    const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
+    const snapshot = {
+      current: {
+        id: "conv-1",
+        agentId: "agent-1",
+        opencodeSessionId: "session-1",
+        title: "Task run",
+        status: "active" as const,
+        source: "chat" as const,
+        isCurrent: true,
+        messageCount: 0,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+        messages: [],
+      },
+      previous: [],
+    };
+    vi.mocked(openTaskRunInChat).mockResolvedValue(snapshot);
+
+    const { result } = renderHook(() => useTaskMutations(), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    await act(async () => {
+      await result.current.openInChat.mutateAsync({ taskId: "task-1", runId: "run-1" });
+    });
+
+    expect(queryClient.getQueryData(queryKeys.conversationSnapshot("agent-1"))).toEqual(snapshot);
+    expect(queryClient.getQueryData(queryKeys.conversation("agent-1", "conv-1"))).toEqual(
+      snapshot.current,
+    );
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: queryKeys.conversations("agent-1"),
+    });
+  });
+
   it("updates feedback cache and invalidates subtask views for feedback edits", async () => {
     const queryClient = createQueryClient();
     const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");

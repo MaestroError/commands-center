@@ -59,14 +59,6 @@ export function createTaskReplyFlow(ctx: TaskReplyFlowContext) {
       throw new ConflictError("Cannot send a reply while the run is in progress.");
     }
 
-    if (!run.opencodeSessionId) {
-      throw new ConflictError("Task run does not have an OpenCode session.");
-    }
-
-    if (run.status !== "completed" && run.status !== "failed" && run.status !== "error") {
-      throw new BadRequestError("Only completed, failed, or error task runs can receive a reply.");
-    }
-
     const conversationState = await options.db.query.conversations.findFirst({
       where: (table, operators) =>
         operators.and(
@@ -77,12 +69,20 @@ export function createTaskReplyFlow(ctx: TaskReplyFlowContext) {
       columns: { id: true, converted_at: true },
     });
 
-    if (!conversationState) {
-      throw new NotFoundError("Task run session not found.");
+    if (conversationState?.converted_at) {
+      throw new ConflictError("This task run was continued in chat. Open its chat to continue.");
     }
 
-    if (conversationState.converted_at) {
-      throw new ConflictError("This task run was continued in chat. Open its chat to continue.");
+    if (!run.opencodeSessionId) {
+      throw new ConflictError("Task run does not have an OpenCode session.");
+    }
+
+    if (run.status !== "completed" && run.status !== "failed" && run.status !== "error") {
+      throw new BadRequestError("Only completed, failed, or error task runs can receive a reply.");
+    }
+
+    if (!conversationState) {
+      throw new NotFoundError("Task run session not found.");
     }
 
     const resumed = await reactivateRunForReply(run);

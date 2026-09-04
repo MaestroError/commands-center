@@ -723,70 +723,81 @@ describe("createTaskExecutionService", () => {
     }
   });
 
-  it("rejects converted-run replies before changing task-run state or syncing the conversation", async () => {
-    const testDb = await createTestDatabase();
-    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
-    const opencodeService = createMockOpenCodeService();
-    const conversationService = createConversationService({
-      db: testDb.client.db,
-      config: testDb.config,
-      opencodeService,
-    });
-    const executionService = createTaskExecutionService({
-      db: testDb.client.db,
-      taskService,
-      conversationService,
-      monitor: { autoStart: false },
-    });
-
-    try {
-      const agent = await insertAgent(testDb.client.db);
-      const task = await taskService.create({ agentId: agent.id, title: "Converted reply" });
-      const run = await taskService.createRun({
-        taskId: task.id,
-        agentId: agent.id,
-        status: "running",
-        triggerSource: "manual",
-        renderedPrompt: "Initial run.",
+  it.each([
+    { status: "completed", recordSession: true },
+    { status: "cancelled", recordSession: true },
+    { status: "skipped", recordSession: false },
+  ] as const)(
+    "rejects converted $status-run replies before changing task-run state or syncing the conversation",
+    async ({ status, recordSession }) => {
+      const testDb = await createTestDatabase();
+      const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+      const opencodeService = createMockOpenCodeService();
+      const conversationService = createConversationService({
+        db: testDb.client.db,
+        config: testDb.config,
+        opencodeService,
       });
-      const conversation = await conversationService.createTaskRunConversation({
-        agentId: agent.id,
-        taskId: task.id,
-        taskRunId: run.id,
-        title: "Task: Converted reply",
-      });
-      await taskService.updateRun(run.id, { opencodeSessionId: conversation.opencodeSessionId });
-      await taskService.setRunStatus(run.id, "completed", {
-        completedAt: "2026-06-01T12:00:00.000Z",
-      });
-      await conversationService.openTaskRunConversationInChat(task.id, run.id);
-      const taskBefore = await taskService.get(task.id);
-
-      const getSession = vi.fn(opencodeService.getSession);
-      const listSessionMessages = vi.fn(opencodeService.listSessionMessages);
-      const promptSessionAsync = vi.fn(opencodeService.promptSessionAsync);
-      opencodeService.getSession = getSession;
-      opencodeService.listSessionMessages = listSessionMessages;
-      opencodeService.promptSessionAsync = promptSessionAsync;
-
-      await expect(
-        executionService.sendRunReply(run.id, { body: "Continue this run." }),
-      ).rejects.toMatchObject({
-        code: "conflict",
-        statusCode: 409,
-        message: "This task run was continued in chat. Open its chat to continue.",
+      const executionService = createTaskExecutionService({
+        db: testDb.client.db,
+        taskService,
+        conversationService,
+        monitor: { autoStart: false },
       });
 
-      expect((await taskService.getRunById(run.id))?.status).toBe("completed");
-      expect((await taskService.get(task.id))?.status).toBe(taskBefore?.status);
-      expect(await taskService.listFollowups(run.id)).toEqual([]);
-      expect(getSession).not.toHaveBeenCalled();
-      expect(listSessionMessages).not.toHaveBeenCalled();
-      expect(promptSessionAsync).not.toHaveBeenCalled();
-    } finally {
-      await testDb.cleanup();
-    }
-  });
+      try {
+        const agent = await insertAgent(testDb.client.db);
+        const task = await taskService.create({ agentId: agent.id, title: "Converted reply" });
+        const run = await taskService.createRun({
+          taskId: task.id,
+          agentId: agent.id,
+          status: "running",
+          triggerSource: "manual",
+          renderedPrompt: "Initial run.",
+        });
+        const conversation = await conversationService.createTaskRunConversation({
+          agentId: agent.id,
+          taskId: task.id,
+          taskRunId: run.id,
+          title: "Task: Converted reply",
+        });
+        if (recordSession) {
+          await taskService.updateRun(run.id, {
+            opencodeSessionId: conversation.opencodeSessionId,
+          });
+        }
+        await taskService.setRunStatus(run.id, status, {
+          completedAt: "2026-06-01T12:00:00.000Z",
+        });
+        await conversationService.openTaskRunConversationInChat(task.id, run.id);
+        const taskBefore = await taskService.get(task.id);
+
+        const getSession = vi.fn(opencodeService.getSession);
+        const listSessionMessages = vi.fn(opencodeService.listSessionMessages);
+        const promptSessionAsync = vi.fn(opencodeService.promptSessionAsync);
+        opencodeService.getSession = getSession;
+        opencodeService.listSessionMessages = listSessionMessages;
+        opencodeService.promptSessionAsync = promptSessionAsync;
+
+        await expect(
+          executionService.sendRunReply(run.id, { body: "Continue this run." }),
+        ).rejects.toMatchObject({
+          code: "conflict",
+          statusCode: 409,
+          message: "This task run was continued in chat. Open its chat to continue.",
+        });
+
+        expect((await taskService.getRunById(run.id))?.status).toBe(status);
+        expect((await taskService.get(task.id))?.status).toBe(taskBefore?.status);
+        expect(await taskService.listFollowups(run.id)).toEqual([]);
+        expect(getSession).not.toHaveBeenCalled();
+        expect(listSessionMessages).not.toHaveBeenCalled();
+        expect(promptSessionAsync).not.toHaveBeenCalled();
+      } finally {
+        await testDb.cleanup();
+      }
+    },
+  );
 
   it("lets a concurrent conversion win before reply inspection without mutating the run", async () => {
     const testDb = await createTestDatabase();
