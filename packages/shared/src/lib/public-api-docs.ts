@@ -7,6 +7,8 @@
  * since tokens are only shown once at creation time (Epic 07).
  */
 
+import { TASK_CONTEXT_ATTACHMENT_EXTENSIONS_LABEL } from "./task-context-attachment-formats.js";
+
 export const PUBLIC_API_TOKEN_PLACEHOLDER = "<YOUR_API_TOKEN>";
 
 export interface BuildTemplateEndpointDocsInput {
@@ -265,7 +267,10 @@ function buildAgentInstructions(input: {
     "- Omit `schedule` to run immediately. The response includes a `runId` you can poll.",
     "- Include `schedule.runAt` (ISO-8601, must be in the future) to schedule a single run.",
     '  The response has `status: "scheduled"` and `runId: null` until the run starts.',
-    "- `attachments` are inline base64 data URLs, capped at 10 MB each.",
+    "- `attachments` are inline base64 data URLs, capped at 10 MB each. `mimeType` and",
+    "  `sizeBytes` are advisory — the media type is derived from the filename extension",
+    "  and the payload is verified against it.",
+    `- Allowed attachment extensions: ${TASK_CONTEXT_ATTACHMENT_EXTENSIONS_LABEL}.`,
     "",
     "Example immediate trigger:",
     "",

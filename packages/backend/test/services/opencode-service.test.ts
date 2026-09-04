@@ -228,16 +228,222 @@ describe("opencode-service", () => {
 
     it.each([
       {
+        filename: "guide.mdx",
+        mimeType: "text/mdx",
+        dataUrl: "data:text/mdx;base64,IyBHdWlkZQ==",
+      },
+      {
+        filename: "server.log",
+        mimeType: "application/octet-stream",
+        dataUrl: "data:application/octet-stream;base64,c3RhcnRlZA==",
+      },
+      {
+        filename: "icon.svg",
+        mimeType: "image/svg+xml",
+        dataUrl: "data:image/svg+xml;base64,PHN2Zy8+",
+      },
+    ])(
+      "normalizes $filename to text/plain even though no allowlist covers it",
+      async ({ filename, mimeType, dataUrl }) => {
+        fetchMock.mockResolvedValue(jsonResponse(204));
+        const service = createOpenCodeService({
+          client: FAKE_CLIENT,
+          config: createConfig(),
+          logger: createLogger(),
+        });
+
+        await service.promptSessionAsync({
+          directory: "/work/agent-a",
+          sessionID: "sess-1",
+          agent: "build",
+          model: { providerID: "github-copilot", modelID: "gpt-5" },
+          text: "review",
+          attachments: [{ type: "document", filename, mimeType, dataUrl }],
+        });
+
+        const body = JSON.parse((fetchMock.mock.calls[0]?.[1] as RequestInit).body as string) as {
+          parts: Array<Record<string, unknown>>;
+        };
+        expect(body.parts[1]).toEqual({
+          type: "file",
+          mime: "text/plain",
+          filename,
+          url: `data:text/plain;base64,${dataUrl.split(",")[1] ?? ""}`,
+        });
+      },
+    );
+
+    it("replaces a binary attachment no provider accepts with an explanatory note", async () => {
+      fetchMock.mockResolvedValue(jsonResponse(204));
+      const service = createOpenCodeService({
+        client: FAKE_CLIENT,
+        config: createConfig(),
+        logger: createLogger(),
+      });
+
+      await service.promptSessionAsync({
+        directory: "/work/agent-a",
+        sessionID: "sess-1",
+        agent: "build",
+        model: { providerID: "github-copilot", modelID: "gpt-5" },
+        text: "review",
+        attachments: [
+          {
+            type: "file",
+            filename: "report.docx",
+            mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            // PK zip header — binary, so inlining it as text would be garbage.
+            dataUrl: `data:application/octet-stream;base64,${Buffer.from([
+              0x50, 0x4b, 0x03, 0x04, 0x00, 0xff,
+            ]).toString("base64")}`,
+          },
+        ],
+      });
+
+      const body = JSON.parse((fetchMock.mock.calls[0]?.[1] as RequestInit).body as string) as {
+        parts: Array<Record<string, unknown>>;
+      };
+      expect(body.parts[1]).toEqual({
+        type: "text",
+        text: "[Attachment omitted: report.docx (application/vnd.openxmlformats-officedocument.wordprocessingml.document) is not a format this model can read.]",
+      });
+    });
+
+    it("replaces malformed base64 with an explanatory note", async () => {
+      fetchMock.mockResolvedValue(jsonResponse(204));
+      const service = createOpenCodeService({
+        client: FAKE_CLIENT,
+        config: createConfig(),
+        logger: createLogger(),
+      });
+
+      await service.promptSessionAsync({
+        directory: "/work/agent-a",
+        sessionID: "sess-1",
+        agent: "build",
+        model: { providerID: "github-copilot", modelID: "gpt-5" },
+        text: "review",
+        attachments: [
+          {
+            type: "document",
+            filename: "notes.md",
+            mimeType: "text/markdown",
+            dataUrl: "data:text/markdown;base64,aGVsbG8=*",
+          },
+        ],
+      });
+
+      const body = JSON.parse((fetchMock.mock.calls[0]?.[1] as RequestInit).body as string) as {
+        parts: Array<Record<string, unknown>>;
+      };
+      expect(body.parts[1]).toEqual({
+        type: "text",
+        text: "[Attachment omitted: notes.md (text/markdown) is not a format this model can read.]",
+      });
+    });
+
+    it("normalizes wrapped base64 before checking textual content", async () => {
+      fetchMock.mockResolvedValue(jsonResponse(204));
+      const service = createOpenCodeService({
+        client: FAKE_CLIENT,
+        config: createConfig(),
+        logger: createLogger(),
+      });
+
+      await service.promptSessionAsync({
+        directory: "/work/agent-a",
+        sessionID: "sess-1",
+        agent: "build",
+        model: { providerID: "github-copilot", modelID: "gpt-5" },
+        text: "review",
+        attachments: [
+          {
+            type: "document",
+            filename: "notes.md",
+            mimeType: "text/markdown",
+            dataUrl: "data:text/markdown;base64,aGVs\nbG8=",
+          },
+        ],
+      });
+
+      const body = JSON.parse((fetchMock.mock.calls[0]?.[1] as RequestInit).body as string) as {
+        parts: Array<Record<string, unknown>>;
+      };
+      expect(body.parts[1]).toEqual({
+        type: "file",
+        mime: "text/plain",
+        filename: "notes.md",
+        url: "data:text/plain;base64,aGVs\nbG8=",
+      });
+    });
+
+    it("accepts a valid base64 data URL with media type parameters", async () => {
+      fetchMock.mockResolvedValue(jsonResponse(204));
+      const service = createOpenCodeService({
+        client: FAKE_CLIENT,
+        config: createConfig(),
+        logger: createLogger(),
+      });
+
+      await service.promptSessionAsync({
+        directory: "/work/agent-a",
+        sessionID: "sess-1",
+        agent: "build",
+        model: { providerID: "github-copilot", modelID: "gpt-5" },
+        text: "review",
+        attachments: [
+          {
+            type: "document",
+            filename: "notes.md",
+            mimeType: "text/markdown",
+            dataUrl: "data:text/markdown;charset=utf-8;base64,aGVsbG8=",
+          },
+        ],
+      });
+
+      const body = JSON.parse((fetchMock.mock.calls[0]?.[1] as RequestInit).body as string) as {
+        parts: Array<Record<string, unknown>>;
+      };
+      expect(body.parts[1]).toEqual({
+        type: "file",
+        mime: "text/plain",
+        filename: "notes.md",
+        url: "data:text/plain;charset=utf-8;base64,aGVsbG8=",
+      });
+    });
+
+    it.each([
+      {
         filename: "image.png",
         mimeType: "image/png",
-        dataUrl: "data:image/png;base64,aW1hZ2U=",
+        dataUrl: `data:image/png;base64,${Buffer.from([
+          0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+        ]).toString("base64")}`,
         type: "image" as const,
       },
       {
         filename: "report.pdf",
         mimeType: "application/pdf",
-        dataUrl: "data:application/pdf;base64,JVBERg==",
+        dataUrl: "data:application/pdf;base64,JVBERi0=",
         type: "document" as const,
+      },
+      {
+        filename: "photo.gif",
+        mimeType: "image/gif",
+        dataUrl: "data:image/gif;base64,R0lGODlh",
+        type: "image" as const,
+      },
+      {
+        filename: "photo.jpg",
+        mimeType: "image/jpeg",
+        dataUrl: "data:image/jpeg;base64,/9j/",
+        type: "image" as const,
+      },
+      {
+        filename: "photo.webp",
+        mimeType: "image/webp",
+        dataUrl: "data:image/webp;base64,UklGRgAAAABXRUJQ",
+        type: "image" as const,
       },
     ])("preserves $filename without transport normalization", async (attachment) => {
       fetchMock.mockResolvedValue(jsonResponse(204));
@@ -264,6 +470,119 @@ describe("opencode-service", () => {
         mime: attachment.mimeType,
         filename: attachment.filename,
         url: attachment.dataUrl,
+      });
+    });
+
+    it.each([
+      {
+        filename: "notes.png",
+        mimeType: "text/plain",
+        dataUrl: "data:text/plain;base64,aGVsbG8=",
+      },
+      {
+        filename: "upload.bin",
+        mimeType: "image/png",
+        dataUrl: "data:image/png;base64,AQIDBA==",
+      },
+    ])(
+      "replaces $filename when its payload does not match the resolved native MIME",
+      async (attachment) => {
+        fetchMock.mockResolvedValue(jsonResponse(204));
+        const service = createOpenCodeService({
+          client: FAKE_CLIENT,
+          config: createConfig(),
+          logger: createLogger(),
+        });
+
+        await service.promptSessionAsync({
+          directory: "/work/agent-a",
+          sessionID: "sess-1",
+          agent: "build",
+          model: { providerID: "github-copilot", modelID: "gpt-5" },
+          text: "review",
+          attachments: [{ type: "file", ...attachment }],
+        });
+
+        const body = JSON.parse((fetchMock.mock.calls[0]?.[1] as RequestInit).body as string) as {
+          parts: Array<Record<string, unknown>>;
+        };
+        expect(body.parts[1]).toEqual({
+          type: "text",
+          text: `[Attachment omitted: ${attachment.filename} (${attachment.mimeType}) is not a format this model can read.]`,
+        });
+      },
+    );
+
+    it.each([
+      "https://example.test/notes.md",
+      "data:text/markdown,hello%20world",
+      "data:text/markdown;base64,",
+      "data:;base64,aGVsbG8=",
+      "data:text/markdown;;base64,aGVsbG8=",
+    ])("replaces an uninspectable text attachment at %s", async (dataUrl) => {
+      fetchMock.mockResolvedValue(jsonResponse(204));
+      const service = createOpenCodeService({
+        client: FAKE_CLIENT,
+        config: createConfig(),
+        logger: createLogger(),
+      });
+
+      await service.promptSessionAsync({
+        directory: "/work/agent-a",
+        sessionID: "sess-1",
+        agent: "build",
+        model: { providerID: "github-copilot", modelID: "gpt-5" },
+        text: "review",
+        attachments: [
+          {
+            type: "document",
+            filename: "notes.md",
+            mimeType: "text/markdown",
+            dataUrl,
+          },
+        ],
+      });
+
+      const body = JSON.parse((fetchMock.mock.calls[0]?.[1] as RequestInit).body as string) as {
+        parts: Array<Record<string, unknown>>;
+      };
+      expect(body.parts[1]).toEqual({
+        type: "text",
+        text: "[Attachment omitted: notes.md (text/markdown) is not a format this model can read.]",
+      });
+    });
+
+    it("validates native attachment payloads on the command path", async () => {
+      fetchMock.mockResolvedValue(jsonResponse(204));
+      const service = createOpenCodeService({
+        client: FAKE_CLIENT,
+        config: createConfig(),
+        logger: createLogger(),
+      });
+
+      await service.commandSession({
+        directory: "/work/agent-a",
+        sessionID: "sess-1",
+        agent: "build",
+        model: "github-copilot/gpt-5",
+        command: "review",
+        arguments: "",
+        attachments: [
+          {
+            type: "file",
+            filename: "notes.png",
+            mimeType: "image/png",
+            dataUrl: "data:image/png;base64,aGVsbG8=",
+          },
+        ],
+      });
+
+      const body = JSON.parse((fetchMock.mock.calls[0]?.[1] as RequestInit).body as string) as {
+        parts: Array<Record<string, unknown>>;
+      };
+      expect(body.parts[0]).toEqual({
+        type: "text",
+        text: "[Attachment omitted: notes.png (image/png) is not a format this model can read.]",
       });
     });
 

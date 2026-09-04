@@ -6,7 +6,12 @@ import { NotFoundError } from "../lib/api-error.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
 import { z } from "zod";
 
-import { resolvePromptAttachmentMimeType } from "@cc/shared/lib";
+import {
+  isNativePromptAttachmentMimeType,
+  isTextualPayload,
+  PROMPT_TEXT_MIME_TYPE,
+  resolvePromptAttachmentMimeType,
+} from "@cc/shared/lib";
 import {
   configProvidersSchema,
   mcpAuthRemoveResultSchema,
@@ -155,6 +160,13 @@ type SessionAttachmentPart = {
   filename?: string;
   url: string;
 };
+
+type SessionTextPart = {
+  type: "text";
+  text: string;
+};
+
+type SessionPromptPart = SessionAttachmentPart | SessionTextPart;
 
 export type OpenCodeService = ReturnType<typeof createOpenCodeService>;
 
@@ -778,11 +790,28 @@ function buildPromptParts(text: string, attachments: SendConversationAttachmentI
   ];
 }
 
-function buildAttachmentParts(
-  attachments: SendConversationAttachmentInput[],
-): SessionAttachmentPart[] {
+function buildAttachmentParts(attachments: SendConversationAttachmentInput[]): SessionPromptPart[] {
   return attachments.map((attachment) => {
     const mime = resolvePromptAttachmentMimeType(attachment.filename, attachment.mimeType);
+    const requiresInspection =
+      mime === PROMPT_TEXT_MIME_TYPE || isNativePromptAttachmentMimeType(mime);
+    const bytes = requiresInspection ? decodeInspectableDataUrl(attachment.dataUrl) : undefined;
+
+    // A text/plain part is decoded and inlined into the prompt by OpenCode, so
+    // binary bytes that fell through to text (an archive, an office document,
+    // an unsupported image codec) would reach the model as replacement
+    // characters. Tell the model the file was skipped instead.
+    if (
+      (mime === PROMPT_TEXT_MIME_TYPE && (!bytes || !isTextualPayload(bytes))) ||
+      (isNativePromptAttachmentMimeType(mime) &&
+        (!bytes || !matchesNativeAttachmentMimeType(bytes, mime)))
+    ) {
+      return {
+        type: "text" as const,
+        text: `[Attachment omitted: ${attachment.filename ?? "file"} (${attachment.mimeType}) is not a format this model can read.]`,
+      };
+    }
+
     return {
       type: "file" as const,
       mime,
@@ -793,6 +822,46 @@ function buildAttachmentParts(
           : rewriteDataUrlMimeType(attachment.dataUrl, mime),
     };
   });
+}
+
+function decodeInspectableDataUrl(dataUrl: string): Buffer | undefined {
+  const match =
+    /^data:[A-Za-z0-9!#$&^_.+-]+\/[A-Za-z0-9!#$&^_.+-]+(?:;[A-Za-z0-9!#$&^_.+-]+=[^;,]+)*;base64,(.*)$/s.exec(
+      dataUrl,
+    );
+  const payload = match?.[1]?.replace(/\s+/g, "");
+
+  if (!payload || payload.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(payload)) {
+    return undefined;
+  }
+
+  const decoded = Buffer.from(payload, "base64");
+  return decoded.toString("base64") === payload ? decoded : undefined;
+}
+
+function matchesNativeAttachmentMimeType(bytes: Buffer, mimeType: string): boolean {
+  switch (mimeType) {
+    case "application/pdf":
+      return hasAsciiAt(bytes, 0, "%PDF-");
+    case "image/gif":
+      return hasAsciiAt(bytes, 0, "GIF87a") || hasAsciiAt(bytes, 0, "GIF89a");
+    case "image/jpeg":
+      return hasBytesAt(bytes, 0, [0xff, 0xd8, 0xff]);
+    case "image/png":
+      return hasBytesAt(bytes, 0, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    case "image/webp":
+      return hasAsciiAt(bytes, 0, "RIFF") && hasAsciiAt(bytes, 8, "WEBP");
+    default:
+      return false;
+  }
+}
+
+function hasBytesAt(bytes: Buffer, offset: number, expected: readonly number[]): boolean {
+  return expected.every((byte, index) => bytes[offset + index] === byte);
+}
+
+function hasAsciiAt(bytes: Buffer, offset: number, expected: string): boolean {
+  return bytes.subarray(offset, offset + expected.length).toString("latin1") === expected;
 }
 
 function rewriteDataUrlMimeType(dataUrl: string, mimeType: string): string {

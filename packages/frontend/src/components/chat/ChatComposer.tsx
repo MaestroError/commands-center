@@ -436,7 +436,10 @@ export function ChatComposer({
       const reader = new FileReader();
       reader.onload = () => {
         const dataUrl = reader.result as string;
-        const mimeType = resolvePromptAttachmentMimeType(file.name, file.type);
+        // Keep the browser's own media type where it has one — the backend
+        // normalizes to what the model provider accepts at send time, so the
+        // record we store here should stay truthful about the file.
+        const mimeType = file.type.trim() || resolvePromptAttachmentMimeType(file.name, "");
         const attachment: SendConversationAttachmentInput = {
           id: `${Date.now()}-${file.name}`,
           type: mimeType.startsWith("image/") ? "image" : "file",
