@@ -528,11 +528,33 @@ export function createConversationService(options: {
               .run();
           });
         } catch (error) {
-          await options.opencodeService.updateSessionPermissions(
-            agent.workspace_path,
-            conversation.opencode_session_id,
-            priorSessionPermissions,
-          );
+          try {
+            const restoredSession = await options.opencodeService.updateSessionPermissions(
+              agent.workspace_path,
+              conversation.opencode_session_id,
+              priorSessionPermissions,
+            );
+            if (
+              JSON.stringify(restoredSession.permission ?? []) !==
+              JSON.stringify(priorSessionPermissions)
+            ) {
+              throw new Error("OpenCode returned different permissions after conversion rollback.");
+            }
+          } catch (restorationError) {
+            const timestamp = new Date();
+            await options.db
+              .update(conversations)
+              .set({
+                is_current: false,
+                converted_at: conversation.converted_at ?? timestamp,
+                updated_at: timestamp,
+              })
+              .where(eq(conversations.id, conversation.id));
+            options.logger?.error(
+              { err: restorationError, conversationId: conversation.id },
+              "conversion permission rollback is uncertain; preserving chat ownership boundary",
+            );
+          }
           throw error;
         }
 

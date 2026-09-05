@@ -2003,6 +2003,80 @@ describe("createTaskExecutionService", () => {
     }
   });
 
+  it("keeps uncertain permission rollback from reactivating the task run", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const opencodeService = createMockOpenCodeService();
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({
+      db: testDb.client.db,
+      taskService,
+      conversationService,
+      monitor: { autoStart: false },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Uncertain conversion" });
+      const run = await taskService.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        status: "completed",
+        triggerSource: "manual",
+        renderedPrompt: "Initial run.",
+        completedAt: "2026-06-01T12:00:00.000Z",
+      });
+      const conversation = await conversationService.createTaskRunConversation({
+        agentId: agent.id,
+        taskId: task.id,
+        taskRunId: run.id,
+        title: "Task: Uncertain conversion",
+      });
+      await taskService.updateRun(run.id, { opencodeSessionId: conversation.opencodeSessionId });
+      const updateSessionPermissions = opencodeService.updateSessionPermissions;
+      let updateCount = 0;
+      opencodeService.updateSessionPermissions = vi.fn(
+        async (
+          directory: string,
+          sessionID: string,
+          permission: OpenCodeSessionPermissionRule[],
+        ) => {
+          updateCount += 1;
+          if (updateCount === 1) {
+            await updateSessionPermissions(directory, sessionID, permission);
+            throw new Error("Permission response failed.");
+          }
+          throw new Error("Permission rollback failed.");
+        },
+      );
+
+      await expect(
+        conversationService.openTaskRunConversationInChat(task.id, run.id),
+      ).rejects.toThrow("Permission response failed.");
+      await expect(
+        executionService.sendRunReply(run.id, { body: "Continue this run." }),
+      ).rejects.toMatchObject({
+        code: "conflict",
+        statusCode: 409,
+        message: "This task run was continued in chat. Open its chat to continue.",
+      });
+
+      expect((await taskService.getRunById(run.id))?.status).toBe("completed");
+      expect(await taskService.listFollowups(run.id)).toEqual([]);
+      expect(
+        (await conversationService.inspectTaskRunConversation(task.id, run.id)).conversation
+          ?.convertedAt,
+      ).toBeDefined();
+      expect(opencodeService.updateSessionPermissions).toHaveBeenCalledTimes(2);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("restores explicit session permissions when conversion revalidation fails", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
