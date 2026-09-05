@@ -479,6 +479,59 @@ describe("createTaskExecutionService", () => {
     }
   });
 
+  it("preserves task-run state when reply inspection fails", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService(),
+    });
+    const executionService = createTaskExecutionService({
+      db: testDb.client.db,
+      taskService,
+      conversationService,
+      monitor: { autoStart: false },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Failed reply inspection",
+      });
+      const run = await taskService.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        status: "completed",
+        triggerSource: "manual",
+        opencodeSessionId: "session-1",
+        renderedPrompt: "Initial run.",
+        completedAt: "2026-06-01T12:00:00.000Z",
+      });
+      await conversationService.createTaskRunConversation({
+        agentId: agent.id,
+        taskId: task.id,
+        taskRunId: run.id,
+        title: "Task: Failed reply inspection",
+      });
+      const taskBefore = await taskService.get(task.id);
+      vi.spyOn(conversationService, "inspectTaskRunConversation").mockRejectedValue(
+        new Error("Specialist not found."),
+      );
+
+      await expect(
+        executionService.sendRunReply(run.id, { body: "Continue this run." }),
+      ).rejects.toThrow("Specialist not found.");
+
+      expect((await taskService.getRunById(run.id))?.status).toBe("completed");
+      expect((await taskService.get(task.id))?.status).toBe(taskBefore?.status);
+      expect(await taskService.listFollowups(run.id)).toEqual([]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("times out a reply continuation from its reactivation timestamp", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
@@ -1880,6 +1933,137 @@ describe("createTaskExecutionService", () => {
           isCurrent: true,
         },
       });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("clears applied session permissions when conversion permission update fails", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const opencodeService = createMockOpenCodeService();
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Failed permission update",
+      });
+      const run = await taskService.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        status: "completed",
+        triggerSource: "manual",
+        renderedPrompt: "Initial run.",
+        completedAt: "2026-06-01T12:00:00.000Z",
+      });
+      const conversation = await conversationService.createTaskRunConversation({
+        agentId: agent.id,
+        taskId: task.id,
+        taskRunId: run.id,
+        title: "Task: Failed permission update",
+      });
+      const directory = vi.mocked(opencodeService.createSession).mock.calls.at(-1)?.[0] ?? "";
+      const updateSessionPermissions = opencodeService.updateSessionPermissions;
+      let updateCount = 0;
+      opencodeService.updateSessionPermissions = vi.fn(
+        async (
+          directory: string,
+          sessionID: string,
+          permission: OpenCodeSessionPermissionRule[],
+        ) => {
+          updateCount += 1;
+          const session = await updateSessionPermissions(directory, sessionID, permission);
+          if (updateCount === 1) {
+            throw new Error("Permission response failed.");
+          }
+          return session;
+        },
+      );
+
+      await expect(
+        conversationService.openTaskRunConversationInChat(task.id, run.id),
+      ).rejects.toThrow("Permission response failed.");
+
+      expect(
+        (await opencodeService.getSession(directory, conversation.opencodeSessionId)).permission,
+      ).toEqual([]);
+      expect(
+        (await conversationService.inspectTaskRunConversation(task.id, run.id)).conversation
+          ?.convertedAt,
+      ).toBeUndefined();
+      expect(opencodeService.updateSessionPermissions).toHaveBeenCalledTimes(2);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("restores explicit session permissions when conversion revalidation fails", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const opencodeService = createMockOpenCodeService();
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const originalPermissions = [
+      { permission: "read", pattern: "*", action: "allow" },
+    ] satisfies OpenCodeSessionPermissionRule[];
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Failed conversion" });
+      const run = await taskService.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        status: "completed",
+        triggerSource: "manual",
+        renderedPrompt: "Initial run.",
+        completedAt: "2026-06-01T12:00:00.000Z",
+      });
+      const conversation = await conversationService.createTaskRunConversation({
+        agentId: agent.id,
+        taskId: task.id,
+        taskRunId: run.id,
+        title: "Task: Failed conversion",
+        permission: originalPermissions,
+      });
+      const directory = vi.mocked(opencodeService.createSession).mock.calls.at(-1)?.[0] ?? "";
+      const updateSessionPermissions = opencodeService.updateSessionPermissions;
+      let updateCount = 0;
+      opencodeService.updateSessionPermissions = vi.fn(
+        async (
+          directory: string,
+          sessionID: string,
+          permission: OpenCodeSessionPermissionRule[],
+        ) => {
+          updateCount += 1;
+          const session = await updateSessionPermissions(directory, sessionID, permission);
+          if (updateCount === 1) {
+            await taskService.updateRun(run.id, { status: "running", completedAt: undefined });
+          }
+          return session;
+        },
+      );
+
+      await expect(
+        conversationService.openTaskRunConversationInChat(task.id, run.id),
+      ).rejects.toThrow("Only terminal task runs can continue in chat.");
+
+      expect(
+        (await opencodeService.getSession(directory, conversation.opencodeSessionId)).permission,
+      ).toEqual(originalPermissions);
+      expect(
+        (await conversationService.inspectTaskRunConversation(task.id, run.id)).conversation
+          ?.convertedAt,
+      ).toBeUndefined();
+      expect(opencodeService.updateSessionPermissions).toHaveBeenCalledTimes(2);
     } finally {
       await testDb.cleanup();
     }

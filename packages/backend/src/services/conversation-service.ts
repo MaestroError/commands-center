@@ -491,12 +491,13 @@ export function createConversationService(options: {
           agent.workspace_path,
           conversation.opencode_session_id,
         );
-        await options.opencodeService.updateSessionPermissions(
-          agent.workspace_path,
-          conversation.opencode_session_id,
-          CONVERTED_CHAT_SESSION_PERMISSIONS,
-        );
+        const priorSessionPermissions = session.permission ? [...session.permission] : [];
         try {
+          await options.opencodeService.updateSessionPermissions(
+            agent.workspace_path,
+            conversation.opencode_session_id,
+            CONVERTED_CHAT_SESSION_PERMISSIONS,
+          );
           options.db.transaction((tx) => {
             const run = tx
               .select({ status: task_runs.status })
@@ -527,13 +528,11 @@ export function createConversationService(options: {
               .run();
           });
         } catch (error) {
-          if (session.permission) {
-            await options.opencodeService.updateSessionPermissions(
-              agent.workspace_path,
-              conversation.opencode_session_id,
-              session.permission,
-            );
-          }
+          await options.opencodeService.updateSessionPermissions(
+            agent.workspace_path,
+            conversation.opencode_session_id,
+            priorSessionPermissions,
+          );
           throw error;
         }
 

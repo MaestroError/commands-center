@@ -85,7 +85,6 @@ export function createTaskReplyFlow(ctx: TaskReplyFlowContext) {
       throw new NotFoundError("Task run session not found.");
     }
 
-    const resumed = await reactivateRunForReply(run);
     const inspection = await options.conversationService.inspectTaskRunConversation(
       run.taskId,
       run.id,
@@ -96,6 +95,7 @@ export function createTaskReplyFlow(ctx: TaskReplyFlowContext) {
       throw new NotFoundError("Task run session not found.");
     }
 
+    const resumed = await reactivateRunForReply(run);
     const followup = await options.taskService.insertFollowup(resumed, input);
 
     // Once the prompt has reached OpenCode the reply is in flight; a failure in
