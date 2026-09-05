@@ -286,6 +286,7 @@ function TaskBoardCard(props: {
           activeRunPath={activeRunPath}
           boardStatus={boardStatus}
           currentSearch={props.currentSearch}
+          latestRunConverted={Boolean(task.latestRunConversation?.convertedAt)}
           latestRunPath={latestRunPath}
           onAccept={props.onAccept}
           onArchive={props.onArchive}
@@ -511,6 +512,7 @@ function TaskCardActions(props: {
   activeRun?: TaskRun;
   activeRunPath?: string;
   latestRunPath?: string;
+  latestRunConverted: boolean;
   onAccept: () => void;
   onArchive: () => void;
   onCancelRun: (run: TaskRun) => void;
@@ -579,8 +581,13 @@ function TaskCardActions(props: {
     return (
       <>
         <TaskCardIconButton
+          description={
+            props.latestRunConverted
+              ? "Starts from the task definition and context in a separate run; the continued chat stays unchanged."
+              : undefined
+          }
           icon={RotateCcw}
-          label="Rerun"
+          label={props.latestRunConverted ? "Start new run" : "Rerun"}
           onClick={props.onQueue}
           variant="warning"
         />
@@ -607,8 +614,13 @@ function TaskCardActions(props: {
           variant="success"
         />
         <TaskCardIconButton
+          description={
+            props.latestRunConverted
+              ? "Starts from the task definition and context in a separate run; the continued chat stays unchanged."
+              : undefined
+          }
           icon={RotateCcw}
-          label="Rerun"
+          label={props.latestRunConverted ? "Start new run" : "Rerun"}
           onClick={props.onQueue}
           variant="warning"
         />
@@ -680,6 +692,7 @@ export function TaskCardIconButton(props: {
   testId?: string;
   variant?: TaskCardIconActionVariant;
   disabled?: boolean;
+  description?: string;
 }) {
   const Icon = props.icon;
 
@@ -697,7 +710,7 @@ export function TaskCardIconButton(props: {
           <Icon aria-hidden="true" className="h-4 w-4" />
         </button>
       </TooltipTrigger>
-      <TooltipContent>{props.label}</TooltipContent>
+      <TooltipContent>{props.description ?? props.label}</TooltipContent>
     </Tooltip>
   );
 }

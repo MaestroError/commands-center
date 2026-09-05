@@ -41,6 +41,9 @@ export function RunHistory(props: {
   error: unknown;
 }) {
   const [openReplyRunId, setOpenReplyRunId] = useState<string>();
+  const [openChatError, setOpenChatError] = useState<string>();
+  const navigate = useNavigate();
+  const mutations = useTaskMutations();
 
   return (
     <section className="cc-panel min-w-0 p-5">
@@ -55,6 +58,9 @@ export function RunHistory(props: {
       {props.isLoading ? <LoadingState testId="task-runs-loading" /> : null}
       {props.error ? (
         <ErrorState description={readError(props.error)} title="Runs could not be loaded." />
+      ) : null}
+      {openChatError ? (
+        <ErrorState description={openChatError} title="Chat could not be opened." />
       ) : null}
       {!props.isLoading && props.runs.length === 0 ? (
         <EmptyState
@@ -103,7 +109,11 @@ export function RunHistory(props: {
                     <td className="py-3 pr-3 text-text-secondary">{formatRunDuration(run)}</td>
                     <td className="py-3 pr-3 text-text-secondary">{run.artifacts.length}</td>
                     <td className="py-3 pr-3 text-text-secondary">
-                      {run.opencodeSessionId ? "Recorded" : "Unavailable"}
+                      {run.conversation?.convertedAt
+                        ? "Continued in chat"
+                        : run.opencodeSessionId
+                          ? "Recorded"
+                          : "Unavailable"}
                     </td>
                     <td className="max-w-sm truncate py-3 pr-3 text-text-secondary">
                       {run.finalMessage ?? run.errorMessage ?? "No summary"}
@@ -117,24 +127,40 @@ export function RunHistory(props: {
                         >
                           Inspect
                         </Link>
-                        <Button
-                          variant="secondary"
-                          data-testid={`task-run-reply-${run.id}`}
-                          disabled={!run.opencodeSessionId}
-                          onClick={() =>
-                            setOpenReplyRunId((current) =>
-                              current === run.id ? undefined : run.id,
-                            )
-                          }
-                          title={
-                            run.opencodeSessionId
-                              ? undefined
-                              : "Replies require a recorded OpenCode session."
-                          }
-                          type="button"
-                        >
-                          Reply
-                        </Button>
+                        {run.conversation?.convertedAt ? (
+                          <Button
+                            variant="secondary"
+                            data-testid={`task-run-open-chat-${run.id}`}
+                            disabled={
+                              !props.agents?.some(
+                                (agent) => agent.id === run.agentId && Boolean(agent.slug),
+                              ) || mutations.openInChat.isPending
+                            }
+                            onClick={() => void openRunChat(run)}
+                            type="button"
+                          >
+                            {mutations.openInChat.isPending ? "Opening..." : "Open chat"}
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="secondary"
+                            data-testid={`task-run-reply-${run.id}`}
+                            disabled={!run.opencodeSessionId}
+                            onClick={() =>
+                              setOpenReplyRunId((current) =>
+                                current === run.id ? undefined : run.id,
+                              )
+                            }
+                            title={
+                              run.opencodeSessionId
+                                ? undefined
+                                : "Replies require a recorded OpenCode session."
+                            }
+                            type="button"
+                          >
+                            Reply
+                          </Button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -157,6 +183,24 @@ export function RunHistory(props: {
       ) : null}
     </section>
   );
+
+  async function openRunChat(run: TaskRun): Promise<void> {
+    const agentSlug = props.agents?.find((entry) => entry.id === run.agentId)?.slug;
+    if (!agentSlug) return;
+
+    setOpenChatError(undefined);
+    try {
+      const snapshot = await mutations.openInChat.mutateAsync({
+        taskId: props.taskId,
+        runId: run.id,
+      });
+      void navigate(
+        `/chat/${encodeURIComponent(agentSlug)}/${encodeURIComponent(snapshot.current.id)}`,
+      );
+    } catch (error) {
+      setOpenChatError(readError(error));
+    }
+  }
 }
 
 export function TaskRunDetail(props: {
@@ -171,10 +215,12 @@ export function TaskRunDetail(props: {
   const sessionQuery = useTaskRunSessionQuery(props.taskId, props.runId);
   const mutations = useTaskMutations();
   const [activeTabId, setActiveTabId] = useState<"session" | "details">("session");
+  const [openChatError, setOpenChatError] = useState<string>();
   const run = runQuery.data;
   const agentSlug = props.agents?.find(
     (entry) => entry.id === (run?.agentId ?? props.task?.agentId),
   )?.slug;
+  const convertedConversation = run?.conversation?.convertedAt;
 
   return (
     <div className="grid gap-4" data-testid="task-run-inspector">
@@ -191,9 +237,19 @@ export function TaskRunDetail(props: {
             >
               Back to task
             </Link>
-            {sessionQuery.data?.canOpenInChat && props.taskId && props.runId && agentSlug ? (
-              <Button onClick={() => void openInChat()} type="button">
-                Continue in chat
+            {(convertedConversation || sessionQuery.data?.canOpenInChat) &&
+            props.taskId &&
+            props.runId ? (
+              <Button
+                disabled={!agentSlug || mutations.openInChat.isPending}
+                onClick={() => void openInChat()}
+                type="button"
+              >
+                {mutations.openInChat.isPending
+                  ? "Opening..."
+                  : convertedConversation
+                    ? "Open chat"
+                    : "Continue in chat"}
               </Button>
             ) : null}
           </>
@@ -206,6 +262,9 @@ export function TaskRunDetail(props: {
       {runQuery.isLoading ? <LoadingState testId="task-run-loading" /> : null}
       {runQuery.error ? (
         <ErrorState description={readError(runQuery.error)} title="Run could not be loaded." />
+      ) : null}
+      {openChatError ? (
+        <ErrorState description={openChatError} title="Chat could not be opened." />
       ) : null}
       {run ? (
         <section className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(20rem,1fr)]">
@@ -250,11 +309,8 @@ export function TaskRunDetail(props: {
             <Metric label="Started" value={formatDate(run.startedAt)} />
             <Metric label="Completed" value={formatDate(run.completedAt)} />
             <Metric label="Session" value={run.opencodeSessionId ?? "No session"} />
-            {sessionQuery.data?.conversation?.convertedAt ? (
-              <Metric
-                label="Chat"
-                value={`Continued ${formatDate(sessionQuery.data.conversation.convertedAt)}`}
-              />
+            {convertedConversation ? (
+              <Metric label="Chat" value={`Continued ${formatDate(convertedConversation)}`} />
             ) : null}
             {run.errorMessage ? <TextBlock label="Error" value={run.errorMessage} /> : null}
             <JsonBlock label="Error details" value={run.errorDetails} />
@@ -264,15 +320,21 @@ export function TaskRunDetail(props: {
     </div>
   );
 
-  async function openInChat() {
+  async function openInChat(): Promise<void> {
     if (!props.taskId || !props.runId || !agentSlug) return;
-    const snapshot = await mutations.openInChat.mutateAsync({
-      taskId: props.taskId,
-      runId: props.runId,
-    });
-    void navigate(
-      `/chat/${encodeURIComponent(agentSlug)}/${encodeURIComponent(snapshot.current.id)}`,
-    );
+
+    setOpenChatError(undefined);
+    try {
+      const snapshot = await mutations.openInChat.mutateAsync({
+        taskId: props.taskId,
+        runId: props.runId,
+      });
+      void navigate(
+        `/chat/${encodeURIComponent(agentSlug)}/${encodeURIComponent(snapshot.current.id)}`,
+      );
+    } catch (error) {
+      setOpenChatError(readError(error));
+    }
   }
 }
 

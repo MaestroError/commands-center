@@ -21,6 +21,7 @@ import type {
   OpenCodeService,
   OpenCodeSession,
   OpenCodeSessionMessage,
+  OpenCodeSessionPermissionRule,
 } from "../../src/services/opencode-service";
 import { createTestDatabase } from "../helpers/db";
 
@@ -206,13 +207,13 @@ describe("task routes", () => {
         method: "GET",
         url: `/api/tasks/${task.id}/runs/${String(runId)}/session`,
       });
-      const openInChat = await server.inject({
-        method: "POST",
-        url: `/api/tasks/${task.id}/runs/${String(runId)}/open-in-chat`,
-      });
       await taskService.setRunStatus(String(runId), "completed", {
         completedAt: new Date().toISOString(),
         finalMessage: "Task completed by monitor.",
+      });
+      const openInChat = await server.inject({
+        method: "POST",
+        url: `/api/tasks/${task.id}/runs/${String(runId)}/open-in-chat`,
       });
       const activeRuns = await server.inject({ method: "GET", url: "/api/tasks/runs/active" });
       const accepted = await server.inject({ method: "POST", url: `/api/tasks/${task.id}/accept` });
@@ -220,7 +221,9 @@ describe("task routes", () => {
       expect(session.statusCode).toBe(200);
       expect(session.json().conversation.source).toBe("task_run");
       expect(openInChat.statusCode).toBe(200);
-      expect(openInChat.json().current.source).toBe("chat");
+      expect(openInChat.json().current.source).toBe("task_run");
+      expect(openInChat.json().current.convertedAt).toBeDefined();
+      expect(openInChat.json().current.isCurrent).toBe(true);
       expect(activeRuns.statusCode).toBe(200);
       expect(activeRuns.json()).toEqual([]);
       expect(accepted.statusCode).toBe(200);
@@ -592,6 +595,157 @@ describe("task routes", () => {
     }
   });
 
+  it("rejects a converted-run reply route before changing task or run state", async () => {
+    const harness = await createTaskRouteHarness();
+
+    try {
+      const { task, run } = await createTerminalRunFixture(harness, "Converted reply route");
+      const opened = await harness.server.inject({
+        method: "POST",
+        url: `/api/tasks/${task.id}/runs/${run.id}/open-in-chat`,
+      });
+      const taskBefore = await harness.taskService.get(task.id);
+      const response = await harness.server.inject({
+        method: "POST",
+        url: `/api/tasks/${task.id}/runs/${run.id}/followups`,
+        payload: { body: "Continue from the task panel." },
+      });
+
+      expect(opened.statusCode).toBe(200);
+      expect(response.statusCode).toBe(409);
+      expect(response.json().error.message).toBe(
+        "This task run was continued in chat. Open its chat to continue.",
+      );
+      expect((await harness.taskService.getRunById(run.id))?.status).toBe("completed");
+      expect((await harness.taskService.get(task.id))?.status).toBe(taskBefore?.status);
+      expect(await harness.taskService.listFollowups(run.id)).toEqual([]);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("serializes route conversion before a concurrent reply", async () => {
+    const harness = await createTaskRouteHarness();
+
+    try {
+      const { task, run } = await createTerminalRunFixture(harness, "Route conversion race");
+      const permissionUpdateStarted = createDeferred<void>();
+      const releasePermissionUpdate = createDeferred<void>();
+      const updateSessionPermissions = harness.opencodeService.updateSessionPermissions;
+      harness.opencodeService.updateSessionPermissions = vi.fn(
+        async (
+          directory: string,
+          sessionID: string,
+          permission: OpenCodeSessionPermissionRule[],
+        ) => {
+          permissionUpdateStarted.resolve();
+          await releasePermissionUpdate.promise;
+          return updateSessionPermissions(directory, sessionID, permission);
+        },
+      );
+
+      const conversion = harness.server.inject({
+        method: "POST",
+        url: `/api/tasks/${task.id}/runs/${run.id}/open-in-chat`,
+      });
+      await permissionUpdateStarted.promise;
+      const reply = harness.server.inject({
+        method: "POST",
+        url: `/api/tasks/${task.id}/runs/${run.id}/followups`,
+        payload: { body: "Continue from the task panel." },
+      });
+      await Promise.resolve();
+
+      expect((await harness.taskService.getRunById(run.id))?.status).toBe("completed");
+      expect(await harness.taskService.listFollowups(run.id)).toEqual([]);
+
+      releasePermissionUpdate.resolve();
+      const [conversionResponse, replyResponse] = await Promise.all([conversion, reply]);
+
+      expect(conversionResponse.statusCode).toBe(200);
+      expect(replyResponse.statusCode).toBe(409);
+      expect(replyResponse.json().error.message).toBe(
+        "This task run was continued in chat. Open its chat to continue.",
+      );
+      expect((await harness.taskService.getRunById(run.id))?.status).toBe("completed");
+      expect(await harness.taskService.listFollowups(run.id)).toEqual([]);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("rejects opening a running task run in chat", async () => {
+    const harness = await createTaskRouteHarness();
+
+    try {
+      const agent = await insertAgent(harness.testDb.client.db);
+      const task = await harness.taskService.create({ agentId: agent.id, title: "Running chat" });
+      const run = await harness.taskExecutionService.queue(task.id, { triggerSource: "manual" });
+      await expect
+        .poll(async () => (await harness.taskService.getRunById(run.id))?.status)
+        .toBe("running");
+
+      const response = await harness.server.inject({
+        method: "POST",
+        url: `/api/tasks/${task.id}/runs/${run.id}/open-in-chat`,
+      });
+
+      expect(response.statusCode).toBe(409);
+      expect(response.json().error.message).toBe("Only terminal task runs can continue in chat.");
+      expect((await harness.taskService.getRunById(run.id))?.status).toBe("running");
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it.each(["cancelled", "skipped"] as const)(
+    "opens a %s task run in chat when its session exists",
+    async (status) => {
+      const harness = await createTaskRouteHarness();
+
+      try {
+        const { task, run } = await createTerminalRunFixture(harness, `${status} chat`);
+        await harness.taskService.setRunStatus(run.id, status);
+
+        const response = await harness.server.inject({
+          method: "POST",
+          url: `/api/tasks/${task.id}/runs/${run.id}/open-in-chat`,
+        });
+
+        expect(response.statusCode).toBe(200);
+        expect(response.json().current.convertedAt).toBeDefined();
+        expect((await harness.taskService.getRunById(run.id))?.status).toBe(status);
+      } finally {
+        await harness.close();
+      }
+    },
+  );
+
+  it("rejects opening a run through a different task path", async () => {
+    const harness = await createTaskRouteHarness();
+
+    try {
+      const { task, run } = await createTerminalRunFixture(harness, "Owned run");
+      const otherTask = await harness.taskService.create({
+        agentId: task.agentId,
+        title: "Different task",
+      });
+
+      const response = await harness.server.inject({
+        method: "POST",
+        url: `/api/tasks/${otherTask.id}/runs/${run.id}/open-in-chat`,
+      });
+
+      expect(response.statusCode).toBe(404);
+      expect(response.json().error.message).toBe("Task run session not found.");
+      expect(
+        (await harness.taskService.getRunById(run.id))?.conversation?.convertedAt,
+      ).toBeUndefined();
+    } finally {
+      await harness.close();
+    }
+  });
+
   it("lists replies for the requested run", async () => {
     const harness = await createTaskRouteHarness();
 
@@ -787,6 +941,7 @@ async function createTaskRouteHarness() {
     secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
     scheduler: createSchedulerService({ delegate: taskSchedulerService }),
     taskService,
+    conversationService,
     taskExecutionService,
     taskSchedulerService,
   });
@@ -795,6 +950,7 @@ async function createTaskRouteHarness() {
     testDb,
     taskService,
     taskExecutionService,
+    opencodeService,
     server,
     close: async () => {
       taskSchedulerService.stop();
@@ -802,6 +958,17 @@ async function createTaskRouteHarness() {
       await testDb.cleanup();
     },
   };
+}
+
+function createDeferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T | PromiseLike<T>) => void;
+} {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((resolver) => {
+    resolve = resolver;
+  });
+  return { promise, resolve };
 }
 
 async function createTerminalRunFixture(
@@ -908,17 +1075,23 @@ function createMockOpenCodeService(): OpenCodeService {
     startOauth: vi.fn(),
     completeOauth: vi.fn(() => Promise.resolve(true)),
     disconnectProvider: vi.fn(() => Promise.resolve(true)),
-    createSession: vi.fn((_directory: string, sessionOptions?: { title?: string }) => {
-      sessionCount += 1;
-      const session: OpenCodeSession = {
-        id: `session-${String(sessionCount)}`,
-        title: sessionOptions?.title,
-        time: { created: nextTime(), updated: nextTime() },
-      };
-      sessions.set(session.id, session);
-      messages.set(session.id, []);
-      return Promise.resolve(session);
-    }),
+    createSession: vi.fn(
+      (
+        _directory: string,
+        sessionOptions?: { title?: string; permission?: OpenCodeSessionPermissionRule[] },
+      ) => {
+        sessionCount += 1;
+        const session: OpenCodeSession = {
+          id: `session-${String(sessionCount)}`,
+          title: sessionOptions?.title,
+          permission: sessionOptions?.permission,
+          time: { created: nextTime(), updated: nextTime() },
+        };
+        sessions.set(session.id, session);
+        messages.set(session.id, []);
+        return Promise.resolve(session);
+      },
+    ),
     getSession: vi.fn((_directory: string, sessionID: string) => {
       const session = sessions.get(sessionID);
 
@@ -928,6 +1101,18 @@ function createMockOpenCodeService(): OpenCodeService {
 
       return Promise.resolve(session);
     }),
+    updateSessionPermissions: vi.fn(
+      (_directory: string, sessionID: string, permission: OpenCodeSessionPermissionRule[]) => {
+        const session = sessions.get(sessionID);
+
+        if (!session) {
+          throw new Error("Session not found.");
+        }
+
+        session.permission = permission;
+        return Promise.resolve(session);
+      },
+    ),
     listSessionMessages: vi.fn((_directory: string, sessionID: string) =>
       Promise.resolve(messages.get(sessionID) ?? []),
     ),

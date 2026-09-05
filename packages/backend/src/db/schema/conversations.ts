@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 import { agents } from "./agents.js";
@@ -28,7 +29,9 @@ export const conversations = sqliteTable(
     uniqueIndex("conversations_opencode_session_id_unique").on(table.opencode_session_id),
     uniqueIndex("conversations_task_run_id_unique").on(table.task_run_id),
     index("conversations_agent_id_idx").on(table.agent_id),
-    index("conversations_agent_current_idx").on(table.agent_id, table.is_current),
+    uniqueIndex("conversations_agent_current_idx")
+      .on(table.agent_id)
+      .where(sql`${table.is_current} = true`),
     index("conversations_agent_source_idx").on(table.agent_id, table.source),
     index("conversations_task_id_idx").on(table.task_id),
   ],

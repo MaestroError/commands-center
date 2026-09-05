@@ -93,14 +93,16 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
   const activityService =
     context.activityService ??
     createActivityService({ db: context.database.db, logger: context.logger });
-  const conversationService = createConversationService({
-    db: context.database.db,
-    config: context.config,
-    opencodeService: context.opencodeService,
-    logger: context.logger,
-    archiveService: context.sessionArchiveService,
-    archiveSettingsService: context.sessionArchiveSettingsService,
-  });
+  const conversationService =
+    context.conversationService ??
+    createConversationService({
+      db: context.database.db,
+      config: context.config,
+      opencodeService: context.opencodeService,
+      logger: context.logger,
+      archiveService: context.sessionArchiveService,
+      archiveSettingsService: context.sessionArchiveSettingsService,
+    });
   const taskContextAttachmentService = createTaskContextAttachmentService({
     config: context.config,
     taskService: service,

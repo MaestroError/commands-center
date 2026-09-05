@@ -212,11 +212,17 @@ function TaskOverview(props: {
                 Duplicate
               </Button>
               <Button onClick={() => mutations.trigger.mutate({ id: task.id })} type="button">
-                Run now
+                {task.latestRunConversation?.convertedAt ? "Start new run" : "Run now"}
               </Button>
             </div>
           ) : null}
         </div>
+        {task?.latestRunConversation?.convertedAt ? (
+          <p className="mt-3 text-sm text-text-secondary">
+            Starts from the task definition and context in a separate run. The continued chat stays
+            unchanged.
+          </p>
+        ) : null}
       </section>
 
       {props.isLoading ? <LoadingState testId="task-detail-loading" /> : null}

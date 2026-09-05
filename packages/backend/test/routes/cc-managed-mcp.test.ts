@@ -1808,6 +1808,88 @@ describe("cc-managed MCP routes", () => {
     }
   });
 
+  it("accepts add_task_artifact from the current converted chat", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+      taskService,
+      taskExecutionService: createTaskExecutionService({ taskService }),
+    });
+
+    try {
+      const agent = await insertAgentWithTasksManagement(testDb.client.db);
+      const authHeader = await issueAuthHeader(testDb.config, agent.slug, "cc_default", "chat");
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Converted artifact task",
+      });
+      const run = await taskService.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        status: "completed",
+        triggerSource: "manual",
+        renderedPrompt: "Create a report.",
+      });
+      await insertConversation(testDb.client.db, {
+        id: `conv-${run.id}`,
+        agentId: agent.id,
+        source: "task_run",
+        taskId: task.id,
+        taskRunId: run.id,
+        isCurrent: true,
+        convertedAt: new Date(),
+      });
+
+      const response = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default",
+        authHeader,
+        "tools/call",
+        {
+          name: "add_task_artifact",
+          arguments: {
+            taskRunId: run.id,
+            artifact: {
+              title: "Converted report",
+              type: "file",
+              link: ".cc/artifacts/converted.md",
+            },
+          },
+        },
+        24,
+      );
+
+      expect(parseSseJson(response.body)).toMatchObject({
+        result: {
+          structuredContent: {
+            runId: run.id,
+            status: "completed",
+            artifacts: [
+              {
+                title: "Converted report",
+                type: "file",
+                link: ".cc/artifacts/converted.md",
+              },
+            ],
+          },
+        },
+      });
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
   it("returns meaningful cc_default tool errors without output schema failures", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
@@ -4716,6 +4798,8 @@ async function insertConversation(
     taskRunId?: string;
     title?: string;
     updatedAt?: Date;
+    isCurrent?: boolean;
+    convertedAt?: Date;
   },
 ) {
   const timestamp = input.updatedAt ?? new Date();
@@ -4726,12 +4810,12 @@ async function insertConversation(
     title: input.title ?? null,
     status: "active",
     source: input.source ?? "chat",
-    is_current: false,
+    is_current: input.isCurrent ?? false,
     task_id: input.taskId ?? null,
     task_run_id: input.taskRunId ?? null,
     created_at: timestamp,
     updated_at: timestamp,
-    converted_at: null,
+    converted_at: input.convertedAt ?? null,
   });
 }
 

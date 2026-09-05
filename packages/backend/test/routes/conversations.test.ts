@@ -457,7 +457,12 @@ function createOrchestrator(): OpenCodeOrchestrator {
 function createMockOpenCodeService(): OpenCodeService {
   const sessions = new Map<
     string,
-    { id: string; title?: string; time: { created: number; updated: number } }
+    {
+      id: string;
+      title?: string;
+      permission?: Parameters<OpenCodeService["updateSessionPermissions"]>[2];
+      time: { created: number; updated: number };
+    }
   >();
   const messages = new Map<string, OpenCodeSessionMessage[]>();
   let sessionCount = 0;
@@ -472,6 +477,7 @@ function createMockOpenCodeService(): OpenCodeService {
       const session = {
         id: `ses-${String(sessionCount)}`,
         title: sessionOptions?.title,
+        permission: sessionOptions?.permission,
         time: { created: nextTime(), updated: nextTime() },
       };
       sessions.set(session.id, session);
@@ -480,6 +486,11 @@ function createMockOpenCodeService(): OpenCodeService {
       return Promise.resolve(session);
     },
     getSession: (_directory, sessionID) => Promise.resolve(mustSession(sessionID)),
+    updateSessionPermissions: (_directory, sessionID, permission) => {
+      const session = mustSession(sessionID);
+      session.permission = permission;
+      return Promise.resolve(session);
+    },
     listSessionMessages: (_directory, sessionID) => Promise.resolve(mustMessages(sessionID)),
     listPendingPermissions: () => Promise.resolve([]),
     listPendingQuestions: () => Promise.resolve([]),

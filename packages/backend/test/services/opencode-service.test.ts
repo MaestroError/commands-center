@@ -768,6 +768,29 @@ describe("opencode-service", () => {
       expect(messages).toHaveLength(1);
     });
 
+    it("replaces session permission rules", async () => {
+      const permission = [
+        { permission: "cc_default_add_task_artifact", pattern: "*", action: "allow" as const },
+      ];
+      fetchMock.mockResolvedValue(
+        jsonResponse(200, {
+          id: "sess-1",
+          permission,
+          time: { created: 1, updated: 2 },
+        }),
+      );
+      const service = makeService();
+
+      const session = await service.updateSessionPermissions("/work/a", "sess-1", permission);
+
+      expect(session.permission).toEqual(permission);
+      const url = fetchMock.mock.calls[0]?.[0] as URL;
+      const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+      expect(url.pathname).toBe("/session/sess-1");
+      expect(init.method).toBe("PATCH");
+      expect(JSON.parse(init.body as string)).toEqual({ permission });
+    });
+
     it("resolves direct and nested descendants from verified parent relationships", async () => {
       fetchMock
         .mockResolvedValueOnce(

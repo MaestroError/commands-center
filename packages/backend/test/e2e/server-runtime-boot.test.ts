@@ -135,6 +135,7 @@ describe("startServerRuntime boot", () => {
       expect(runtime.orchestrator).toBeDefined();
       expect(runtime.opencodeService).toBeDefined();
       expect(runtime.taskService).toBeDefined();
+      expect(runtime.conversationService).toBeDefined();
       expect(runtime.taskExecutionService).toBeDefined();
       expect(runtime.taskSchedulerService).toBeDefined();
       expect(runtime.systemVersionService).toBeDefined();

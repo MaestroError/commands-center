@@ -9,7 +9,10 @@ import {
 import { syncCcManagedMcpSpecialistWorkspaces } from "../mcp/cc-managed/workspace-sync-service.js";
 import { createOpenCodeClient } from "./opencode-client.js";
 import { createOpenCodeService, type OpenCodeService } from "../services/opencode-service.js";
-import { createConversationService } from "../services/conversation-service.js";
+import {
+  createConversationService,
+  type ConversationService,
+} from "../services/conversation-service.js";
 import {
   createInteractiveChatWatchdogService,
   type InteractiveChatWatchdogService,
@@ -129,6 +132,7 @@ export type RuntimeContext = {
   liveRequestService?: LiveRequestService;
   scheduler: SchedulerService;
   taskService?: TaskService;
+  conversationService?: ConversationService;
   taskExecutionService?: TaskExecutionService;
   taskSchedulerService?: TaskSchedulerService;
   systemVersionService?: SystemVersionService;
@@ -312,6 +316,7 @@ export async function startServerRuntime(
     liveRequestService,
     scheduler,
     taskService,
+    conversationService,
     taskExecutionService,
     taskSchedulerService,
     systemVersionService,

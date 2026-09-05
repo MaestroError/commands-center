@@ -484,11 +484,27 @@ export function useTaskMutations() {
     openInChat: useMutation({
       mutationFn: ({ taskId, runId }: { taskId: string; runId: string }) =>
         openTaskRunInChat(taskId, runId),
-      onSuccess: async (_snapshot, variables) => {
+      onSuccess: async (snapshot, variables) => {
+        queryClient.setQueryData(
+          queryKeys.conversationSnapshot(snapshot.current.agentId),
+          snapshot,
+        );
+        queryClient.setQueryData(
+          queryKeys.conversation(snapshot.current.agentId, snapshot.current.id),
+          snapshot.current,
+        );
         await Promise.all([
+          queryClient.invalidateQueries({ queryKey: queryKeys.task(variables.taskId) }),
           queryClient.invalidateQueries({ queryKey: queryKeys.taskRuns(variables.taskId) }),
           queryClient.invalidateQueries({
+            queryKey: queryKeys.taskRun(variables.taskId, variables.runId),
+          }),
+          queryClient.invalidateQueries({ queryKey: ["tasks"] }),
+          queryClient.invalidateQueries({
             queryKey: queryKeys.taskRunSession(variables.taskId, variables.runId),
+          }),
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.conversations(snapshot.current.agentId),
           }),
         ]);
       },

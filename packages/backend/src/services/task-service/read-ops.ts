@@ -30,6 +30,7 @@ import {
   mapTaskRunFollowup,
   mapTaskRunWithReplyState,
   mapTaskRunsWithReplyState,
+  mapTasksWithLatestRunConversation,
   mapTaskSubtask,
   mapTaskTemplate,
   mapTemplateAsTask,
@@ -73,13 +74,14 @@ export function createTaskReadOps(ctx: TaskServiceContext, service: TaskServiceR
         },
         orderBy: (table, operators) => [operators.desc(table.updated_at)],
       });
-      return taskListSchema.parse(rows.map(mapTask));
+      return taskListSchema.parse(await mapTasksWithLatestRunConversation(options.db, rows));
     },
 
     async get(id: string, getOptions?: { includeArchived?: boolean }): Promise<Task | undefined> {
       const row = await getTaskRow(id, getOptions);
       if (row) {
-        return mapTask(row);
+        const [task] = await mapTasksWithLatestRunConversation(options.db, [row]);
+        return task;
       }
 
       const template = await getTemplateRow(id, getOptions);

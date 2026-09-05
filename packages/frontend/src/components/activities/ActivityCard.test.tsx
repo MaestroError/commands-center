@@ -41,6 +41,7 @@ const task: Task = {
 
 vi.mock("@/hooks/use-tasks-query", () => ({
   useTaskQuery: (taskId?: string) => ({ data: taskId === "t1" ? task : undefined }),
+  useTaskRunQuery: () => ({ data: undefined, isLoading: false }),
   useTaskRunFollowupsQuery: () => ({ data: [] }),
   useTaskMutations: () => ({
     accept: { mutate: vi.fn(), isPending: false, isError: false },

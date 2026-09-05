@@ -4,7 +4,7 @@
 import type { AcceptedPromptEvidence, TaskExecutionServiceOptions } from "./context.js";
 import type { ConversationDetail, TaskContext, TaskRun, TaskRunFollowup } from "@cc/shared/schemas";
 import { and, eq, isNull } from "drizzle-orm";
-import { task_runs, tasks } from "../../db/schema/index.js";
+import { conversations, task_runs, tasks } from "../../db/schema/index.js";
 import { BadRequestError, ConflictError, NotFoundError } from "../../lib/api-error.js";
 import type { ConversationService, TaskRunPromptStart } from "../conversation-service.js";
 import type { TaskRunMonitorConfig } from "../task-run-monitor-service.js";
@@ -59,12 +59,30 @@ export function createTaskReplyFlow(ctx: TaskReplyFlowContext) {
       throw new ConflictError("Cannot send a reply while the run is in progress.");
     }
 
+    const conversationState = await options.db.query.conversations.findFirst({
+      where: (table, operators) =>
+        operators.and(
+          operators.eq(table.task_id, run.taskId),
+          operators.eq(table.task_run_id, run.id),
+          operators.eq(table.status, "active"),
+        ),
+      columns: { id: true, converted_at: true },
+    });
+
+    if (conversationState?.converted_at) {
+      throw new ConflictError("This task run was continued in chat. Open its chat to continue.");
+    }
+
     if (!run.opencodeSessionId) {
       throw new ConflictError("Task run does not have an OpenCode session.");
     }
 
     if (run.status !== "completed" && run.status !== "failed" && run.status !== "error") {
       throw new BadRequestError("Only completed, failed, or error task runs can receive a reply.");
+    }
+
+    if (!conversationState) {
+      throw new NotFoundError("Task run session not found.");
     }
 
     const inspection = await options.conversationService.inspectTaskRunConversation(
@@ -169,24 +187,51 @@ export function createTaskReplyFlow(ctx: TaskReplyFlowContext) {
 
     const timestamp = new Date();
     try {
-      options.db
-        .update(task_runs)
-        .set({
-          status: "running",
-          outcome: null,
-          needs_human_review: false,
-          human_review_reason: null,
-          review_question_json: null,
-          error_message: null,
-          error_details_json: null,
-          completed_at: null,
-          cancelled_at: null,
-          cancellation_reason: null,
-          started_at: timestamp,
-          updated_at: timestamp,
-        })
-        .where(eq(task_runs.id, run.id))
-        .run();
+      options.db.transaction((tx) => {
+        const conversationState = tx
+          .select({ convertedAt: conversations.converted_at })
+          .from(conversations)
+          .where(
+            and(
+              eq(conversations.task_id, run.taskId),
+              eq(conversations.task_run_id, run.id),
+              eq(conversations.status, "active"),
+            ),
+          )
+          .get();
+
+        if (conversationState?.convertedAt) {
+          throw new ConflictError(
+            "This task run was continued in chat. Open its chat to continue.",
+          );
+        }
+
+        tx.update(task_runs)
+          .set({
+            status: "running",
+            outcome: null,
+            needs_human_review: false,
+            human_review_reason: null,
+            review_question_json: null,
+            error_message: null,
+            error_details_json: null,
+            completed_at: null,
+            cancelled_at: null,
+            cancellation_reason: null,
+            started_at: timestamp,
+            updated_at: timestamp,
+          })
+          .where(eq(task_runs.id, run.id))
+          .run();
+
+        tx.update(tasks)
+          .set({
+            status: "queued",
+            updated_at: timestamp,
+          })
+          .where(and(eq(tasks.id, run.taskId), isNull(tasks.deleted_at)))
+          .run();
+      });
     } catch (error) {
       if (isRunningAgentConstraintError(error)) {
         const running = await options.taskService.getRunningRunForAgent(run.agentId);
@@ -198,15 +243,6 @@ export function createTaskReplyFlow(ctx: TaskReplyFlowContext) {
 
       throw error;
     }
-
-    options.db
-      .update(tasks)
-      .set({
-        status: "queued",
-        updated_at: timestamp,
-      })
-      .where(and(eq(tasks.id, run.taskId), isNull(tasks.deleted_at)))
-      .run();
 
     const resumed = await options.taskService.getRunById(run.id);
 

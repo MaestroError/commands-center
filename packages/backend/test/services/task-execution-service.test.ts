@@ -22,6 +22,7 @@ import type {
   OpenCodePendingQuestion,
   OpenCodeSession,
   OpenCodeSessionMessage,
+  OpenCodeSessionPermissionRule,
   OpenCodeSessionStatus,
 } from "../../src/services/opencode-service";
 import { createTestDatabase } from "../helpers/db";
@@ -478,6 +479,59 @@ describe("createTaskExecutionService", () => {
     }
   });
 
+  it("preserves task-run state when reply inspection fails", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService(),
+    });
+    const executionService = createTaskExecutionService({
+      db: testDb.client.db,
+      taskService,
+      conversationService,
+      monitor: { autoStart: false },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Failed reply inspection",
+      });
+      const run = await taskService.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        status: "completed",
+        triggerSource: "manual",
+        opencodeSessionId: "session-1",
+        renderedPrompt: "Initial run.",
+        completedAt: "2026-06-01T12:00:00.000Z",
+      });
+      await conversationService.createTaskRunConversation({
+        agentId: agent.id,
+        taskId: task.id,
+        taskRunId: run.id,
+        title: "Task: Failed reply inspection",
+      });
+      const taskBefore = await taskService.get(task.id);
+      vi.spyOn(conversationService, "inspectTaskRunConversation").mockRejectedValue(
+        new Error("Specialist not found."),
+      );
+
+      await expect(
+        executionService.sendRunReply(run.id, { body: "Continue this run." }),
+      ).rejects.toThrow("Specialist not found.");
+
+      expect((await taskService.getRunById(run.id))?.status).toBe("completed");
+      expect((await taskService.get(task.id))?.status).toBe(taskBefore?.status);
+      expect(await taskService.listFollowups(run.id)).toEqual([]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("times out a reply continuation from its reactivation timestamp", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
@@ -718,6 +772,162 @@ describe("createTaskExecutionService", () => {
       expect(refreshed?.status).toBe("completed");
       expect(followups).toEqual([]);
       expect(prompts).toEqual([]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it.each([
+    { status: "completed", recordSession: true },
+    { status: "cancelled", recordSession: true },
+    { status: "skipped", recordSession: false },
+  ] as const)(
+    "rejects converted $status-run replies before changing task-run state or syncing the conversation",
+    async ({ status, recordSession }) => {
+      const testDb = await createTestDatabase();
+      const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+      const opencodeService = createMockOpenCodeService();
+      const conversationService = createConversationService({
+        db: testDb.client.db,
+        config: testDb.config,
+        opencodeService,
+      });
+      const executionService = createTaskExecutionService({
+        db: testDb.client.db,
+        taskService,
+        conversationService,
+        monitor: { autoStart: false },
+      });
+
+      try {
+        const agent = await insertAgent(testDb.client.db);
+        const task = await taskService.create({ agentId: agent.id, title: "Converted reply" });
+        const run = await taskService.createRun({
+          taskId: task.id,
+          agentId: agent.id,
+          status: "running",
+          triggerSource: "manual",
+          renderedPrompt: "Initial run.",
+        });
+        const conversation = await conversationService.createTaskRunConversation({
+          agentId: agent.id,
+          taskId: task.id,
+          taskRunId: run.id,
+          title: "Task: Converted reply",
+        });
+        if (recordSession) {
+          await taskService.updateRun(run.id, {
+            opencodeSessionId: conversation.opencodeSessionId,
+          });
+        }
+        await taskService.setRunStatus(run.id, status, {
+          completedAt: "2026-06-01T12:00:00.000Z",
+        });
+        await conversationService.openTaskRunConversationInChat(task.id, run.id);
+        const taskBefore = await taskService.get(task.id);
+
+        const getSession = vi.fn(opencodeService.getSession);
+        const listSessionMessages = vi.fn(opencodeService.listSessionMessages);
+        const promptSessionAsync = vi.fn(opencodeService.promptSessionAsync);
+        opencodeService.getSession = getSession;
+        opencodeService.listSessionMessages = listSessionMessages;
+        opencodeService.promptSessionAsync = promptSessionAsync;
+
+        await expect(
+          executionService.sendRunReply(run.id, { body: "Continue this run." }),
+        ).rejects.toMatchObject({
+          code: "conflict",
+          statusCode: 409,
+          message: "This task run was continued in chat. Open its chat to continue.",
+        });
+
+        expect((await taskService.getRunById(run.id))?.status).toBe(status);
+        expect((await taskService.get(task.id))?.status).toBe(taskBefore?.status);
+        expect(await taskService.listFollowups(run.id)).toEqual([]);
+        expect(getSession).not.toHaveBeenCalled();
+        expect(listSessionMessages).not.toHaveBeenCalled();
+        expect(promptSessionAsync).not.toHaveBeenCalled();
+      } finally {
+        await testDb.cleanup();
+      }
+    },
+  );
+
+  it("serializes conversion permission changes before a concurrent reply", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const opencodeService = createMockOpenCodeService();
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({
+      db: testDb.client.db,
+      taskService,
+      conversationService,
+      monitor: { autoStart: false },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Conversion race" });
+      const run = await taskService.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        status: "running",
+        triggerSource: "manual",
+        renderedPrompt: "Initial run.",
+      });
+      const conversation = await conversationService.createTaskRunConversation({
+        agentId: agent.id,
+        taskId: task.id,
+        taskRunId: run.id,
+        title: "Task: Conversion race",
+      });
+      await taskService.updateRun(run.id, { opencodeSessionId: conversation.opencodeSessionId });
+      await taskService.setRunStatus(run.id, "completed", {
+        completedAt: "2026-06-01T12:00:00.000Z",
+      });
+      const sessionDirectory = vi.mocked(opencodeService.createSession).mock.calls.at(-1)?.[0];
+      expect(sessionDirectory).toBeDefined();
+      expect(
+        (await opencodeService.getSession(sessionDirectory ?? "", conversation.opencodeSessionId))
+          .permission,
+      ).toBeUndefined();
+      const permissionUpdateStarted = createDeferred<void>();
+      const releasePermissionUpdate = createDeferred<void>();
+      const updateSessionPermissions = opencodeService.updateSessionPermissions;
+      opencodeService.updateSessionPermissions = vi.fn(
+        async (
+          directory: string,
+          sessionID: string,
+          permission: OpenCodeSessionPermissionRule[],
+        ) => {
+          permissionUpdateStarted.resolve();
+          await releasePermissionUpdate.promise;
+          return updateSessionPermissions(directory, sessionID, permission);
+        },
+      );
+
+      const conversion = conversationService.openTaskRunConversationInChat(task.id, run.id);
+      await permissionUpdateStarted.promise;
+      const reply = executionService.sendRunReply(run.id, { body: "Continue this run." });
+      await Promise.resolve();
+
+      expect((await taskService.getRunById(run.id))?.status).toBe("completed");
+      expect(await taskService.listFollowups(run.id)).toEqual([]);
+
+      releasePermissionUpdate.resolve();
+      await conversion;
+      await expect(reply).rejects.toMatchObject({
+        code: "conflict",
+        statusCode: 409,
+        message: "This task run was continued in chat. Open its chat to continue.",
+      });
+
+      expect((await taskService.getRunById(run.id))?.status).toBe("completed");
+      expect(await taskService.listFollowups(run.id)).toEqual([]);
     } finally {
       await testDb.cleanup();
     }
@@ -1642,7 +1852,16 @@ describe("createTaskExecutionService", () => {
       config: testDb.config,
       opencodeService,
     });
-    const executionService = createTaskExecutionService({ taskService, conversationService });
+    const taskPermissionService = createTaskPermissionService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      taskPermissionService,
+    });
 
     try {
       const agent = await insertAgent(testDb.client.db);
@@ -1654,16 +1873,312 @@ describe("createTaskExecutionService", () => {
       const run = await executionService.trigger(task.id, { triggerSource: "manual" });
       await expectRunStatus(taskService, run.id, "running");
       await expectTaskRunInspectionMessageCount(conversationService, task.id, run.id, 1);
+      const runningRun = await taskService.getRunById(run.id);
+      const taskSessionDirectory = vi.mocked(opencodeService.createSession).mock.calls[0]?.[0];
+      expect(taskSessionDirectory).toBeDefined();
+      const taskSession = await opencodeService.getSession(
+        taskSessionDirectory ?? "",
+        runningRun?.opencodeSessionId ?? "",
+      );
+      expect(taskSession.permission).toContainEqual({
+        permission: "cc_default_add_artifact",
+        pattern: "*",
+        action: "deny",
+      });
+      await taskService.setRunStatus(run.id, "completed", {
+        completedAt: "2026-06-01T12:00:00.000Z",
+      });
+      const taskBefore = await taskService.get(task.id);
       const opened = await conversationService.openTaskRunConversationInChat(task.id, run.id);
       const inspection = await conversationService.inspectTaskRunConversation(task.id, run.id);
       const conversations = await conversationService.list(agent.id);
+      const current = await conversationService.resolveCurrent(agent.id);
+      const runAfter = await taskService.getRunById(run.id);
 
       expect(opened.current.id).toBe(inspection.conversation?.id);
       expect(inspection.canOpenInChat).toBe(true);
-      expect(inspection.conversation?.source).toBe("chat");
+      expect(inspection.conversation?.source).toBe("task_run");
+      expect(inspection.conversation?.convertedAt).toBeDefined();
       expect(inspection.conversation?.messages).toHaveLength(1);
       expect(conversations).toHaveLength(1);
       expect(conversations[0]?.taskRunId).toBe(run.id);
+      expect(current.current.id).toBe(opened.current.id);
+      expect(runAfter?.status).toBe("completed");
+      expect(
+        (
+          await opencodeService.getSession(
+            taskSessionDirectory ?? "",
+            inspection.conversation?.opencodeSessionId ?? "",
+          )
+        ).permission,
+      ).toEqual([
+        { permission: "cc_default_add_task_artifact", pattern: "*", action: "allow" },
+        { permission: "cc_default_set_task_result", pattern: "*", action: "deny" },
+        { permission: "cc_default_mark_needs_human_review", pattern: "*", action: "deny" },
+      ]);
+      expect(opencodeService.updateSessionPermissions).toHaveBeenCalledWith(
+        expect.any(String),
+        inspection.conversation?.opencodeSessionId,
+        [
+          { permission: "cc_default_add_task_artifact", pattern: "*", action: "allow" },
+          { permission: "cc_default_set_task_result", pattern: "*", action: "deny" },
+          { permission: "cc_default_mark_needs_human_review", pattern: "*", action: "deny" },
+        ],
+      );
+      expect(await taskService.get(task.id)).toMatchObject({
+        status: taskBefore?.status,
+        latestRunConversation: {
+          id: opened.current.id,
+          source: "task_run",
+          isCurrent: true,
+        },
+      });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("clears applied session permissions when conversion permission update fails", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const opencodeService = createMockOpenCodeService();
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Failed permission update",
+      });
+      const run = await taskService.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        status: "completed",
+        triggerSource: "manual",
+        renderedPrompt: "Initial run.",
+        completedAt: "2026-06-01T12:00:00.000Z",
+      });
+      const conversation = await conversationService.createTaskRunConversation({
+        agentId: agent.id,
+        taskId: task.id,
+        taskRunId: run.id,
+        title: "Task: Failed permission update",
+      });
+      const directory = vi.mocked(opencodeService.createSession).mock.calls.at(-1)?.[0] ?? "";
+      const updateSessionPermissions = opencodeService.updateSessionPermissions;
+      let updateCount = 0;
+      opencodeService.updateSessionPermissions = vi.fn(
+        async (
+          directory: string,
+          sessionID: string,
+          permission: OpenCodeSessionPermissionRule[],
+        ) => {
+          updateCount += 1;
+          const session = await updateSessionPermissions(directory, sessionID, permission);
+          if (updateCount === 1) {
+            throw new Error("Permission response failed.");
+          }
+          return session;
+        },
+      );
+
+      await expect(
+        conversationService.openTaskRunConversationInChat(task.id, run.id),
+      ).rejects.toThrow("Permission response failed.");
+
+      expect(
+        (await opencodeService.getSession(directory, conversation.opencodeSessionId)).permission,
+      ).toEqual([]);
+      expect(
+        (await conversationService.inspectTaskRunConversation(task.id, run.id)).conversation
+          ?.convertedAt,
+      ).toBeUndefined();
+      expect(opencodeService.updateSessionPermissions).toHaveBeenCalledTimes(2);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("keeps uncertain permission rollback from reactivating the task run", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const opencodeService = createMockOpenCodeService();
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({
+      db: testDb.client.db,
+      taskService,
+      conversationService,
+      monitor: { autoStart: false },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Uncertain conversion" });
+      const run = await taskService.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        status: "completed",
+        triggerSource: "manual",
+        renderedPrompt: "Initial run.",
+        completedAt: "2026-06-01T12:00:00.000Z",
+      });
+      const conversation = await conversationService.createTaskRunConversation({
+        agentId: agent.id,
+        taskId: task.id,
+        taskRunId: run.id,
+        title: "Task: Uncertain conversion",
+      });
+      await taskService.updateRun(run.id, { opencodeSessionId: conversation.opencodeSessionId });
+      const updateSessionPermissions = opencodeService.updateSessionPermissions;
+      let updateCount = 0;
+      opencodeService.updateSessionPermissions = vi.fn(
+        async (
+          directory: string,
+          sessionID: string,
+          permission: OpenCodeSessionPermissionRule[],
+        ) => {
+          updateCount += 1;
+          if (updateCount === 1) {
+            await updateSessionPermissions(directory, sessionID, permission);
+            throw new Error("Permission response failed.");
+          }
+          throw new Error("Permission rollback failed.");
+        },
+      );
+
+      await expect(
+        conversationService.openTaskRunConversationInChat(task.id, run.id),
+      ).rejects.toThrow("Permission response failed.");
+      await expect(
+        executionService.sendRunReply(run.id, { body: "Continue this run." }),
+      ).rejects.toMatchObject({
+        code: "conflict",
+        statusCode: 409,
+        message: "This task run was continued in chat. Open its chat to continue.",
+      });
+
+      expect((await taskService.getRunById(run.id))?.status).toBe("completed");
+      expect(await taskService.listFollowups(run.id)).toEqual([]);
+      expect(
+        (await conversationService.inspectTaskRunConversation(task.id, run.id)).conversation
+          ?.convertedAt,
+      ).toBeDefined();
+      expect(opencodeService.updateSessionPermissions).toHaveBeenCalledTimes(2);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("restores explicit session permissions when conversion revalidation fails", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const opencodeService = createMockOpenCodeService();
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const originalPermissions = [
+      { permission: "read", pattern: "*", action: "allow" },
+    ] satisfies OpenCodeSessionPermissionRule[];
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Failed conversion" });
+      const run = await taskService.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        status: "completed",
+        triggerSource: "manual",
+        renderedPrompt: "Initial run.",
+        completedAt: "2026-06-01T12:00:00.000Z",
+      });
+      const conversation = await conversationService.createTaskRunConversation({
+        agentId: agent.id,
+        taskId: task.id,
+        taskRunId: run.id,
+        title: "Task: Failed conversion",
+        permission: originalPermissions,
+      });
+      const directory = vi.mocked(opencodeService.createSession).mock.calls.at(-1)?.[0] ?? "";
+      const updateSessionPermissions = opencodeService.updateSessionPermissions;
+      let updateCount = 0;
+      opencodeService.updateSessionPermissions = vi.fn(
+        async (
+          directory: string,
+          sessionID: string,
+          permission: OpenCodeSessionPermissionRule[],
+        ) => {
+          updateCount += 1;
+          const session = await updateSessionPermissions(directory, sessionID, permission);
+          if (updateCount === 1) {
+            await taskService.updateRun(run.id, { status: "running", completedAt: undefined });
+          }
+          return session;
+        },
+      );
+
+      await expect(
+        conversationService.openTaskRunConversationInChat(task.id, run.id),
+      ).rejects.toThrow("Only terminal task runs can continue in chat.");
+
+      expect(
+        (await opencodeService.getSession(directory, conversation.opencodeSessionId)).permission,
+      ).toEqual(originalPermissions);
+      expect(
+        (await conversationService.inspectTaskRunConversation(task.id, run.id)).conversation
+          ?.convertedAt,
+      ).toBeUndefined();
+      expect(opencodeService.updateSessionPermissions).toHaveBeenCalledTimes(2);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("starts a new run without replacing the converted chat", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService(),
+    });
+    const executionService = createTaskExecutionService({ taskService, conversationService });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Reusable task" });
+      const firstRun = await executionService.trigger(task.id, { triggerSource: "manual" });
+      await expectRunStatus(taskService, firstRun.id, "running");
+      await taskService.setRunStatus(firstRun.id, "completed", {
+        completedAt: "2026-06-01T12:00:00.000Z",
+      });
+      const converted = await conversationService.openTaskRunConversationInChat(
+        task.id,
+        firstRun.id,
+      );
+
+      const secondRun = await executionService.trigger(task.id, { triggerSource: "manual" });
+      await expectRunStatus(taskService, secondRun.id, "running");
+      const secondInspection = await conversationService.inspectTaskRunConversation(
+        task.id,
+        secondRun.id,
+      );
+      const current = await conversationService.resolveCurrent(agent.id);
+
+      expect(secondRun.id).not.toBe(firstRun.id);
+      expect(secondInspection.conversation?.id).not.toBe(converted.current.id);
+      expect(secondInspection.conversation?.source).toBe("task_run");
+      expect(secondInspection.conversation?.convertedAt).toBeUndefined();
+      expect(current.current.id).toBe(converted.current.id);
     } finally {
       await testDb.cleanup();
     }
@@ -3715,6 +4230,7 @@ function createMockOpenCodeService(
       const session: OpenCodeSession = {
         id: `session-${String(sessionCount)}`,
         title: sessionOptions?.title,
+        permission: sessionOptions?.permission,
         time: { created: nextTime(), updated: nextTime() },
       };
       sessions.set(session.id, session);
@@ -3730,6 +4246,18 @@ function createMockOpenCodeService(
 
       return Promise.resolve(session);
     },
+    updateSessionPermissions: vi.fn(
+      (_directory: string, sessionID: string, permission: OpenCodeSessionPermissionRule[]) => {
+        const session = sessions.get(sessionID);
+
+        if (!session) {
+          throw new Error("Session not found.");
+        }
+
+        session.permission = permission;
+        return Promise.resolve(session);
+      },
+    ),
     listSessionChildren: (_directory: string, sessionID: string) =>
       Promise.resolve([...sessions.values()].filter((session) => session.parentID === sessionID)),
     getSessionTreeIds: (_directory: string, rootSessionID: string) => {

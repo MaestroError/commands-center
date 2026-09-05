@@ -1,4 +1,4 @@
-import { desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import type { Logger } from "pino";
 
 import {
@@ -36,9 +36,10 @@ import {
   artifacts,
   conversations,
   messages,
+  task_runs,
 } from "../db/schema/index.js";
 import { resolveCompanionPromptOverrides } from "../mcp/cc-managed/group-metadata.js";
-import { BadRequestError, NotFoundError } from "../lib/api-error.js";
+import { BadRequestError, ConflictError, NotFoundError } from "../lib/api-error.js";
 import {
   cleanTitle,
   extractMediaItems,
@@ -70,6 +71,19 @@ type AgentRow = typeof agents.$inferSelect;
 type AgentRuntimeRow = AgentRow & { workspace_path: string };
 type ConversationRow = typeof conversations.$inferSelect;
 type MessageRow = typeof messages.$inferSelect;
+
+const CONTINUABLE_TASK_RUN_STATUSES = new Set([
+  "completed",
+  "failed",
+  "error",
+  "cancelled",
+  "skipped",
+]);
+const CONVERTED_CHAT_SESSION_PERMISSIONS = [
+  { permission: "cc_default_add_task_artifact", pattern: "*", action: "allow" },
+  { permission: "cc_default_set_task_result", pattern: "*", action: "deny" },
+  { permission: "cc_default_mark_needs_human_review", pattern: "*", action: "deny" },
+] satisfies OpenCodeSessionPermissionRule[];
 
 export type TaskRunSessionDiagnostic = {
   code: string;
@@ -185,7 +199,10 @@ export function createConversationService(options: {
           operators.and(
             operators.eq(table.agent_id, agent.id),
             operators.eq(table.is_current, true),
-            operators.eq(table.source, "chat"),
+            operators.or(
+              operators.eq(table.source, "chat"),
+              operators.isNotNull(table.converted_at),
+            ),
           ),
         orderBy: (table, operators) => [operators.desc(table.updated_at)],
       });
@@ -212,15 +229,19 @@ export function createConversationService(options: {
       const limit = Math.min(Math.max(query.limit ?? 10, 1), 50);
       const source = query.source ?? "all";
       const rows = await options.db.query.conversations.findMany({
-        where: (table, ops) => {
-          const conditions = [ops.eq(table.agent_id, agentId), ops.eq(table.status, "active")];
-
-          if (source !== "all") {
-            conditions.push(ops.eq(table.source, source));
-          }
-
-          return ops.and(...conditions);
-        },
+        where: (table, ops) =>
+          ops.and(
+            ops.eq(table.agent_id, agentId),
+            ops.eq(table.status, "active"),
+            source === "chat"
+              ? ops.or(ops.eq(table.source, "chat"), ops.isNotNull(table.converted_at))
+              : source === "task_run"
+                ? ops.or(
+                    ops.eq(table.source, "task_run"),
+                    ops.and(ops.isNotNull(table.converted_at), ops.isNotNull(table.task_run_id)),
+                  )
+                : undefined,
+          ),
         orderBy: (table) => [desc(table.updated_at), desc(table.created_at)],
         limit,
       });
@@ -292,7 +313,7 @@ export function createConversationService(options: {
       const parsed = sendConversationPromptInputSchema.parse(input);
       const loaded = await getConversationAgent(conversationId, { includeTaskRun: true });
 
-      if (loaded.conversation.source !== "task_run") {
+      if (!isActiveTaskRunConversation(loaded.conversation)) {
         throw new BadRequestError("Conversation is not a task run session.");
       }
 
@@ -331,7 +352,7 @@ export function createConversationService(options: {
       const parsed = sendConversationPromptInputSchema.parse(input);
       const loaded = await getConversationAgent(conversationId, { includeTaskRun: true });
 
-      if (loaded.conversation.source !== "task_run") {
+      if (!isActiveTaskRunConversation(loaded.conversation)) {
         throw new BadRequestError("Conversation is not a task run session.");
       }
 
@@ -436,25 +457,109 @@ export function createConversationService(options: {
       taskId: string,
       taskRunId: string,
     ): Promise<ConversationSnapshot> {
-      const conversation = await getTaskRunConversationRow(taskId, taskRunId);
+      return taskRunOperationGuard.runExclusive(taskRunId, async () => {
+        const conversation = await options.db.query.conversations.findFirst({
+          where: (table, operators) =>
+            operators.and(
+              operators.eq(table.task_id, taskId),
+              operators.eq(table.task_run_id, taskRunId),
+              operators.eq(table.status, "active"),
+            ),
+        });
 
-      if (!conversation) {
-        throw new NotFoundError("Task run session not found.");
-      }
+        if (!conversation) {
+          throw new NotFoundError("Task run session not found.");
+        }
 
-      const agent = await getAgent(conversation.agent_id);
-      await syncConversation(agent, conversation);
-      await setCurrentConversation(agent.id, conversation.id);
-      await options.db
-        .update(conversations)
-        .set({
-          source: "chat",
-          converted_at: conversation.converted_at ?? new Date(),
-          updated_at: new Date(),
-        })
-        .where(eq(conversations.id, conversation.id));
+        const run = await options.db.query.task_runs.findFirst({
+          where: (table, operators) =>
+            operators.and(operators.eq(table.id, taskRunId), operators.eq(table.task_id, taskId)),
+          columns: { status: true },
+        });
 
-      return getSnapshot(agent.id, conversation.id);
+        if (!run) {
+          throw new NotFoundError("Task run not found.");
+        }
+
+        if (!CONTINUABLE_TASK_RUN_STATUSES.has(run.status)) {
+          throw new ConflictError("Only terminal task runs can continue in chat.");
+        }
+
+        const agent = await getAgent(conversation.agent_id);
+        await syncConversation(agent, conversation);
+        const session = await options.opencodeService.getSession(
+          agent.workspace_path,
+          conversation.opencode_session_id,
+        );
+        const priorSessionPermissions = session.permission ? [...session.permission] : [];
+        try {
+          await options.opencodeService.updateSessionPermissions(
+            agent.workspace_path,
+            conversation.opencode_session_id,
+            CONVERTED_CHAT_SESSION_PERMISSIONS,
+          );
+          options.db.transaction((tx) => {
+            const run = tx
+              .select({ status: task_runs.status })
+              .from(task_runs)
+              .where(and(eq(task_runs.id, taskRunId), eq(task_runs.task_id, taskId)))
+              .get();
+
+            if (!run) {
+              throw new NotFoundError("Task run not found.");
+            }
+
+            if (!CONTINUABLE_TASK_RUN_STATUSES.has(run.status)) {
+              throw new ConflictError("Only terminal task runs can continue in chat.");
+            }
+
+            const timestamp = new Date();
+            tx.update(conversations)
+              .set({ is_current: false })
+              .where(eq(conversations.agent_id, agent.id))
+              .run();
+            tx.update(conversations)
+              .set({
+                is_current: true,
+                converted_at: conversation.converted_at ?? timestamp,
+                updated_at: timestamp,
+              })
+              .where(eq(conversations.id, conversation.id))
+              .run();
+          });
+        } catch (error) {
+          try {
+            const restoredSession = await options.opencodeService.updateSessionPermissions(
+              agent.workspace_path,
+              conversation.opencode_session_id,
+              priorSessionPermissions,
+            );
+            if (
+              JSON.stringify(restoredSession.permission ?? []) !==
+              JSON.stringify(priorSessionPermissions)
+            ) {
+              throw new Error("OpenCode returned different permissions after conversion rollback.");
+            }
+          } catch (restorationError) {
+            const timestamp = new Date();
+            await options.db
+              .update(conversations)
+              .set({
+                is_current: false,
+                converted_at: conversation.converted_at ?? timestamp,
+                updated_at: timestamp,
+              })
+              .where(eq(conversations.id, conversation.id));
+            options.logger?.error(
+              { err: restorationError, conversationId: conversation.id },
+              "conversion permission rollback is uncertain; preserving chat ownership boundary",
+            );
+          }
+          throw error;
+        }
+
+        return getSnapshot(agent.id, conversation.id);
+      });
     },
 
     async sendPrompt(
@@ -467,7 +572,7 @@ export function createConversationService(options: {
         const watchdog = await prepareInteractiveChatWatchdog(loaded);
         let promptStarted = false;
         try {
-          await setCurrentConversation(loaded.agent.id, loaded.conversation.id);
+          setCurrentConversation(loaded.agent.id, loaded.conversation.id);
           const { system, snapshot } = await composeSystem(
             "chat",
             loaded.agent,
@@ -511,7 +616,7 @@ export function createConversationService(options: {
       const parsed = sendConversationCommandInputSchema.parse(input);
       const loaded = await getConversationAgent(conversationId);
 
-      await setCurrentConversation(loaded.agent.id, loaded.conversation.id);
+      setCurrentConversation(loaded.agent.id, loaded.conversation.id);
       await options.opencodeService.commandSession({
         directory: loaded.agent.workspace_path,
         sessionID: loaded.conversation.opencode_session_id,
@@ -529,7 +634,7 @@ export function createConversationService(options: {
       const loaded = await getConversationAgent(conversationId);
       const model = parseModel(loaded.agent.default_model);
 
-      await setCurrentConversation(loaded.agent.id, loaded.conversation.id);
+      setCurrentConversation(loaded.agent.id, loaded.conversation.id);
       await options.opencodeService.summarizeSession({
         directory: loaded.agent.workspace_path,
         sessionID: loaded.conversation.opencode_session_id,
@@ -547,7 +652,7 @@ export function createConversationService(options: {
       const parsed = sendConversationShellInputSchema.parse(input);
       const loaded = await getConversationAgent(conversationId);
 
-      await setCurrentConversation(loaded.agent.id, loaded.conversation.id);
+      setCurrentConversation(loaded.agent.id, loaded.conversation.id);
       await options.opencodeService.shellSession({
         directory: loaded.agent.workspace_path,
         sessionID: loaded.conversation.opencode_session_id,
@@ -570,7 +675,7 @@ export function createConversationService(options: {
 
         let promptStarted = false;
         try {
-          await setCurrentConversation(loaded.agent.id, loaded.conversation.id);
+          setCurrentConversation(loaded.agent.id, loaded.conversation.id);
           const { system, snapshot } = await composeSystem(
             "chat",
             loaded.agent,
@@ -977,7 +1082,10 @@ export function createConversationService(options: {
               where: (table, operators) =>
                 operators.and(
                   operators.eq(table.status, "active"),
-                  operators.eq(table.source, "chat"),
+                  operators.or(
+                    operators.eq(table.source, "chat"),
+                    operators.isNotNull(table.converted_at),
+                  ),
                 ),
             });
         break;
@@ -1004,7 +1112,10 @@ export function createConversationService(options: {
                 operators.and(
                   operators.eq(table.id, conversation.id),
                   operators.eq(table.status, "active"),
-                  operators.eq(table.source, "chat"),
+                  operators.or(
+                    operators.eq(table.source, "chat"),
+                    operators.isNotNull(table.converted_at),
+                  ),
                 ),
             });
             if (!currentConversation || signal.aborted) return undefined;
@@ -1265,7 +1376,7 @@ export function createConversationService(options: {
           operators.eq(table.id, conversationId),
           operators.eq(table.agent_id, agentId),
           operators.eq(table.status, "active"),
-          operators.eq(table.source, "chat"),
+          operators.or(operators.eq(table.source, "chat"), operators.isNotNull(table.converted_at)),
         ),
     });
 
@@ -1321,7 +1432,7 @@ export function createConversationService(options: {
     if (
       !conversation ||
       conversation.status !== "active" ||
-      (!optionsOverride.includeTaskRun && conversation.source !== "chat")
+      (!optionsOverride.includeTaskRun && !isChatAccessibleConversation(conversation))
     ) {
       throw new NotFoundError("Conversation not found.");
     }
@@ -1368,14 +1479,14 @@ export function createConversationService(options: {
   }
 
   function scopeFor(conversation: ConversationRow): SystemPromptScope {
-    return conversation.source === "task_run" ? "task" : "chat";
+    return isActiveTaskRunConversation(conversation) ? "task" : "chat";
   }
 
   function buildSystemContext(
     agent: AgentRuntimeRow,
     conversation: ConversationRow,
   ): SystemPromptRenderContext {
-    const isTaskRun = conversation.source === "task_run";
+    const isTaskRun = isActiveTaskRunConversation(conversation);
     return {
       appName: APP_NAME,
       currentDate: new Date().toISOString().slice(0, 10),
@@ -1450,7 +1561,7 @@ export function createConversationService(options: {
     agent: AgentRuntimeRow,
     conversation: ConversationRow,
   ): Promise<{ appMcpServers?: SpecialistCapabilitySelection["appMcpServers"] }> {
-    if (conversation.source === "task_run" && conversation.task_run_id) {
+    if (isActiveTaskRunConversation(conversation) && conversation.task_run_id) {
       const run = await options.db.query.task_runs.findFirst({
         where: (table, operators) => operators.eq(table.id, conversation.task_run_id ?? ""),
         columns: { effective_permissions_json: true },
@@ -1497,30 +1608,33 @@ export function createConversationService(options: {
     });
     const timestamp = new Date(session.time.updated ?? session.time.created);
 
-    if (makeCurrent) {
-      await options.db
-        .update(conversations)
-        .set({ is_current: false, updated_at: timestamp })
-        .where(eq(conversations.agent_id, agent.id));
-    }
+    const created = options.db.transaction((tx) => {
+      if (makeCurrent) {
+        tx.update(conversations)
+          .set({ is_current: false, updated_at: timestamp })
+          .where(eq(conversations.agent_id, agent.id))
+          .run();
+      }
 
-    const [created] = await options.db
-      .insert(conversations)
-      .values({
-        id: createId(),
-        agent_id: agent.id,
-        opencode_session_id: session.id,
-        title: cleanTitle(session.title) ?? cleanTitle(input.title),
-        status: "active",
-        source,
-        is_current: makeCurrent,
-        task_id: input.taskId ?? null,
-        task_run_id: input.taskRunId ?? null,
-        created_at: new Date(session.time.created),
-        updated_at: timestamp,
-        converted_at: null,
-      })
-      .returning();
+      return tx
+        .insert(conversations)
+        .values({
+          id: createId(),
+          agent_id: agent.id,
+          opencode_session_id: session.id,
+          title: cleanTitle(session.title) ?? cleanTitle(input.title),
+          status: "active",
+          source,
+          is_current: makeCurrent,
+          task_id: input.taskId ?? null,
+          task_run_id: input.taskRunId ?? null,
+          created_at: new Date(session.time.created),
+          updated_at: timestamp,
+          converted_at: null,
+        })
+        .returning()
+        .get();
+    });
 
     if (!created) {
       throw new Error("Failed to create conversation.");
@@ -1529,16 +1643,17 @@ export function createConversationService(options: {
     return created;
   }
 
-  async function setCurrentConversation(agentId: string, conversationId: string): Promise<void> {
-    await options.db
-      .update(conversations)
-      .set({ is_current: false })
-      .where(eq(conversations.agent_id, agentId));
-
-    await options.db
-      .update(conversations)
-      .set({ is_current: true })
-      .where(eq(conversations.id, conversationId));
+  function setCurrentConversation(agentId: string, conversationId: string): void {
+    options.db.transaction((tx) => {
+      tx.update(conversations)
+        .set({ is_current: false })
+        .where(eq(conversations.agent_id, agentId))
+        .run();
+      tx.update(conversations)
+        .set({ is_current: true })
+        .where(and(eq(conversations.id, conversationId), eq(conversations.agent_id, agentId)))
+        .run();
+    });
   }
 
   async function syncConversation(
@@ -1673,7 +1788,7 @@ export function createConversationService(options: {
         operators.and(
           operators.eq(table.agent_id, agentId),
           operators.eq(table.status, "active"),
-          operators.eq(table.source, "chat"),
+          operators.or(operators.eq(table.source, "chat"), operators.isNotNull(table.converted_at)),
         ),
       orderBy: (table) => [desc(table.updated_at), desc(table.created_at)],
     });
@@ -1705,6 +1820,14 @@ export function createConversationService(options: {
       convertedAt: conversation.converted_at?.toISOString(),
     });
   }
+}
+
+function isActiveTaskRunConversation(conversation: ConversationRow): boolean {
+  return conversation.source === "task_run" && !conversation.converted_at;
+}
+
+function isChatAccessibleConversation(conversation: ConversationRow): boolean {
+  return conversation.source === "chat" || Boolean(conversation.converted_at);
 }
 
 function mapPendingPermission(permission: OpenCodePendingPermission): PendingChatPermission {

@@ -13,7 +13,7 @@ import {
 import { createTaskPromptValue } from "@/components/tasks/task-prompt";
 import { useFillSecretMutation } from "@/hooks/use-activities-query";
 import { useSpecialistsQuery } from "@/hooks/use-specialists-query";
-import { useTaskMutations } from "@/hooks/use-tasks-query";
+import { useTaskMutations, useTaskRunQuery } from "@/hooks/use-tasks-query";
 import type {
   TaskCreationPrefill,
   TaskTemplateCreationPrefill,
@@ -142,7 +142,15 @@ function ReviewReplyActions({ activity, onArchive, archiving }: ActivityActionsP
   const suggestedReplies = parsed.success ? (parsed.data.suggestedReplies ?? []) : [];
   const [reply, setReply] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const { createRunFollowup } = useTaskMutations();
+  const { createRunFollowup, openInChat } = useTaskMutations();
+  const runQuery = useTaskRunQuery(taskId, runId);
+  const specialistsQuery = useSpecialistsQuery();
+  const convertedConversation = runQuery.data?.conversation?.convertedAt
+    ? runQuery.data.conversation
+    : undefined;
+  const agentSlug = specialistsQuery.data?.find(
+    (specialist) => specialist.id === runQuery.data?.agentId,
+  )?.slug;
   const submitting = createRunFollowup.isPending;
   const canSubmit = Boolean(taskId && runId && reply.trim()) && !submitting && !archiving;
 
@@ -164,6 +172,82 @@ function ReviewReplyActions({ activity, onArchive, archiving }: ActivityActionsP
       setError("Could not send the reply.");
     }
   };
+
+  const openChat = async () => {
+    if (!taskId || !runId || !agentSlug) {
+      return;
+    }
+
+    setError(null);
+    try {
+      const snapshot = await openInChat.mutateAsync({ taskId, runId });
+      void navigate(
+        `/chat/${encodeURIComponent(agentSlug)}/${encodeURIComponent(snapshot.current.id)}`,
+      );
+    } catch {
+      setError("Could not open the continued chat.");
+    }
+  };
+
+  if (taskId && runId && runQuery.isLoading) {
+    return (
+      <ActionRow>
+        <ActionButton variant="primary" disabled>
+          Checking continuation...
+        </ActionButton>
+        <ActionButton variant="muted" onClick={() => void navigate(openTaskPath(taskId))}>
+          Open task
+        </ActionButton>
+        <ActionButton variant="muted" disabled={archiving} onClick={() => onArchive(activity.id)}>
+          Mark read
+        </ActionButton>
+      </ActionRow>
+    );
+  }
+
+  if (taskId && runId && runQuery.error) {
+    return (
+      <div className="grid gap-2">
+        <ActionError>Could not check whether this run continues in chat.</ActionError>
+        <ActionRow>
+          <ActionButton variant="muted" onClick={() => void navigate(openTaskPath(taskId))}>
+            Open task
+          </ActionButton>
+          <ActionButton variant="muted" disabled={archiving} onClick={() => onArchive(activity.id)}>
+            Mark read
+          </ActionButton>
+        </ActionRow>
+      </div>
+    );
+  }
+
+  if (convertedConversation) {
+    return (
+      <div className="grid gap-2">
+        <p className="text-sm text-text-secondary">
+          This run is continued in chat. Open that chat to reply without reactivating the run.
+        </p>
+        <ActionRow>
+          <ActionButton
+            variant="primary"
+            disabled={!agentSlug || openInChat.isPending}
+            onClick={() => void openChat()}
+          >
+            {openInChat.isPending ? "Opening..." : "Open chat"}
+          </ActionButton>
+          {taskId ? (
+            <ActionButton variant="muted" onClick={() => void navigate(openTaskPath(taskId))}>
+              Open task
+            </ActionButton>
+          ) : null}
+          <ActionButton variant="muted" disabled={archiving} onClick={() => onArchive(activity.id)}>
+            Mark read
+          </ActionButton>
+        </ActionRow>
+        {error ? <ActionError>{error}</ActionError> : null}
+      </div>
+    );
+  }
 
   return (
     <div className="grid gap-2">

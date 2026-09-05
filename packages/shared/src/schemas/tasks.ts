@@ -6,7 +6,7 @@ import {
   specialistPermissionRuleSchema,
   permissionActionSchema,
 } from "./specialists.js";
-import { conversationDetailSchema } from "./conversations.js";
+import { conversationDetailSchema, conversationSourceSchema } from "./conversations.js";
 import { artifactSchema } from "./artifacts.js";
 import {
   taskTemplateMcpConfigSchema,
@@ -408,6 +408,13 @@ export const markTaskRunNeedsReviewInputSchema = z
     },
   );
 
+export const taskRunConversationSchema = z.object({
+  id: z.string().min(1),
+  source: conversationSourceSchema,
+  isCurrent: z.boolean(),
+  convertedAt: z.string().datetime().optional(),
+});
+
 export const taskSchema = z.object({
   id: z.string().min(1),
   templateId: z.string().min(1).optional(),
@@ -426,6 +433,7 @@ export const taskSchema = z.object({
   latestFinalMessage: z.string().optional(),
   latestResultText: z.string().optional(),
   latestRunId: z.string().min(1).optional(),
+  latestRunConversation: taskRunConversationSchema.optional(),
   sourceTemplateId: z.string().min(1).optional(),
   generatedByAgentId: z.string().min(1).optional(),
   sourceOccurrenceAt: z.string().datetime().optional(),
@@ -576,6 +584,7 @@ export const taskRunSchema = z.object({
   humanReviewReason: z.string().optional(),
   reviewQuestion: reviewQuestionSchema.optional(),
   hasActiveReply: z.boolean().default(false),
+  conversation: taskRunConversationSchema.optional(),
   result: looseRecordSchema.optional(),
   errorMessage: z.string().optional(),
   errorDetails: looseRecordSchema.optional(),

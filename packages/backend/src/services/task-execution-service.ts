@@ -201,7 +201,7 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
     },
 
     async sendRunReply(runId: string, input: unknown): Promise<TaskRunFollowup> {
-      return sendRunReply(runId, input);
+      return taskRunOperationGuard.runExclusive(runId, () => sendRunReply(runId, input));
     },
 
     startTaskRunMonitor(runId: string): void {

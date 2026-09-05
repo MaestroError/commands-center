@@ -29,6 +29,7 @@ const duplicateMutateAsync = vi.fn();
 const updateMutate = vi.fn();
 const triggerMutate = vi.fn();
 const openInChatMutateAsync = vi.fn();
+let openInChatIsPending = false;
 
 vi.mock("@/hooks/use-tasks-query", () => ({
   useTaskQuery: () => mockUseTaskQuery(),
@@ -41,7 +42,7 @@ vi.mock("@/hooks/use-tasks-query", () => ({
     duplicate: { mutateAsync: duplicateMutateAsync },
     update: { mutate: updateMutate, isPending: false },
     trigger: { mutate: triggerMutate },
-    openInChat: { mutateAsync: openInChatMutateAsync },
+    openInChat: { mutateAsync: openInChatMutateAsync, isPending: openInChatIsPending },
     createArtifactShareLink: { isPending: false, mutateAsync: vi.fn() },
     revokeArtifactShareLink: { isPending: false, mutateAsync: vi.fn() },
   }),
@@ -94,6 +95,18 @@ function buildRun(overrides: Partial<TaskRun> = {}): TaskRun {
   } as TaskRun;
 }
 
+function buildConvertedRun(overrides: Partial<TaskRun> = {}): TaskRun {
+  return buildRun({
+    conversation: {
+      id: "conversation-1",
+      source: "task_run",
+      isCurrent: false,
+      convertedAt: "2026-08-26T08:00:00.000Z",
+    },
+    ...overrides,
+  });
+}
+
 function buildTask(overrides: Partial<Task> = {}): Task {
   return {
     id: "task-1",
@@ -133,14 +146,27 @@ function renderPage(mode?: "task" | "run") {
   );
 }
 
+function mockOpenableRun(): void {
+  mockUseTaskQuery.mockReturnValue({ data: buildTask(), isLoading: false, error: null });
+  mockUseTaskRunQuery.mockReturnValue({ data: buildRun(), isLoading: false, error: null });
+  mockUseTaskRunSessionQuery.mockReturnValue({
+    data: { canOpenInChat: true, conversation: { messages: [] }, diagnostics: [] },
+    isLoading: false,
+    error: null,
+  });
+}
+
 beforeEach(() => {
   mockParams = { id: "task-1" };
   vi.clearAllMocks();
+  openInChatMutateAsync.mockReset();
+  openInChatMutateAsync.mockResolvedValue({ current: { id: "conversation-1" } });
   mockUseSpecialistsQuery.mockReturnValue({ data: [buildAgent()] });
   mockUseTaskRunsQuery.mockReturnValue({ data: [buildRun()], isLoading: false, error: null });
   mockUseTaskSubtasksQuery.mockReturnValue({ data: [], isLoading: false, error: null });
   mockUseTaskRunQuery.mockReturnValue({ data: undefined, isLoading: false, error: null });
   mockUseTaskRunSessionQuery.mockReturnValue({ data: undefined, isLoading: false, error: null });
+  openInChatIsPending = false;
 });
 
 afterEach(() => {
@@ -227,6 +253,98 @@ describe("TaskDetailPage overview", () => {
     expect(triggerMutate).toHaveBeenCalledWith({ id: "task-1" });
   });
 
+  it("labels execution after a converted latest run as Start new run", async () => {
+    mockUseTaskQuery.mockReturnValue({
+      data: buildTask({
+        latestRunId: "run-1",
+        latestRunConversation: {
+          id: "conversation-1",
+          source: "task_run",
+          isCurrent: true,
+          convertedAt: "2026-08-26T08:00:00.000Z",
+        },
+      }),
+      isLoading: false,
+      error: null,
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    expect(screen.queryByRole("button", { name: "Run now" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Start new run" }));
+    expect(triggerMutate).toHaveBeenCalledWith({ id: "task-1" });
+  });
+
+  it("opens a converted run from history instead of offering a reply", async () => {
+    mockUseTaskQuery.mockReturnValue({ data: buildTask(), isLoading: false, error: null });
+    mockUseTaskRunsQuery.mockReturnValue({
+      data: [buildConvertedRun()],
+      isLoading: false,
+      error: null,
+    });
+    openInChatMutateAsync.mockResolvedValue({ current: { id: "conversation-1" } });
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(screen.getByTestId("task-detail-tab-runs"));
+    expect(screen.queryByTestId("task-run-reply-run-1")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Open chat" }));
+
+    await waitFor(() => {
+      expect(navigateMock).toHaveBeenCalledWith("/chat/planner/conversation-1");
+    });
+  });
+
+  it("disables a converted history chat action while it is opening", async () => {
+    openInChatIsPending = true;
+    mockUseTaskQuery.mockReturnValue({ data: buildTask(), isLoading: false, error: null });
+    mockUseTaskRunsQuery.mockReturnValue({
+      data: [buildConvertedRun()],
+      isLoading: false,
+      error: null,
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(screen.getByTestId("task-detail-tab-runs"));
+
+    expect(screen.getByRole("button", { name: "Opening..." })).toBeDisabled();
+  });
+
+  it("surfaces a converted history chat failure", async () => {
+    mockUseTaskQuery.mockReturnValue({ data: buildTask(), isLoading: false, error: null });
+    mockUseTaskRunsQuery.mockReturnValue({
+      data: [buildConvertedRun()],
+      isLoading: false,
+      error: null,
+    });
+    openInChatMutateAsync.mockRejectedValue(new Error("chat failed"));
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(screen.getByTestId("task-detail-tab-runs"));
+    await user.click(screen.getByRole("button", { name: "Open chat" }));
+
+    expect(await screen.findByText("chat failed")).toBeInTheDocument();
+    expect(navigateMock).not.toHaveBeenCalled();
+  });
+
+  it("disables a converted history chat action without a specialist slug", async () => {
+    mockUseSpecialistsQuery.mockReturnValue({ data: [] });
+    mockUseTaskQuery.mockReturnValue({ data: buildTask(), isLoading: false, error: null });
+    mockUseTaskRunsQuery.mockReturnValue({
+      data: [buildConvertedRun()],
+      isLoading: false,
+      error: null,
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(screen.getByTestId("task-detail-tab-runs"));
+
+    expect(screen.getByRole("button", { name: "Open chat" })).toBeDisabled();
+  });
+
   it("renders a minimal task without optional fields", async () => {
     mockUseTaskQuery.mockReturnValue({
       data: buildTask({
@@ -307,7 +425,7 @@ describe("TaskDetailPage run mode", () => {
   it("renders the session and details tabs for a completed run and opens it in chat", async () => {
     mockUseTaskQuery.mockReturnValue({ data: buildTask(), isLoading: false, error: null });
     mockUseTaskRunQuery.mockReturnValue({
-      data: buildRun({
+      data: buildConvertedRun({
         errorMessage: "a warning",
         errorDetails: { code: "E1" },
         renderedPrompt: "Do the work",
@@ -364,10 +482,74 @@ describe("TaskDetailPage run mode", () => {
     await user.click(screen.getByRole("button", { name: /Rendered context/ }));
     expect(screen.getByText("Do the work")).toBeInTheDocument();
 
-    // Continue in chat navigates to the recovered conversation.
-    await user.click(screen.getByRole("button", { name: "Continue in chat" }));
+    // Reopening the converted chat reselects and navigates to the recovered conversation.
+    await user.click(screen.getByRole("button", { name: "Open chat" }));
     await waitFor(() => {
       expect(navigateMock).toHaveBeenCalledWith("/chat/planner/conv-9");
     });
+  });
+
+  it("shows a converted run chat action while session inspection is loading", () => {
+    mockUseTaskQuery.mockReturnValue({ data: buildTask(), isLoading: false, error: null });
+    mockUseTaskRunQuery.mockReturnValue({
+      data: buildConvertedRun(),
+      isLoading: false,
+      error: null,
+    });
+    mockUseTaskRunSessionQuery.mockReturnValue({ data: undefined, isLoading: true, error: null });
+
+    renderPage("run");
+
+    expect(screen.getByRole("button", { name: "Open chat" })).toBeInTheDocument();
+    expect(screen.getByText(/^Continued /)).toBeInTheDocument();
+  });
+
+  it("shows a converted run chat action when session inspection fails", () => {
+    mockUseTaskQuery.mockReturnValue({ data: buildTask(), isLoading: false, error: null });
+    mockUseTaskRunQuery.mockReturnValue({
+      data: buildConvertedRun(),
+      isLoading: false,
+      error: null,
+    });
+    mockUseTaskRunSessionQuery.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error("session unavailable"),
+    });
+
+    renderPage("run");
+
+    expect(screen.getByRole("button", { name: "Open chat" })).toBeInTheDocument();
+    expect(screen.getByText(/^Continued /)).toBeInTheDocument();
+  });
+
+  it("disables the run-detail chat action while it is opening", () => {
+    openInChatIsPending = true;
+    mockOpenableRun();
+
+    renderPage("run");
+
+    expect(screen.getByRole("button", { name: "Opening..." })).toBeDisabled();
+  });
+
+  it("surfaces a run-detail chat failure", async () => {
+    mockOpenableRun();
+    openInChatMutateAsync.mockRejectedValue(new Error("conversion failed"));
+    const user = userEvent.setup();
+    renderPage("run");
+
+    await user.click(screen.getByRole("button", { name: "Continue in chat" }));
+
+    expect(await screen.findByText("conversion failed")).toBeInTheDocument();
+    expect(navigateMock).not.toHaveBeenCalled();
+  });
+
+  it("disables the run-detail chat action without a specialist slug", () => {
+    mockUseSpecialistsQuery.mockReturnValue({ data: [] });
+    mockOpenableRun();
+
+    renderPage("run");
+
+    expect(screen.getByRole("button", { name: "Continue in chat" })).toBeDisabled();
   });
 });

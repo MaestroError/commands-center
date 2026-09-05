@@ -1,5 +1,5 @@
 import { useMemo, useState, type FormEvent, type ReactNode } from "react";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 
 import type {
   Artifact,
@@ -381,6 +381,7 @@ function SendButtons(props: {
 }
 
 export function RunReplyPanel(props: { taskId: string; run: TaskRun; agent?: Specialist }) {
+  const navigate = useNavigate();
   const [isComposerOpen, setIsComposerOpen] = useState(false);
   const [body, setBody] = useState("");
   const [error, setError] = useState<string>();
@@ -388,6 +389,9 @@ export function RunReplyPanel(props: { taskId: string; run: TaskRun; agent?: Spe
   const canReply = Boolean(props.run.opencodeSessionId) && !isRunning;
   const followupsQuery = useTaskRunFollowupsQuery(props.taskId, props.run.id);
   const mutations = useTaskMutations();
+  const convertedConversation = props.run.conversation?.convertedAt
+    ? props.run.conversation
+    : undefined;
 
   async function submit(): Promise<void> {
     const trimmedBody = body.trim();
@@ -407,6 +411,23 @@ export function RunReplyPanel(props: { taskId: string; run: TaskRun; agent?: Spe
       setIsComposerOpen(false);
     } catch (submitError) {
       setError(readError(submitError));
+    }
+  }
+
+  async function openChat(): Promise<void> {
+    if (!props.agent?.slug) return;
+
+    setError(undefined);
+    try {
+      const snapshot = await mutations.openInChat.mutateAsync({
+        taskId: props.taskId,
+        runId: props.run.id,
+      });
+      void navigate(
+        `/chat/${encodeURIComponent(props.agent.slug)}/${encodeURIComponent(snapshot.current.id)}`,
+      );
+    } catch (openError) {
+      setError(readError(openError));
     }
   }
 
@@ -431,51 +452,70 @@ export function RunReplyPanel(props: { taskId: string; run: TaskRun; agent?: Spe
         </div>
       ) : null}
 
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <p className="text-sm font-medium text-text-primary">Reply to this run</p>
-          <p className="text-xs text-text-secondary">
-            Replies are sent immediately into this run&apos;s existing session.
-          </p>
-        </div>
-        <Button
-          variant="secondary"
-          disabled={!canReply}
-          onClick={() => setIsComposerOpen((current) => !current)}
-          title={disabledReason}
-          type="button"
-        >
-          Reply
-        </Button>
-      </div>
-
-      {disabledReason ? (
-        <p className="rounded-md border border-border bg-surface-muted px-3 py-2 text-sm text-text-secondary">
-          {disabledReason}
-        </p>
-      ) : null}
-
-      {isComposerOpen ? (
-        <div className="grid gap-2">
-          <Textarea
-            aria-label={`Reply to run ${props.run.id}`}
-            className="min-h-24"
-            disabled={!canReply}
-            onChange={(event) => setBody(event.target.value)}
-            placeholder="Add a short follow-up for the specialist."
-            value={body}
-          />
+      {convertedConversation ? (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="text-sm font-medium text-text-primary">Continued in chat</p>
+            <p className="text-xs text-text-secondary">Chat owns further replies for this run.</p>
+          </div>
           <Button
-            className="w-fit"
-            data-testid={`task-run-reply-send-${props.run.id}`}
-            disabled={!canReply || !body.trim() || isSending}
-            onClick={() => void submit()}
+            variant="secondary"
+            disabled={!props.agent?.slug || mutations.openInChat.isPending}
+            onClick={() => void openChat()}
             type="button"
           >
-            {isSending ? "Sending..." : "Reply"}
+            {mutations.openInChat.isPending ? "Opening..." : "Open chat"}
           </Button>
         </div>
-      ) : null}
+      ) : (
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-sm font-medium text-text-primary">Reply to this run</p>
+              <p className="text-xs text-text-secondary">
+                Replies are sent immediately into this run&apos;s existing session.
+              </p>
+            </div>
+            <Button
+              variant="secondary"
+              disabled={!canReply}
+              onClick={() => setIsComposerOpen((current) => !current)}
+              title={disabledReason}
+              type="button"
+            >
+              Reply
+            </Button>
+          </div>
+
+          {disabledReason ? (
+            <p className="rounded-md border border-border bg-surface-muted px-3 py-2 text-sm text-text-secondary">
+              {disabledReason}
+            </p>
+          ) : null}
+
+          {isComposerOpen ? (
+            <div className="grid gap-2">
+              <Textarea
+                aria-label={`Reply to run ${props.run.id}`}
+                className="min-h-24"
+                disabled={!canReply}
+                onChange={(event) => setBody(event.target.value)}
+                placeholder="Add a short follow-up for the specialist."
+                value={body}
+              />
+              <Button
+                className="w-fit"
+                data-testid={`task-run-reply-send-${props.run.id}`}
+                disabled={!canReply || !body.trim() || isSending}
+                onClick={() => void submit()}
+                type="button"
+              >
+                {isSending ? "Sending..." : "Reply"}
+              </Button>
+            </div>
+          ) : null}
+        </>
+      )}
 
       {error ? (
         <p className="rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
