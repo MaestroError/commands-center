@@ -1451,7 +1451,7 @@ describe("createTaskExecutionService", () => {
       taskService,
       conversationService,
       monitor: { initialPollMs: 1, maxPollMs: 1, idlePolls: 1 },
-      transportRetry: { initialDelayMs: 1, maxDelayMs: 1, maxElapsedMs: 20, jitterRatio: 0 },
+      transportRetry: { initialDelayMs: 1, maxDelayMs: 1, maxElapsedMs: 200, jitterRatio: 0 },
     });
 
     try {
@@ -2117,6 +2117,78 @@ describe("createTaskExecutionService", () => {
 
       expect(cancelled.status).toBe("cancelled");
       expect(opencodeService.abortSession).toHaveBeenCalledWith(expect.any(String), "session-1");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("does not auto-approve a descendant permission after cancellation starts", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const opencodeService = createMockOpenCodeService();
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const taskPermissionService = createTaskPermissionService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      taskPermissionService,
+      monitor: { autoStart: false },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Permission race",
+        permissionProfile: { approvalPolicy: "auto_approve" },
+      });
+      const run = await executionService.queue(task.id, { triggerSource: "manual" });
+      await expectRunStatus(taskService, run.id, "running");
+      opencodeService.listPendingPermissions = vi.fn(() =>
+        Promise.resolve([
+          {
+            id: "perm-after-cancel",
+            sessionID: "child-session",
+            permission: "external_directory",
+            patterns: ["/shared/*"],
+            always: [],
+            metadata: {},
+          },
+        ]),
+      );
+      opencodeService.getSessionTreeIds = vi.fn(() =>
+        Promise.resolve(new Set(["session-1", "child-session"])),
+      );
+      opencodeService.replyPermission = vi.fn(() => Promise.resolve());
+      const statusRead = createDeferred<void>();
+      const releaseStatusRead = createDeferred<void>();
+      const taskRunQuery = testDb.client.db.query.task_runs;
+      const findFirst = taskRunQuery.findFirst.bind(taskRunQuery);
+      const delayedFindFirst = async (query: Parameters<typeof findFirst>[0]) => {
+        const result = await findFirst(query);
+        statusRead.resolve();
+        await releaseStatusRead.promise;
+        return result;
+      };
+      vi.spyOn(taskRunQuery, "findFirst").mockImplementationOnce(delayedFindFirst as never);
+
+      const pending = conversationService.listTaskRunPendingInteractions(task.id, run.id);
+      await statusRead.promise;
+      const cancellation = executionService.cancel(run.id, { reason: "Stop before approval." });
+      releaseStatusRead.resolve();
+
+      await expect(pending).resolves.toEqual([]);
+      await cancellation;
+      expect(opencodeService.replyPermission).not.toHaveBeenCalled();
+      await expectRunStatus(taskService, run.id, "cancelled");
     } finally {
       await testDb.cleanup();
     }
@@ -3702,7 +3774,9 @@ async function expectRunStatus(
   runId: string,
   status: string,
 ): Promise<void> {
-  await expect.poll(async () => (await taskService.getRunById(runId))?.status).toBe(status);
+  await expect
+    .poll(async () => (await taskService.getRunById(runId))?.status, { timeout: 5_000 })
+    .toBe(status);
 }
 
 async function expectRunRuntimeState(
@@ -3921,6 +3995,22 @@ function createMockOpenCodeService(
         return Promise.resolve(session);
       },
     ),
+    listSessionChildren: (_directory: string, sessionID: string) =>
+      Promise.resolve([...sessions.values()].filter((session) => session.parentID === sessionID)),
+    getSessionTreeIds: (_directory: string, rootSessionID: string) => {
+      const sessionIDs = new Set([rootSessionID]);
+      let foundChild = true;
+      while (foundChild) {
+        foundChild = false;
+        for (const session of sessions.values()) {
+          if (session.parentID && sessionIDs.has(session.parentID) && !sessionIDs.has(session.id)) {
+            sessionIDs.add(session.id);
+            foundChild = true;
+          }
+        }
+      }
+      return Promise.resolve(sessionIDs);
+    },
     listSessionMessages: (_directory: string, sessionID: string) => {
       const error = listSessionMessagesErrors.shift();
 

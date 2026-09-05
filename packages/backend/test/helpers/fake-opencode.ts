@@ -112,6 +112,22 @@ export function createMockOpenCodeService(
         return Promise.resolve(session);
       },
     ),
+    listSessionChildren: (_directory: string, sessionID: string) =>
+      Promise.resolve([...sessions.values()].filter((session) => session.parentID === sessionID)),
+    getSessionTreeIds: (_directory: string, rootSessionID: string) => {
+      const sessionIDs = new Set([rootSessionID]);
+      let foundChild = true;
+      while (foundChild) {
+        foundChild = false;
+        for (const session of sessions.values()) {
+          if (session.parentID && sessionIDs.has(session.parentID) && !sessionIDs.has(session.id)) {
+            sessionIDs.add(session.id);
+            foundChild = true;
+          }
+        }
+      }
+      return Promise.resolve(sessionIDs);
+    },
     listSessionMessages: (_directory: string, sessionID: string) => {
       const error = listSessionMessagesErrors.shift();
 

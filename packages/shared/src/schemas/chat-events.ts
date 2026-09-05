@@ -54,7 +54,7 @@ const sseMessageSchema = z.object({
 
 const connectedEventSchema = z.object({
   type: z.literal("connected"),
-  properties: z.object({}),
+  properties: z.object({ reconnected: z.literal(true).optional() }),
 });
 
 const heartbeatEventSchema = z.object({
@@ -292,6 +292,7 @@ export const pendingQuestionSchema = z.object({
 export const pendingInteractionsSchema = z.object({
   permissions: z.array(pendingPermissionSchema),
   question: pendingQuestionSchema.nullable(),
+  questions: z.array(pendingQuestionSchema).optional(),
   liveRequests: z.array(liveRequestSchema),
 });
 

@@ -68,6 +68,7 @@ const openCodeSessionPermissionRuleSchema = z.object({
 const openCodeSessionSchema = z
   .object({
     id: z.string().min(1),
+    parentID: z.string().min(1).optional(),
     title: z.string().min(1).optional(),
     permission: z.array(openCodeSessionPermissionRuleSchema).optional(),
     time: z
@@ -129,6 +130,7 @@ const openCodePendingQuestionSchema = z
 
 const openCodePendingPermissionListSchema = z.array(openCodePendingPermissionSchema);
 const openCodePendingQuestionListSchema = z.array(openCodePendingQuestionSchema);
+const MAX_SESSION_TREE_SIZE = 1_000;
 
 export type OpenCodeSession = z.infer<typeof openCodeSessionSchema>;
 export type OpenCodeSessionMessage = z.infer<typeof openCodeMessageSchema>;
@@ -168,6 +170,21 @@ export function createOpenCodeService(options: {
   // in-flight request so rapid invocations (e.g. double-click Refresh, React
   // Query re-invalidations) don't restart the opencode instance graph twice.
   let pendingDisposeGlobal: Promise<void> | null = null;
+
+  async function listSessionChildren(
+    directory: string,
+    sessionID: string,
+    signal?: AbortSignal,
+  ): Promise<OpenCodeSession[]> {
+    const result = await requestSessionJson({
+      config: options.config,
+      directory,
+      method: "GET",
+      path: `/session/${encodeURIComponent(sessionID)}/children`,
+      signal,
+    });
+    return z.array(openCodeSessionSchema).parse(result);
+  }
 
   return {
     async dispose(directory: string): Promise<void> {
@@ -408,35 +425,78 @@ export function createOpenCodeService(options: {
       return openCodeSessionSchema.parse(result);
     },
 
+    listSessionChildren,
+
+    async getSessionTreeIds(
+      directory: string,
+      rootSessionID: string,
+      signal?: AbortSignal,
+    ): Promise<Set<string>> {
+      const timeoutSignal = AbortSignal.timeout(options.config.timeouts.opencodeRequestMs);
+      const traversalSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
+      const sessionIDs = new Set([rootSessionID]);
+      const pending = [rootSessionID];
+
+      while (pending.length > 0) {
+        const parentID = pending.shift();
+        if (!parentID) break;
+
+        const children = await listSessionChildren(directory, parentID, traversalSignal);
+        for (const child of children) {
+          if (child.parentID !== parentID || sessionIDs.has(child.id)) continue;
+          if (sessionIDs.size >= MAX_SESSION_TREE_SIZE) {
+            throw new Error(
+              `OpenCode session tree exceeds ${String(MAX_SESSION_TREE_SIZE)} sessions.`,
+            );
+          }
+          sessionIDs.add(child.id);
+          pending.push(child.id);
+        }
+      }
+
+      return sessionIDs;
+    },
+
     async listSessionMessages(
       directory: string,
       sessionID: string,
+      signal?: AbortSignal,
     ): Promise<OpenCodeSessionMessage[]> {
       const result = await requestSessionJson({
         config: options.config,
         directory,
         method: "GET",
         path: `/session/${encodeURIComponent(sessionID)}/message`,
+        signal,
       });
       return z.array(openCodeMessageSchema).parse(result);
     },
 
-    async listSessionStatuses(directory: string): Promise<OpenCodeSessionStatusMap> {
+    async listSessionStatuses(
+      directory: string,
+      signal?: AbortSignal,
+    ): Promise<OpenCodeSessionStatusMap> {
       const result = await requestSessionJson({
         config: options.config,
         directory,
         method: "GET",
         path: "/session/status",
+        signal,
       });
       return openCodeSessionStatusMapSchema.parse(result);
     },
 
-    async getSessionStatus(directory: string, sessionID: string): Promise<OpenCodeSessionStatus> {
+    async getSessionStatus(
+      directory: string,
+      sessionID: string,
+      signal?: AbortSignal,
+    ): Promise<OpenCodeSessionStatus> {
       const result = await requestSessionJson({
         config: options.config,
         directory,
         method: "GET",
         path: "/session/status",
+        signal,
       });
       const statuses = openCodeSessionStatusMapSchema.parse(result);
       return statuses[sessionID] ?? { type: "idle" };
@@ -450,6 +510,7 @@ export function createOpenCodeService(options: {
       text: string;
       attachments?: SendConversationAttachmentInput[];
       system?: string;
+      signal?: AbortSignal;
     }): Promise<OpenCodeSessionMessage> {
       // The synchronous /message endpoint returns the assistant message once the
       // turn settles. A terminal model failure (after opencode's own same-model
@@ -468,6 +529,7 @@ export function createOpenCodeService(options: {
           ...(input.system ? { system: input.system } : {}),
           parts: buildPromptParts(input.text, input.attachments ?? []),
         },
+        signal: input.signal,
       });
 
       return openCodeMessageSchema.parse(result);
@@ -543,6 +605,7 @@ export function createOpenCodeService(options: {
       text: string;
       attachments?: SendConversationAttachmentInput[];
       system?: string;
+      signal?: AbortSignal;
     }): Promise<void> {
       await requestSessionJson({
         config: options.config,
@@ -555,6 +618,7 @@ export function createOpenCodeService(options: {
           ...(input.system ? { system: input.system } : {}),
           parts: buildPromptParts(input.text, input.attachments ?? []),
         },
+        signal: input.signal,
       });
     },
 
@@ -562,6 +626,7 @@ export function createOpenCodeService(options: {
       directory: string,
       requestId: string,
       reply: "once" | "always" | "reject",
+      signal?: AbortSignal,
     ): Promise<void> {
       await withNotFoundRemap(requestId, () =>
         requestSessionJson({
@@ -570,21 +635,31 @@ export function createOpenCodeService(options: {
           method: "POST",
           path: `/permission/${encodeURIComponent(requestId)}/reply`,
           body: { reply },
+          signal,
         }),
       );
     },
 
-    async listPendingPermissions(directory: string): Promise<OpenCodePendingPermission[]> {
+    async listPendingPermissions(
+      directory: string,
+      signal?: AbortSignal,
+    ): Promise<OpenCodePendingPermission[]> {
       const result = await requestSessionJson({
         config: options.config,
         directory,
         method: "GET",
         path: "/permission",
+        signal,
       });
       return openCodePendingPermissionListSchema.parse(result);
     },
 
-    async replyQuestion(directory: string, requestId: string, answers: string[][]): Promise<void> {
+    async replyQuestion(
+      directory: string,
+      requestId: string,
+      answers: string[][],
+      signal?: AbortSignal,
+    ): Promise<void> {
       await withNotFoundRemap(requestId, () =>
         requestSessionJson({
           config: options.config,
@@ -592,21 +667,30 @@ export function createOpenCodeService(options: {
           method: "POST",
           path: `/question/${encodeURIComponent(requestId)}/reply`,
           body: { answers },
+          signal,
         }),
       );
     },
 
-    async listPendingQuestions(directory: string): Promise<OpenCodePendingQuestion[]> {
+    async listPendingQuestions(
+      directory: string,
+      signal?: AbortSignal,
+    ): Promise<OpenCodePendingQuestion[]> {
       const result = await requestSessionJson({
         config: options.config,
         directory,
         method: "GET",
         path: "/question",
+        signal,
       });
       return openCodePendingQuestionListSchema.parse(result);
     },
 
-    async rejectQuestion(directory: string, requestId: string): Promise<void> {
+    async rejectQuestion(
+      directory: string,
+      requestId: string,
+      signal?: AbortSignal,
+    ): Promise<void> {
       await withNotFoundRemap(requestId, () =>
         requestSessionJson({
           config: options.config,
@@ -614,26 +698,29 @@ export function createOpenCodeService(options: {
           method: "POST",
           path: `/question/${encodeURIComponent(requestId)}/reject`,
           body: {},
+          signal,
         }),
       );
     },
 
-    async abortSession(directory: string, sessionID: string): Promise<void> {
+    async abortSession(directory: string, sessionID: string, signal?: AbortSignal): Promise<void> {
       await requestSessionJson({
         config: options.config,
         directory,
         method: "POST",
         path: `/session/${encodeURIComponent(sessionID)}/abort`,
         body: {},
+        signal,
       });
     },
 
-    async deleteSession(directory: string, sessionID: string): Promise<void> {
+    async deleteSession(directory: string, sessionID: string, signal?: AbortSignal): Promise<void> {
       await requestSessionJson({
         config: options.config,
         directory,
         method: "DELETE",
         path: `/session/${encodeURIComponent(sessionID)}`,
+        signal,
       });
     },
 
@@ -775,6 +862,7 @@ async function requestSessionJson(options: {
   method: "GET" | "POST" | "PATCH" | "DELETE";
   path: string;
   body?: Record<string, unknown>;
+  signal?: AbortSignal;
 }): Promise<unknown> {
   return requestOpenCodeJson(options);
 }
@@ -786,6 +874,7 @@ async function requestOpenCodeJson(options: {
   path: string;
   body?: Record<string, unknown>;
   query?: Record<string, string | number | boolean | undefined>;
+  signal?: AbortSignal;
 }): Promise<unknown> {
   const url = new URL(options.path, options.config.opencode.baseUrl);
   url.searchParams.set("directory", options.directory);
@@ -804,6 +893,7 @@ async function requestOpenCodeJson(options: {
     method: options.method,
     headers: options.body ? { "Content-Type": "application/json" } : undefined,
     body: options.body ? JSON.stringify(options.body) : undefined,
+    signal: options.signal,
   });
 
   if (!response.ok) {

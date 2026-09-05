@@ -17,16 +17,31 @@ export type SubscribeOptions = {
   directory: string;
   sessionID: string;
   signal: AbortSignal;
+  onReady?: () => void;
   onEvent: (event: ChatEvent) => void;
   onTitleUpdate?: (title: string) => void;
 };
 
 export type OpenCodeEventService = ReturnType<typeof createOpenCodeEventService>;
 
-export function createOpenCodeEventService(options: { config: RuntimeConfig; logger: Logger }) {
+export function createOpenCodeEventService(options: {
+  config: RuntimeConfig;
+  logger: Logger;
+  resolveSessionTree?: (
+    directory: string,
+    rootSessionID: string,
+    signal: AbortSignal,
+  ) => Promise<Set<string>>;
+}) {
   return {
     subscribe(subscribeOptions: SubscribeOptions): void {
-      void runSubscription(options.config, options.logger, subscribeOptions);
+      void runSubscription(
+        options.config,
+        options.logger,
+        options.resolveSessionTree ??
+          ((_directory, rootSessionID) => Promise.resolve(new Set([rootSessionID]))),
+        subscribeOptions,
+      );
     },
   };
 }
@@ -46,21 +61,46 @@ const SESSION_EVENTS = new Set([
   "question.rejected",
   "session.error",
 ]);
+const DESCENDANT_INTERACTION_EVENTS = new Set([
+  "permission.asked",
+  "permission.replied",
+  "question.asked",
+  "question.replied",
+  "question.rejected",
+]);
+const HEALTHY_STREAM_LIFETIME_MS = 1_000;
 
 async function runSubscription(
   config: RuntimeConfig,
   logger: Logger,
+  resolveSessionTree: (
+    directory: string,
+    rootSessionID: string,
+    signal: AbortSignal,
+  ) => Promise<Set<string>>,
   options: SubscribeOptions,
 ): Promise<void> {
-  const { directory, sessionID, signal, onEvent, onTitleUpdate } = options;
+  const { directory, sessionID, signal, onReady, onEvent, onTitleUpdate } = options;
   let retryDelay = 500;
   const maxRetryDelay = 15_000;
 
   while (!signal.aborted) {
+    let streamHealthy = false;
     try {
-      await consumeEventStream(config, directory, sessionID, signal, onEvent, onTitleUpdate);
+      await consumeEventStream(
+        config,
+        directory,
+        sessionID,
+        signal,
+        onEvent,
+        resolveSessionTree,
+        onReady,
+        onTitleUpdate,
+        () => {
+          streamHealthy = true;
+        },
+      );
       // Stream ended normally (server closed) — reconnect
-      retryDelay = 500;
     } catch (error) {
       if (signal.aborted) {
         return;
@@ -71,6 +111,8 @@ async function runSubscription(
         "opencode event stream error, reconnecting",
       );
     }
+
+    if (streamHealthy) retryDelay = 500;
 
     if (signal.aborted) {
       return;
@@ -87,10 +129,18 @@ async function consumeEventStream(
   sessionID: string,
   signal: AbortSignal,
   onEvent: (event: ChatEvent) => void,
+  resolveSessionTree: (
+    directory: string,
+    rootSessionID: string,
+    signal: AbortSignal,
+  ) => Promise<Set<string>>,
+  onReady?: () => void,
   onTitleUpdate?: (title: string) => void,
+  onHealthy?: () => void,
 ): Promise<void> {
   const url = new URL("/event", config.opencode.baseUrl);
   url.searchParams.set("directory", directory);
+  let sessionIDs = await resolveSessionTree(directory, sessionID, ancestrySignal(config, signal));
 
   const response = await fetch(url, {
     method: "GET",
@@ -108,8 +158,11 @@ async function consumeEventStream(
 
   const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
   let buffer = "";
+  const healthyTimer = setTimeout(() => onHealthy?.(), HEALTHY_STREAM_LIFETIME_MS);
+  healthyTimer.unref?.();
 
   try {
+    onReady?.();
     while (true) {
       const { done, value } = await reader.read();
 
@@ -122,6 +175,7 @@ async function consumeEventStream(
       buffer = events.remainder;
 
       for (const raw of events.parsed) {
+        onHealthy?.();
         // Intercept session.updated to propagate title changes
         if (
           onTitleUpdate &&
@@ -140,14 +194,31 @@ async function consumeEventStream(
           }
         }
 
-        const mapped = mapEvent(sessionID, raw);
+        const eventSessionID = readEventSessionID(raw);
+        if (
+          eventSessionID &&
+          !sessionIDs.has(eventSessionID) &&
+          DESCENDANT_INTERACTION_EVENTS.has(raw.type)
+        ) {
+          sessionIDs = await resolveSessionTree(
+            directory,
+            sessionID,
+            ancestrySignal(config, signal),
+          );
+        }
+
+        const mapped = mapEvent(sessionID, sessionIDs, raw);
 
         if (mapped) {
           onEvent(mapped);
         }
       }
     }
+  } catch (error) {
+    await reader.cancel().catch(() => {});
+    throw error;
   } finally {
+    clearTimeout(healthyTimer);
     reader.releaseLock();
   }
 }
@@ -182,7 +253,7 @@ function extractSseEvents(buffer: string): ExtractResult {
     try {
       const event = JSON.parse(json) as unknown;
 
-      if (event && typeof event === "object" && "type" in event && typeof event.type === "string") {
+      if (isRecord(event) && typeof event["type"] === "string" && isRecord(event["properties"])) {
         parsed.push(event as SseEvent);
       }
     } catch {
@@ -193,7 +264,11 @@ function extractSseEvents(buffer: string): ExtractResult {
   return { parsed, remainder };
 }
 
-function mapEvent(sessionID: string, raw: SseEvent): ChatEvent | null {
+function mapEvent(
+  rootSessionID: string,
+  sessionIDs: ReadonlySet<string>,
+  raw: SseEvent,
+): ChatEvent | null {
   // Server-level events
   if (raw.type === "server.connected") {
     return { type: "connected", properties: {} };
@@ -209,11 +284,16 @@ function mapEvent(sessionID: string, raw: SseEvent): ChatEvent | null {
   }
 
   const props = raw.properties;
-  const eventSessionID = typeof props["sessionID"] === "string" ? props["sessionID"] : undefined;
+  const eventSessionID = readEventSessionID(raw);
 
-  if (eventSessionID !== sessionID) {
+  if (
+    !eventSessionID ||
+    !sessionIDs.has(eventSessionID) ||
+    (eventSessionID !== rootSessionID && !DESCENDANT_INTERACTION_EVENTS.has(raw.type))
+  ) {
     return null;
   }
+  const sessionID = eventSessionID;
 
   // Map specific event types
   switch (raw.type) {
@@ -385,6 +465,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
+function readEventSessionID(raw: SseEvent): string | undefined {
+  return typeof raw.properties["sessionID"] === "string" ? raw.properties["sessionID"] : undefined;
+}
+
 function sanitizeToolLink(value: unknown): Record<string, unknown> | undefined {
   // Require non-empty ids: the client parses these events with schemas whose
   // tool link is `z.string().min(1)`, so forwarding an empty id would fail that
@@ -441,4 +525,11 @@ function delay(ms: number, signal: AbortSignal): Promise<void> {
       { once: true },
     );
   });
+}
+
+function ancestrySignal(config: RuntimeConfig, subscriptionSignal: AbortSignal): AbortSignal {
+  return AbortSignal.any([
+    subscriptionSignal,
+    AbortSignal.timeout(config.timeouts?.opencodeRequestMs ?? 30_000),
+  ]);
 }
