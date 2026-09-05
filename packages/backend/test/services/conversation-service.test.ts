@@ -3,6 +3,9 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { and, eq } from "drizzle-orm";
+
+import { conversations } from "../../src/db/schema/index";
 import { createSpecialistService } from "../../src/services/specialist-service";
 import { createConversationService } from "../../src/services/conversation-service";
 import { createSessionArchiveService } from "../../src/services/session-archive-service";
@@ -168,6 +171,94 @@ describe("createConversationService", () => {
       expect(promptModels[2]).toEqual({ providerID: "openai", modelID: "gpt-4.1" });
       expect(asyncModels[0]).toEqual({ providerID: "anthropic", modelID: "claude-opus" });
       expect(asyncModels[1]).toEqual({ providerID: "openai", modelID: "gpt-4.1" });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("keeps one current conversation across concurrent fresh starts", async () => {
+    const testDb = await createTestDatabase();
+    const opencodeService = createMockOpenCodeService();
+    const agentService = createSpecialistService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+      skillRoot: `${testDb.cwd}/builtin-skills`,
+    });
+    const service = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+
+    try {
+      const agent = await agentService.create({
+        name: "Concurrent Fresh Specialist",
+        role: "help with implementation",
+        instructions: "Be useful.",
+        defaultModel: "openai/gpt-4.1",
+        capabilities: {
+          builtInSkills: [],
+          customTools: [],
+          mcpServers: [],
+          toolPermissions: [],
+        },
+      });
+      await service.resolveCurrent(agent.id);
+
+      await Promise.all([service.startFresh(agent.id), service.startFresh(agent.id)]);
+
+      const current = await testDb.client.db
+        .select({ id: conversations.id })
+        .from(conversations)
+        .where(and(eq(conversations.agent_id, agent.id), eq(conversations.is_current, true)));
+      expect(current).toHaveLength(1);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("keeps one current conversation across concurrent switches", async () => {
+    const testDb = await createTestDatabase();
+    const opencodeService = createMockOpenCodeService();
+    const agentService = createSpecialistService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+      skillRoot: `${testDb.cwd}/builtin-skills`,
+    });
+    const service = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+
+    try {
+      const agent = await agentService.create({
+        name: "Concurrent Switch Specialist",
+        role: "help with implementation",
+        instructions: "Be useful.",
+        defaultModel: "openai/gpt-4.1",
+        capabilities: {
+          builtInSkills: [],
+          customTools: [],
+          mcpServers: [],
+          toolPermissions: [],
+        },
+      });
+      const first = await service.resolveCurrent(agent.id);
+      const second = await service.startFresh(agent.id);
+
+      await Promise.all([
+        service.sendPrompt(first.current.id, { text: "First", attachments: [] }),
+        service.sendPrompt(second.current.id, { text: "Second", attachments: [] }),
+      ]);
+
+      const current = await testDb.client.db
+        .select({ id: conversations.id })
+        .from(conversations)
+        .where(and(eq(conversations.agent_id, agent.id), eq(conversations.is_current, true)));
+      expect(current).toHaveLength(1);
     } finally {
       await testDb.cleanup();
     }

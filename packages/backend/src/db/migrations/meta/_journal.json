@@ -281,6 +281,13 @@
       "when": 1784717642897,
       "tag": "0039_flippant_dreadnoughts",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "6",
+      "when": 1788615946223,
+      "tag": "0040_low_valeria_richards",
+      "breakpoints": true
     }
   ]
 }

@@ -550,7 +550,7 @@ export function createConversationService(options: {
         const watchdog = await prepareInteractiveChatWatchdog(loaded);
         let promptStarted = false;
         try {
-          await setCurrentConversation(loaded.agent.id, loaded.conversation.id);
+          setCurrentConversation(loaded.agent.id, loaded.conversation.id);
           const { system, snapshot } = await composeSystem(
             "chat",
             loaded.agent,
@@ -594,7 +594,7 @@ export function createConversationService(options: {
       const parsed = sendConversationCommandInputSchema.parse(input);
       const loaded = await getConversationAgent(conversationId);
 
-      await setCurrentConversation(loaded.agent.id, loaded.conversation.id);
+      setCurrentConversation(loaded.agent.id, loaded.conversation.id);
       await options.opencodeService.commandSession({
         directory: loaded.agent.workspace_path,
         sessionID: loaded.conversation.opencode_session_id,
@@ -612,7 +612,7 @@ export function createConversationService(options: {
       const loaded = await getConversationAgent(conversationId);
       const model = parseModel(loaded.agent.default_model);
 
-      await setCurrentConversation(loaded.agent.id, loaded.conversation.id);
+      setCurrentConversation(loaded.agent.id, loaded.conversation.id);
       await options.opencodeService.summarizeSession({
         directory: loaded.agent.workspace_path,
         sessionID: loaded.conversation.opencode_session_id,
@@ -630,7 +630,7 @@ export function createConversationService(options: {
       const parsed = sendConversationShellInputSchema.parse(input);
       const loaded = await getConversationAgent(conversationId);
 
-      await setCurrentConversation(loaded.agent.id, loaded.conversation.id);
+      setCurrentConversation(loaded.agent.id, loaded.conversation.id);
       await options.opencodeService.shellSession({
         directory: loaded.agent.workspace_path,
         sessionID: loaded.conversation.opencode_session_id,
@@ -653,7 +653,7 @@ export function createConversationService(options: {
 
         let promptStarted = false;
         try {
-          await setCurrentConversation(loaded.agent.id, loaded.conversation.id);
+          setCurrentConversation(loaded.agent.id, loaded.conversation.id);
           const { system, snapshot } = await composeSystem(
             "chat",
             loaded.agent,
@@ -1586,30 +1586,33 @@ export function createConversationService(options: {
     });
     const timestamp = new Date(session.time.updated ?? session.time.created);
 
-    if (makeCurrent) {
-      await options.db
-        .update(conversations)
-        .set({ is_current: false, updated_at: timestamp })
-        .where(eq(conversations.agent_id, agent.id));
-    }
+    const created = options.db.transaction((tx) => {
+      if (makeCurrent) {
+        tx.update(conversations)
+          .set({ is_current: false, updated_at: timestamp })
+          .where(eq(conversations.agent_id, agent.id))
+          .run();
+      }
 
-    const [created] = await options.db
-      .insert(conversations)
-      .values({
-        id: createId(),
-        agent_id: agent.id,
-        opencode_session_id: session.id,
-        title: cleanTitle(session.title) ?? cleanTitle(input.title),
-        status: "active",
-        source,
-        is_current: makeCurrent,
-        task_id: input.taskId ?? null,
-        task_run_id: input.taskRunId ?? null,
-        created_at: new Date(session.time.created),
-        updated_at: timestamp,
-        converted_at: null,
-      })
-      .returning();
+      return tx
+        .insert(conversations)
+        .values({
+          id: createId(),
+          agent_id: agent.id,
+          opencode_session_id: session.id,
+          title: cleanTitle(session.title) ?? cleanTitle(input.title),
+          status: "active",
+          source,
+          is_current: makeCurrent,
+          task_id: input.taskId ?? null,
+          task_run_id: input.taskRunId ?? null,
+          created_at: new Date(session.time.created),
+          updated_at: timestamp,
+          converted_at: null,
+        })
+        .returning()
+        .get();
+    });
 
     if (!created) {
       throw new Error("Failed to create conversation.");
@@ -1618,16 +1621,17 @@ export function createConversationService(options: {
     return created;
   }
 
-  async function setCurrentConversation(agentId: string, conversationId: string): Promise<void> {
-    await options.db
-      .update(conversations)
-      .set({ is_current: false })
-      .where(eq(conversations.agent_id, agentId));
-
-    await options.db
-      .update(conversations)
-      .set({ is_current: true })
-      .where(eq(conversations.id, conversationId));
+  function setCurrentConversation(agentId: string, conversationId: string): void {
+    options.db.transaction((tx) => {
+      tx.update(conversations)
+        .set({ is_current: false })
+        .where(eq(conversations.agent_id, agentId))
+        .run();
+      tx.update(conversations)
+        .set({ is_current: true })
+        .where(and(eq(conversations.id, conversationId), eq(conversations.agent_id, agentId)))
+        .run();
+    });
   }
 
   async function syncConversation(
