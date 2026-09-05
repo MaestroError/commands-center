@@ -624,6 +624,56 @@ describe("task routes", () => {
     }
   });
 
+  it("serializes route conversion before a concurrent reply", async () => {
+    const harness = await createTaskRouteHarness();
+
+    try {
+      const { task, run } = await createTerminalRunFixture(harness, "Route conversion race");
+      const permissionUpdateStarted = createDeferred<void>();
+      const releasePermissionUpdate = createDeferred<void>();
+      const updateSessionPermissions = harness.opencodeService.updateSessionPermissions;
+      harness.opencodeService.updateSessionPermissions = vi.fn(
+        async (
+          directory: string,
+          sessionID: string,
+          permission: OpenCodeSessionPermissionRule[],
+        ) => {
+          permissionUpdateStarted.resolve();
+          await releasePermissionUpdate.promise;
+          return updateSessionPermissions(directory, sessionID, permission);
+        },
+      );
+
+      const conversion = harness.server.inject({
+        method: "POST",
+        url: `/api/tasks/${task.id}/runs/${run.id}/open-in-chat`,
+      });
+      await permissionUpdateStarted.promise;
+      const reply = harness.server.inject({
+        method: "POST",
+        url: `/api/tasks/${task.id}/runs/${run.id}/followups`,
+        payload: { body: "Continue from the task panel." },
+      });
+      await Promise.resolve();
+
+      expect((await harness.taskService.getRunById(run.id))?.status).toBe("completed");
+      expect(await harness.taskService.listFollowups(run.id)).toEqual([]);
+
+      releasePermissionUpdate.resolve();
+      const [conversionResponse, replyResponse] = await Promise.all([conversion, reply]);
+
+      expect(conversionResponse.statusCode).toBe(200);
+      expect(replyResponse.statusCode).toBe(409);
+      expect(replyResponse.json().error.message).toBe(
+        "This task run was continued in chat. Open its chat to continue.",
+      );
+      expect((await harness.taskService.getRunById(run.id))?.status).toBe("completed");
+      expect(await harness.taskService.listFollowups(run.id)).toEqual([]);
+    } finally {
+      await harness.close();
+    }
+  });
+
   it("rejects opening a running task run in chat", async () => {
     const harness = await createTaskRouteHarness();
 
@@ -891,6 +941,7 @@ async function createTaskRouteHarness() {
     secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
     scheduler: createSchedulerService({ delegate: taskSchedulerService }),
     taskService,
+    conversationService,
     taskExecutionService,
     taskSchedulerService,
   });
@@ -899,6 +950,7 @@ async function createTaskRouteHarness() {
     testDb,
     taskService,
     taskExecutionService,
+    opencodeService,
     server,
     close: async () => {
       taskSchedulerService.stop();
@@ -906,6 +958,17 @@ async function createTaskRouteHarness() {
       await testDb.cleanup();
     },
   };
+}
+
+function createDeferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T | PromiseLike<T>) => void;
+} {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((resolver) => {
+    resolve = resolver;
+  });
+  return { promise, resolve };
 }
 
 async function createTerminalRunFixture(
