@@ -7,6 +7,20 @@ const looseRecordSchema = z.record(z.string(), z.unknown());
 /** Per-conversation system prompt enabled overrides: prompt id → enabled. */
 export const systemPromptOverridesSchema = z.record(z.string().min(1), z.boolean());
 
+/**
+ * Per-message token counts as the model provider reported them. Present on
+ * assistant messages synced after CC started persisting them; older messages
+ * fall back to the `step-finish` parts still carried in `parts`.
+ */
+export const conversationMessageTokensSchema = z.object({
+  input: z.number().nonnegative().default(0),
+  output: z.number().nonnegative().default(0),
+  reasoning: z.number().nonnegative().default(0),
+  cacheRead: z.number().nonnegative().default(0),
+  cacheWrite: z.number().nonnegative().default(0),
+  total: z.number().nonnegative().default(0),
+});
+
 export const conversationMessageErrorSchema = z.object({
   name: z.string().min(1),
   message: z.string().min(1),
@@ -42,6 +56,14 @@ export const conversationMessageSchema = z.object({
   attachments: z.array(conversationAttachmentSchema),
   parentId: z.string().min(1).optional(),
   error: conversationMessageErrorSchema.optional(),
+  tokens: conversationMessageTokensSchema.optional(),
+  /**
+   * Provider-reported cost in USD. Absent when the provider bills nothing per
+   * request (subscription and OAuth models report a literal 0).
+   */
+  cost: z.number().nonnegative().optional(),
+  modelId: z.string().min(1).optional(),
+  providerId: z.string().min(1).optional(),
   // The system prompts composed and sent with this message, captured at send
   // time. Present on user messages once captured; absent on older messages.
   systemPromptSnapshot: z.array(resolvedSystemPromptSchema).optional(),
@@ -117,6 +139,7 @@ export type ConversationAttachment = z.infer<typeof conversationAttachmentSchema
 export type ConversationDetail = z.infer<typeof conversationDetailSchema>;
 export type ConversationMessageError = z.infer<typeof conversationMessageErrorSchema>;
 export type ConversationMessage = z.infer<typeof conversationMessageSchema>;
+export type ConversationMessageTokens = z.infer<typeof conversationMessageTokensSchema>;
 export type ConversationPart = z.infer<typeof conversationPartSchema>;
 export type ConversationSnapshot = z.infer<typeof conversationSnapshotSchema>;
 export type ConversationSource = z.infer<typeof conversationSourceSchema>;

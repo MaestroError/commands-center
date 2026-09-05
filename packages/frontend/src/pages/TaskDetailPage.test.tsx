@@ -370,4 +370,68 @@ describe("TaskDetailPage run mode", () => {
       expect(navigateMock).toHaveBeenCalledWith("/chat/planner/conv-9");
     });
   });
+
+  it("shows token and timing figures in the run session log", async () => {
+    mockUseTaskQuery.mockReturnValue({ data: buildTask(), isLoading: false, error: null });
+    mockUseTaskRunQuery.mockReturnValue({ data: buildRun(), isLoading: false, error: null });
+    mockUseTaskRunSessionQuery.mockReturnValue({
+      data: {
+        canOpenInChat: false,
+        conversation: {
+          messages: [
+            {
+              id: "m1",
+              role: "assistant",
+              content: "Working on it",
+              parts: [
+                {
+                  id: "p1",
+                  type: "tool",
+                  tool: "read",
+                  state: {
+                    status: "completed",
+                    input: { path: "a.ts" },
+                    output: "ok",
+                    time: { start: 1_782_898_078_071, end: 1_782_898_078_075 },
+                  },
+                },
+              ],
+              attachments: [],
+              tokens: {
+                input: 46_890,
+                output: 232,
+                reasoning: 0,
+                cacheRead: 0,
+                cacheWrite: 0,
+                total: 47_122,
+              },
+              modelId: "claude-opus-5",
+              providerId: "anthropic",
+              createdAt: "2026-01-01T00:00:00.000Z",
+              updatedAt: "2026-01-01T00:00:12.500Z",
+            },
+          ],
+        },
+        diagnostics: [],
+      },
+      isLoading: false,
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    renderPage("run");
+
+    await user.click(screen.getByTestId("task-run-session-log"));
+
+    // Message-level usage.
+    await user.click(screen.getByRole("button", { name: "Message tokens and timing" }));
+    const messageDialog = await screen.findByRole("dialog");
+    expect(messageDialog).toHaveTextContent("47,122");
+    expect(messageDialog).toHaveTextContent("anthropic/claude-opus-5");
+    await user.click(screen.getByRole("button", { name: "Close" }));
+
+    // Per-tool timing on the same run log.
+    await user.click(screen.getByRole("button", { name: "Timing for read" }));
+    expect(await screen.findByRole("dialog")).toHaveTextContent("4ms");
+  });
 });

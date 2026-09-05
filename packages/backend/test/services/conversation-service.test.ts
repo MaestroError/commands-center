@@ -418,6 +418,76 @@ describe("createConversationService", () => {
     }
   });
 
+  it("persists provider-reported tokens, cost and model across a re-sync", async () => {
+    const testDb = await createTestDatabase();
+    const opencodeService = createMockOpenCodeService({
+      assistantUsage: {
+        modelID: "gpt-4.1",
+        providerID: "openai",
+        cost: 0.01558692,
+        tokens: {
+          total: 47_335,
+          input: 46_890,
+          output: 232,
+          reasoning: 213,
+          cache: { read: 12_040, write: 3100 },
+        },
+      },
+    });
+    const agentService = createSpecialistService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+      skillRoot: `${testDb.cwd}/builtin-skills`,
+    });
+    const service = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+
+    try {
+      const agent = await agentService.create({
+        name: "Metered Specialist",
+        role: "report usage",
+        instructions: "Count the tokens.",
+        defaultModel: "openai/gpt-4.1",
+        capabilities: {
+          builtInSkills: [],
+          customTools: [],
+          mcpServers: [],
+          toolPermissions: [],
+        },
+      });
+
+      const opened = await service.resolveCurrent(agent.id);
+      await service.sendPromptAsync(opened.current.id, { text: "Count this", attachments: [] });
+
+      // `get` re-syncs, which deletes and reinserts every message — the usage
+      // must come back off OpenCode rather than being lost in the round trip.
+      const reloaded = await service.get(agent.id, opened.current.id);
+
+      expect(reloaded.messages[1]).toMatchObject({
+        role: "assistant",
+        modelId: "gpt-4.1",
+        providerId: "openai",
+        cost: 0.01558692,
+        tokens: {
+          input: 46_890,
+          output: 232,
+          reasoning: 213,
+          cacheRead: 12_040,
+          cacheWrite: 3100,
+          total: 47_335,
+        },
+      });
+      // User messages carry no usage of their own.
+      expect(reloaded.messages[0]?.tokens).toBeUndefined();
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("archives synced conversation messages and removes the archive folder on delete", async () => {
     const testDb = await createTestDatabase();
     const opencodeService = createMockOpenCodeService();
@@ -691,7 +761,11 @@ describe("createConversationService", () => {
 });
 
 function createMockOpenCodeService(
-  options: { promptAsyncAssistantError?: unknown } = {},
+  options: {
+    promptAsyncAssistantError?: unknown;
+    /** Usage fields stamped on the async assistant reply's `info`, as OpenCode does. */
+    assistantUsage?: Record<string, unknown>;
+  } = {},
 ): OpenCodeService {
   const sessions = new Map<string, OpenCodeSession>();
   const messages = new Map<string, OpenCodeSessionMessage[]>();
@@ -941,6 +1015,7 @@ function createMockOpenCodeService(
           sessionID,
           role: "assistant",
           time: { created: nextTime(), completed: nextTime() },
+          ...(options.assistantUsage ?? {}),
           error: options.promptAsyncAssistantError,
         },
         parts: options.promptAsyncAssistantError

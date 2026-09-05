@@ -7,6 +7,7 @@ import {
   type ConversationMessage,
   type SessionMediaItem,
 } from "@cc/shared/schemas";
+import { readOpenCodeCost, readOpenCodeTokens } from "@cc/shared/lib";
 
 import type { OpenCodeSessionMessage } from "../services/opencode-service.js";
 import {
@@ -34,12 +35,22 @@ export function mapRemoteMessage(
       parts,
       attachments,
       error: sanitizeMessageError(message.info["error"]),
+      tokens: readOpenCodeTokens(message.info["tokens"]),
+      cost: readOpenCodeCost(message.info["cost"]),
+      modelId: readNonEmptyString(message.info["modelID"]),
+      providerId: readNonEmptyString(message.info["providerID"]),
       createdAt: new Date(createdAtMs).toISOString(),
       updatedAt: new Date(updatedAtMs).toISOString(),
     }),
     createdAtMs,
     updatedAtMs,
   };
+}
+
+function readNonEmptyString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
 }
 
 export function readContent(parts: OpenCodePart[]): string {

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Check, ChevronRight, Layers, Loader } from "lucide-react";
 import type { ConversationPart } from "@cc/shared/schemas";
+import { ToolUsageInfoButton } from "../UsageInfoButton";
 import { getToolName, getToolInput, getToolState } from "./tool-registry";
 
 type ContextGroupProps = {
@@ -108,6 +109,7 @@ export function ContextGroup({ parts }: ContextGroupProps) {
                     <span className="sr-only">running</span>
                   </>
                 )}
+                <ToolUsageInfoButton part={part} toolName={name} />
               </div>
             );
           })}

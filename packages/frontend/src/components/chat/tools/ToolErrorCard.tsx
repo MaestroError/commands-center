@@ -3,6 +3,7 @@ import { ChevronRight, TriangleAlert } from "lucide-react";
 
 import type { ConversationPart } from "@cc/shared/schemas";
 import { CopyIdButton } from "../CopyIdButton";
+import { ToolUsageInfoButton } from "../UsageInfoButton";
 import { getToolInput, getToolName, getToolState } from "./tool-registry";
 
 type ToolErrorCardProps = {
@@ -43,6 +44,7 @@ export function ToolErrorCard({ part }: ToolErrorCardProps) {
             </span>
           ) : null}
         </button>
+        <ToolUsageInfoButton part={part} toolName={toolName} />
         <CopyIdButton label={`tool id ${toolName}`} value={toolName} />
       </div>
 

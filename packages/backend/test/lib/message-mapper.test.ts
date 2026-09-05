@@ -12,6 +12,8 @@ import {
   sanitizePart,
   sanitizeToolState,
 } from "../../src/lib/message-mapper";
+import { readOpenCodeCost, readOpenCodeTokens } from "@cc/shared/lib";
+
 import type { OpenCodeSessionMessage } from "../../src/services/opencode-service";
 
 const DATA_URL = "data:image/png;base64,AAAA";
@@ -187,5 +189,99 @@ describe("message-mapper", () => {
     ] as never);
     const types = typed.map((a) => a.type);
     expect(types).toEqual(expect.arrayContaining(["image", "document", "file"]));
+  });
+});
+
+describe("message usage", () => {
+  it("carries provider-reported tokens, cost and model off info", () => {
+    const mapped = mapRemoteMessage(
+      "conv-1",
+      message({
+        info: {
+          id: "m1",
+          sessionID: "s1",
+          role: "assistant",
+          time: { created: 1000, completed: 2000 },
+          modelID: "claude-opus-5",
+          providerID: "anthropic",
+          cost: 0.01558692,
+          tokens: {
+            total: 47_335,
+            input: 46_890,
+            output: 232,
+            reasoning: 213,
+            cache: { read: 12_040, write: 3100 },
+          },
+        },
+      } as Partial<OpenCodeSessionMessage>),
+    );
+
+    expect(mapped.tokens).toEqual({
+      input: 46_890,
+      output: 232,
+      reasoning: 213,
+      cacheRead: 12_040,
+      cacheWrite: 3100,
+      total: 47_335,
+    });
+    expect(mapped.cost).toBe(0.01558692);
+    expect(mapped.modelId).toBe("claude-opus-5");
+    expect(mapped.providerId).toBe("anthropic");
+  });
+
+  it("derives a missing total from the reported components", () => {
+    expect(readOpenCodeTokens({ input: 10, output: 4, reasoning: 1 })?.total).toBe(15);
+  });
+
+  it("treats an all-zero token report as absent", () => {
+    expect(
+      readOpenCodeTokens({
+        total: 0,
+        input: 0,
+        output: 0,
+        reasoning: 0,
+        cache: { read: 0, write: 0 },
+      }),
+    ).toBeUndefined();
+  });
+
+  it("keeps a reasoning-only report even when the provider stamps total: 0", () => {
+    // Regression: testing the total alone discarded this, so a reasoning-heavy
+    // model that reports an explicit zero total lost its counts entirely.
+    expect(
+      readOpenCodeTokens({
+        total: 0,
+        input: 0,
+        output: 0,
+        reasoning: 500,
+        cache: { read: 0, write: 0 },
+      }),
+    ).toMatchObject({ reasoning: 500, total: 0 });
+  });
+
+  it("keeps a cache-only report", () => {
+    expect(
+      readOpenCodeTokens({ input: 0, output: 0, cache: { read: 900, write: 0 } }),
+    ).toMatchObject({ cacheRead: 900 });
+  });
+
+  it("ignores malformed token payloads", () => {
+    expect(readOpenCodeTokens(undefined)).toBeUndefined();
+    expect(readOpenCodeTokens("nope")).toBeUndefined();
+    expect(readOpenCodeTokens({ input: -5, output: "x" })).toBeUndefined();
+  });
+
+  it("drops a zero cost, which means the provider does not bill per request", () => {
+    expect(readOpenCodeCost(0)).toBeUndefined();
+    expect(readOpenCodeCost(0.005)).toBe(0.005);
+    expect(readOpenCodeCost("free")).toBeUndefined();
+  });
+
+  it("leaves usage undefined on a message that reports none", () => {
+    const mapped = mapRemoteMessage("conv-1", message());
+
+    expect(mapped.tokens).toBeUndefined();
+    expect(mapped.cost).toBeUndefined();
+    expect(mapped.modelId).toBeUndefined();
   });
 });

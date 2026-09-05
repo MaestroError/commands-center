@@ -240,3 +240,25 @@ describe("ContextGroup", () => {
     expect(screen.getByText("import")).toBeInTheDocument();
   });
 });
+
+describe("ContextGroup timing", () => {
+  it("exposes per-tool timing on each grouped row", async () => {
+    const user = userEvent.setup();
+    const part = makePart({
+      id: "grouped-read",
+      tool: "read",
+      state: {
+        status: "completed",
+        input: { path: "/tmp/a.txt" },
+        time: { start: 1_782_898_078_071, end: 1_782_898_078_075 },
+      },
+    });
+
+    render(<ContextGroup parts={[part]} />);
+    // Rows live inside the collapsed group, so open it first.
+    await user.click(screen.getByText("Gathered context"));
+    await user.click(screen.getByRole("button", { name: "Timing for read" }));
+
+    expect(await screen.findByRole("dialog")).toHaveTextContent("4ms");
+  });
+});

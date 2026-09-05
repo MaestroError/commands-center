@@ -391,3 +391,88 @@ describe("MessageTimeline", () => {
     ).toBeInTheDocument();
   });
 });
+
+describe("usage info buttons", () => {
+  // A message shaped like real OpenCode output: one step-finish carrying the
+  // token counts, one tool part carrying its own start/end timing.
+  const stepFinish = makePart({
+    id: "prt-step",
+    type: "step-finish",
+    reason: "tool-calls",
+    cost: 0,
+    tokens: {
+      total: 47_335,
+      input: 46_890,
+      output: 232,
+      reasoning: 213,
+      cache: { read: 0, write: 0 },
+    },
+  } as Partial<ConversationPart>);
+
+  // `bash` renders as its own row; `read`/`grep` would be folded into the
+  // collapsed "Gathered context" group instead.
+  const toolPart = makePart({
+    id: "prt-tool",
+    type: "tool",
+    tool: "bash",
+    callID: "call-1",
+    state: {
+      status: "completed",
+      title: "bash",
+      input: { command: "ls" },
+      output: "ok",
+      metadata: {},
+      time: { start: 1_782_898_078_071, end: 1_782_898_078_075 },
+    },
+  } as Partial<ConversationPart>);
+
+  function renderTimeline() {
+    const message = makeMessage({
+      id: "assistant-usage",
+      role: "assistant",
+      content: "done",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:12.500Z",
+    });
+
+    render(
+      <MessageTimeline
+        messages={[message]}
+        parts={{ "assistant-usage": [stepFinish, toolPart] }}
+        sessionStatus={{ type: "idle" }}
+      />,
+    );
+  }
+
+  it("reports message tokens and duration from the step-finish part", async () => {
+    const user = userEvent.setup();
+    renderTimeline();
+
+    await user.click(screen.getByRole("button", { name: "Message tokens and timing" }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent("47,335");
+    expect(dialog).toHaveTextContent("13s");
+  });
+
+  it("reports per-tool timing from the tool part", async () => {
+    const user = userEvent.setup();
+    renderTimeline();
+
+    await user.click(screen.getByRole("button", { name: "Timing for Shell" }));
+
+    expect(await screen.findByRole("dialog")).toHaveTextContent("4ms");
+  });
+
+  it("gives user messages no usage button", () => {
+    render(
+      <MessageTimeline
+        messages={[makeMessage({ id: "user-1", role: "user", content: "hi" })]}
+        parts={{}}
+        sessionStatus={{ type: "idle" }}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "Message tokens and timing" })).toBeNull();
+  });
+});

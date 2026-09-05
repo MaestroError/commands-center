@@ -3,6 +3,7 @@
 import { PageHeader } from "@/components/common/PageHeader";
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
 import { TabBar } from "@/components/common/TabBar";
+import { MessageUsageInfoButton, ToolUsageInfoButton } from "@/components/chat/UsageInfoButton";
 import { RunReplyPanel } from "@/components/tasks/task-feedback-section";
 import { formatDate, formatToken, readAgentName } from "@/components/tasks/task-format";
 import { StatusBadge } from "@/components/tasks/task-ui";
@@ -449,7 +450,10 @@ function SessionLogEntry(props: { message: ConversationMessage }) {
         <span className="rounded-full border border-border bg-panel px-3 py-1 text-xs uppercase tracking-wide text-text-secondary">
           {props.message.role}
         </span>
-        <span className="text-xs text-text-secondary">{formatDate(props.message.createdAt)}</span>
+        <div className="flex items-center gap-1">
+          <span className="text-xs text-text-secondary">{formatDate(props.message.createdAt)}</span>
+          <MessageUsageInfoButton message={props.message} parts={props.message.parts} />
+        </div>
       </div>
       {hasTextContent ? (
         <pre className="mt-3 overflow-auto text-sm leading-6 text-text-primary whitespace-pre-wrap">
@@ -501,6 +505,7 @@ function ToolLogBlock(props: { part: ConversationPart }) {
         <span className="rounded-full border border-border px-2 py-1">Tool call</span>
         <span className="font-medium text-text-primary normal-case">{toolName}</span>
         {status ? <span className="normal-case text-text-secondary">{status}</span> : null}
+        <ToolUsageInfoButton part={props.part} toolName={toolName} />
       </div>
 
       {input !== undefined ? <ToolLogField label="Input" value={input} /> : null}

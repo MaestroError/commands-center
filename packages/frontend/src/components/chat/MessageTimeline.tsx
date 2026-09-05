@@ -6,6 +6,7 @@ import type { ConversationMessage, ConversationPart, SessionStatus } from "@cc/s
 import { AssistantMessage } from "./AssistantMessage";
 import { InterruptedDivider } from "./InterruptedDivider";
 import { MessageSystemPromptsModal } from "./MessageSystemPromptsModal";
+import { MessageUsageInfoButton } from "./UsageInfoButton";
 import { UserMessage } from "./UserMessage";
 import { isHiddenUserMessage, isInterruptedMessage } from "./message-timeline-utils";
 
@@ -113,7 +114,12 @@ export function MessageTimeline({
                       <AssistantMessage message={msg} parts={msgParts} />
                     )}
                   </div>
-                  {msg.role !== "user" ? <MessageCopyButton copyText={copyText} /> : null}
+                  {msg.role !== "user" ? (
+                    <div className="flex gap-1">
+                      <MessageCopyButton copyText={copyText} />
+                      <MessageUsageInfoButton message={msg} parts={msgParts} />
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </div>

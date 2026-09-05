@@ -29,6 +29,7 @@ export function BashTool({ part }: ToolRendererProps) {
       subtitle={command}
       status={status}
       callId={getToolCallId(part)}
+      part={part}
       defaultExpanded
     >
       <div className="relative">

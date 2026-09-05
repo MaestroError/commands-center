@@ -1,4 +1,4 @@
-import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 import { agents } from "./agents.js";
 import { task_runs, tasks } from "./tasks.js";
@@ -46,6 +46,13 @@ export const messages = sqliteTable(
     parts_json: text("parts_json"),
     attachments_json: text("attachments_json"),
     error_json: text("error_json"),
+    // Provider-reported usage for assistant messages, captured from OpenCode's
+    // `info` on each sync. Null on user messages and on messages synced before
+    // CC persisted these, which fall back to their `step-finish` parts.
+    tokens_json: text("tokens_json"),
+    cost: real("cost"),
+    model_id: text("model_id"),
+    provider_id: text("provider_id"),
     // Snapshot of the system prompts sent with this (user) message. Preserved
     // across the delete+reinsert resync by keying on the stable OpenCode id.
     system_prompt_snapshot_json: text("system_prompt_snapshot_json"),

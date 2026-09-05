@@ -62,6 +62,7 @@ export function GenericTool({ part }: GenericToolProps) {
       title={toolName}
       status={status}
       callId={getToolCallId(part)}
+      part={part}
     >
       {details.length > 0 ? (
         details

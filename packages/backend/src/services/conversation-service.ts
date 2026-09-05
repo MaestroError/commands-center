@@ -1615,6 +1615,10 @@ export function createConversationService(options: {
         parts_json: JSON.stringify(message.parts),
         attachments_json: JSON.stringify(message.attachments),
         error_json: message.error ? JSON.stringify(message.error) : null,
+        tokens_json: message.tokens ? JSON.stringify(message.tokens) : null,
+        cost: message.cost ?? null,
+        model_id: message.modelId ?? null,
+        provider_id: message.providerId ?? null,
         system_prompt_snapshot_json: existingSnapshots.has(message.id)
           ? existingSnapshots.get(message.id)
           : message.id === snapshotTargetId && pendingSnapshot
@@ -1764,6 +1768,10 @@ function mapConversationMessage(row: MessageRow): ConversationMessage {
     parts: parseJson(row.parts_json, []),
     attachments: parseJson(row.attachments_json, []),
     error: parseJson(row.error_json, undefined),
+    tokens: parseJson(row.tokens_json, undefined),
+    cost: row.cost ?? undefined,
+    modelId: row.model_id ?? undefined,
+    providerId: row.provider_id ?? undefined,
     systemPromptSnapshot: parseJson(row.system_prompt_snapshot_json, undefined),
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
