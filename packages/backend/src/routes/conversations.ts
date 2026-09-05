@@ -12,6 +12,8 @@ import {
   sendConversationCommandInputSchema,
   sendConversationPromptInputSchema,
   sendConversationShellInputSchema,
+  CONVERSATION_MESSAGE_PAGE_MAX,
+  CONVERSATION_MESSAGE_PAGE_SIZE,
 } from "@cc/shared/schemas";
 
 import type { AppServer } from "../lib/fastify-zod.js";
@@ -191,6 +193,39 @@ export function registerConversationRoutes(server: AppServer, context: RuntimeCo
         request.params.id,
         request.body.enabled,
       ),
+  );
+
+  // Older messages, oldest-first, for scrolling back through a long conversation.
+  app.get(
+    "/api/conversations/:conversationId/messages",
+    {
+      schema: {
+        params: conversationParamsSchema,
+        querystring: z.object({
+          before: z.string().min(1),
+          limit: z.coerce.number().int().min(1).max(CONVERSATION_MESSAGE_PAGE_MAX).optional(),
+        }),
+      },
+    },
+    async (request) =>
+      service.listOlderMessages(
+        request.params.conversationId,
+        request.query.before,
+        request.query.limit ?? CONVERSATION_MESSAGE_PAGE_SIZE,
+      ),
+  );
+
+  // Full, untrimmed parts for one message — the conversation payload ships tool
+  // output truncated, and expanding a card asks for the rest here.
+  app.get(
+    "/api/conversations/:conversationId/messages/:messageId/parts",
+    {
+      schema: {
+        params: conversationParamsSchema.extend({ messageId: z.string().min(1) }),
+      },
+    },
+    async (request) =>
+      service.getMessageParts(request.params.conversationId, request.params.messageId),
   );
 
   app.get(

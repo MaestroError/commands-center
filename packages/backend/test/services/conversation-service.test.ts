@@ -12,6 +12,9 @@ import type {
   OpenCodeSession,
   OpenCodeSessionMessage,
 } from "../../src/services/opencode-service";
+import { CONVERSATION_MESSAGE_PAGE_SIZE } from "@cc/shared/schemas";
+
+import { TOOL_TEXT_PREVIEW_LIMIT } from "../../src/lib/message-projection";
 import { createTestDatabase } from "../helpers/db";
 
 describe("createConversationService", () => {
@@ -488,6 +491,141 @@ describe("createConversationService", () => {
     }
   });
 
+  it("returns only the newest page and pages backwards through the rest", async () => {
+    const testDb = await createTestDatabase();
+    const opencodeService = createMockOpenCodeService();
+    const agentService = createSpecialistService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+      skillRoot: `${testDb.cwd}/builtin-skills`,
+    });
+    const service = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+
+    try {
+      const agent = await agentService.create({
+        name: "Chatty Specialist",
+        role: "say a lot",
+        instructions: "Talk.",
+        defaultModel: "openai/gpt-4.1",
+        capabilities: {
+          builtInSkills: [],
+          customTools: [],
+          mcpServers: [],
+          toolPermissions: [],
+        },
+      });
+
+      const opened = await service.resolveCurrent(agent.id);
+      // Each prompt yields a user and an assistant message: 60 in total.
+      for (let index = 0; index < 30; index += 1) {
+        await service.sendPromptAsync(opened.current.id, {
+          text: `prompt ${String(index)}`,
+          attachments: [],
+        });
+      }
+
+      const detail = await service.get(agent.id, opened.current.id);
+
+      expect(detail.messages).toHaveLength(CONVERSATION_MESSAGE_PAGE_SIZE);
+      expect(detail.hasMoreMessages).toBe(true);
+      // messageCount stays the conversation's true total, not the page size.
+      expect(detail.messageCount).toBe(60);
+      // Oldest-first within the page, and it is the newest page.
+      expect(detail.messages.at(-1)?.content).toBe("Reply to: prompt 29");
+
+      const older = await service.listOlderMessages(
+        opened.current.id,
+        detail.messages[0]!.id,
+        CONVERSATION_MESSAGE_PAGE_SIZE,
+      );
+
+      expect(older.messages).toHaveLength(10);
+      expect(older.hasMore).toBe(false);
+      expect(older.messages[0]?.content).toBe("prompt 0");
+      // The page ends immediately before the detail page begins, with no overlap.
+      const ids = new Set(detail.messages.map((message) => message.id));
+      expect(older.messages.some((message) => ids.has(message.id))).toBe(false);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("trims tool parts in the conversation payload but serves them whole on request", async () => {
+    const testDb = await createTestDatabase();
+    const bigOutput = "o".repeat(TOOL_TEXT_PREVIEW_LIMIT + 1_000);
+    const opencodeService = createMockOpenCodeService({
+      assistantParts: [
+        {
+          type: "tool",
+          callID: "call-1",
+          tool: "read",
+          state: {
+            status: "completed",
+            title: "read",
+            input: { path: "a.ts" },
+            output: bigOutput,
+            metadata: { bulky: "m".repeat(5_000) },
+            time: { start: 1, end: 2 },
+          },
+        },
+      ],
+    });
+    const agentService = createSpecialistService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+      skillRoot: `${testDb.cwd}/builtin-skills`,
+    });
+    const service = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+
+    try {
+      const agent = await agentService.create({
+        name: "Verbose Specialist",
+        role: "emit big tool output",
+        instructions: "Read files.",
+        defaultModel: "openai/gpt-4.1",
+        capabilities: {
+          builtInSkills: [],
+          customTools: [],
+          mcpServers: [],
+          toolPermissions: [],
+        },
+      });
+
+      const opened = await service.resolveCurrent(agent.id);
+      await service.sendPromptAsync(opened.current.id, { text: "read it", attachments: [] });
+
+      const detail = await service.get(agent.id, opened.current.id);
+      const assistant = detail.messages.find((message) => message.role === "assistant");
+      const toolPart = assistant?.parts.find((part) => part.type === "tool");
+      const trimmed = toolPart?.["state"] as Record<string, unknown>;
+
+      expect((trimmed["output"] as string).length).toBe(TOOL_TEXT_PREVIEW_LIMIT);
+      expect(trimmed["outputTruncated"]).toBe(true);
+      expect(trimmed["metadata"]).toBeUndefined();
+
+      // The stored row is untouched; the parts endpoint hands back the original.
+      const full = await service.getMessageParts(opened.current.id, assistant!.id);
+      const fullTool = full.parts.find((part) => part.type === "tool");
+      const fullState = fullTool?.["state"] as Record<string, unknown>;
+
+      expect(fullState["output"]).toBe(bigOutput);
+      expect(fullState["outputTruncated"]).toBeUndefined();
+      expect(fullState["metadata"]).toEqual({ bulky: "m".repeat(5_000) });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("archives synced conversation messages and removes the archive folder on delete", async () => {
     const testDb = await createTestDatabase();
     const opencodeService = createMockOpenCodeService();
@@ -765,6 +903,8 @@ function createMockOpenCodeService(
     promptAsyncAssistantError?: unknown;
     /** Usage fields stamped on the async assistant reply's `info`, as OpenCode does. */
     assistantUsage?: Record<string, unknown>;
+    /** Extra parts appended to each async assistant reply. */
+    assistantParts?: Array<{ type: string; [key: string]: unknown }>;
   } = {},
 ): OpenCodeService {
   const sessions = new Map<string, OpenCodeSession>();
@@ -1028,6 +1168,12 @@ function createMockOpenCodeService(
                 type: "text",
                 text: `Reply to: ${text}`,
               },
+              ...(options.assistantParts ?? []).map((part, index) => ({
+                ...part,
+                id: `extra-${assistantId}-${String(index)}`,
+                sessionID,
+                messageID: assistantId,
+              })),
             ],
       });
 

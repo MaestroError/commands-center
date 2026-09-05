@@ -18,6 +18,7 @@ import type {
   TaskSubtask,
 } from "@cc/shared/schemas";
 import { Fragment, type ReactNode, useState } from "react";
+import { getOlderMessages } from "@/lib/api/conversations";
 import { Link, useLocation, useNavigate } from "react-router";
 import {
   formatRunDuration,
@@ -279,7 +280,7 @@ export function TaskRunDetail(props: {
 
 function TaskRunSessionTab(props: {
   run: TaskRun;
-  conversation?: { messages: ConversationMessage[] };
+  conversation?: { id: string; messages: ConversationMessage[]; hasMoreMessages?: boolean };
   diagnostics: Array<{ code: string; message: string }>;
   isLoading: boolean;
 }) {
@@ -405,7 +406,7 @@ function CollapsibleRunContextBlock(props: {
 }
 
 function renderSessionLogContent(props: {
-  conversation?: { messages: ConversationMessage[] };
+  conversation?: { id: string; messages: ConversationMessage[]; hasMoreMessages?: boolean };
   diagnostics: Array<{ code: string; message: string }>;
   isLoading: boolean;
 }) {
@@ -414,13 +415,7 @@ function renderSessionLogContent(props: {
   }
 
   if (props.conversation?.messages.length) {
-    return (
-      <div className="grid gap-3">
-        {props.conversation.messages.map((message) => (
-          <SessionLogEntry key={message.id} message={message} />
-        ))}
-      </div>
-    );
+    return <SessionLog conversation={props.conversation} />;
   }
 
   if (!props.conversation?.messages.length && props.diagnostics.length === 0) {
@@ -437,6 +432,60 @@ function renderSessionLogContent(props: {
       description="The task session could not be rendered. Review the diagnostics in the summary above."
       title="Session unavailable"
     />
+  );
+}
+
+/**
+ * The run's messages, newest page first. A long run is paginated the same way
+ * chat is, so the log has to offer the rest rather than silently ending at the
+ * page boundary.
+ */
+function SessionLog(props: {
+  conversation: { id: string; messages: ConversationMessage[]; hasMoreMessages?: boolean };
+}) {
+  const [older, setOlder] = useState<ConversationMessage[]>([]);
+  const [hasMore, setHasMore] = useState(props.conversation.hasMoreMessages === true);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const messages = [...older, ...props.conversation.messages];
+
+  const loadOlder = () => {
+    const oldest = messages[0];
+    if (!oldest || loading) return;
+
+    setLoading(true);
+    setError(null);
+    getOlderMessages(props.conversation.id, oldest.id)
+      .then((page) => {
+        setOlder((current) => [...page.messages, ...current]);
+        setHasMore(page.hasMore);
+      })
+      .catch((cause: unknown) => {
+        setError(cause instanceof Error ? cause.message : "Could not load older messages.");
+      })
+      .finally(() => setLoading(false));
+  };
+
+  return (
+    <div className="grid gap-3">
+      {hasMore ? (
+        <div className="flex justify-center">
+          <button
+            className="rounded-md border border-border px-3 py-1.5 text-xs text-text-secondary transition hover:border-accent/50 hover:text-text-primary disabled:opacity-60"
+            disabled={loading}
+            onClick={loadOlder}
+            type="button"
+          >
+            {loading ? "Loading older messages…" : "Load older messages"}
+          </button>
+        </div>
+      ) : null}
+      {error ? <p className="text-center text-xs text-danger">{error}</p> : null}
+      {messages.map((message) => (
+        <SessionLogEntry key={message.id} message={message} />
+      ))}
+    </div>
   );
 }
 

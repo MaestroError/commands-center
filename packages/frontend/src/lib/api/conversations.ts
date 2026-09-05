@@ -4,6 +4,8 @@ import {
   chatEventSchema,
   conversationDetailSchema,
   conversationListSchema,
+  conversationMessagePageSchema,
+  conversationMessagePartsSchema,
   conversationSnapshotSchema,
   pendingInteractionsSchema,
   resolvedSystemPromptSchema,
@@ -12,6 +14,8 @@ import {
   workspaceWatchEventSchema,
   type ChatEvent,
   type ConversationDetail,
+  type ConversationMessagePage,
+  type ConversationMessageParts,
   type ConversationSnapshot,
   type ConversationSummary,
   type PendingInteractions,
@@ -54,6 +58,32 @@ export async function getConversation(
   return requestJson<ConversationDetail>(
     `/api/specialists/${encodeURIComponent(agentId)}/conversations/${encodeURIComponent(conversationId)}`,
     conversationDetailSchema,
+  );
+}
+
+/** One page of older messages, oldest-first. */
+export async function getOlderMessages(
+  conversationId: string,
+  beforeMessageId: string,
+  limit?: number,
+): Promise<ConversationMessagePage> {
+  const query = new URLSearchParams({ before: beforeMessageId });
+  if (limit !== undefined) query.set("limit", String(limit));
+
+  return requestJson<ConversationMessagePage>(
+    `/api/conversations/${encodeURIComponent(conversationId)}/messages?${query.toString()}`,
+    conversationMessagePageSchema,
+  );
+}
+
+/** Full parts for one message, replacing the truncated ones from the list payload. */
+export async function getMessageParts(
+  conversationId: string,
+  messageId: string,
+): Promise<ConversationMessageParts> {
+  return requestJson<ConversationMessageParts>(
+    `/api/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/parts`,
+    conversationMessagePartsSchema,
   );
 }
 

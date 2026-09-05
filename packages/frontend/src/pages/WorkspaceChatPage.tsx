@@ -14,6 +14,7 @@ import { TodoDock } from "@/components/chat/TodoDock";
 import { ToolsTab } from "@/components/chat/ToolsTab";
 import { ChatResultsPanel } from "@/components/chat/ChatResultsPanel";
 import { PendingInteractionProvider } from "@/components/chat/tools/PendingInteractionProvider";
+import { FullPartsProvider } from "@/components/chat/tools/FullPartsProvider";
 import type { PendingToolInteraction } from "@/components/chat/tools/pending-interaction-context";
 import { buildPendingInteractionMap } from "@/components/chat/tools/pending-interaction-map";
 import { ErrorState, LoadingState } from "@/components/common/PageStates";
@@ -218,6 +219,11 @@ export function WorkspaceChatPage() {
     setActiveContextTabId("media");
   }, []);
 
+  const { loadOlderMessages } = conv;
+  const handleLoadOlderMessages = useCallback(() => {
+    void loadOlderMessages();
+  }, [loadOlderMessages]);
+
   const navigateToTaskCreation = useCallback(
     (prefill: TaskCreationPrefill) => {
       void navigate("/tasks/new", { state: { taskPrefill: prefill } });
@@ -409,15 +415,21 @@ export function WorkspaceChatPage() {
                     byCallId={pendingInteractionsByCallId}
                     cancel={cancelPendingInteraction}
                   >
-                    <MessageTimeline
-                      messages={conv.conversation.messages}
-                      parts={conv.parts}
-                      sessionStatus={conv.sessionStatus}
-                      sendError={conv.sendError}
-                      conversationId={conv.conversation.id}
-                      onAttachmentClick={handleAttachmentMediaSearch}
-                      onConvertUserMessageToTask={handleConvertUserMessageToTask}
-                    />
+                    <FullPartsProvider loadFullParts={conv.loadFullMessageParts}>
+                      <MessageTimeline
+                        messages={conv.conversation.messages}
+                        parts={conv.parts}
+                        sessionStatus={conv.sessionStatus}
+                        sendError={conv.sendError}
+                        conversationId={conv.conversation.id}
+                        hasMoreMessages={conv.hasMoreMessages}
+                        loadingOlderMessages={conv.loadingOlderMessages}
+                        olderMessagesError={conv.olderMessagesError}
+                        onLoadOlderMessages={handleLoadOlderMessages}
+                        onAttachmentClick={handleAttachmentMediaSearch}
+                        onConvertUserMessageToTask={handleConvertUserMessageToTask}
+                      />
+                    </FullPartsProvider>
                   </PendingInteractionProvider>
 
                   {conv.pendingPermission ? (

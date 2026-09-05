@@ -2,7 +2,11 @@ import { desc, eq, inArray } from "drizzle-orm";
 import type { Logger } from "pino";
 
 import {
+  CONVERSATION_MESSAGE_PAGE_MAX,
+  CONVERSATION_MESSAGE_PAGE_SIZE,
   conversationDetailSchema,
+  conversationMessagePageSchema,
+  conversationMessagePartsSchema,
   conversationMessageSchema,
   conversationSnapshotSchema,
   conversationSummarySchema,
@@ -14,6 +18,8 @@ import {
   taskPermissionProfileSchema,
   systemPromptOverridesSchema,
   type ConversationDetail,
+  type ConversationMessagePage,
+  type ConversationMessageParts,
   type ConversationMessage,
   type ConversationMessageError,
   type ConversationSnapshot,
@@ -45,6 +51,7 @@ import {
   mapRemoteMessage,
   readModelError,
 } from "../lib/message-mapper.js";
+import { projectPartsForList } from "../lib/message-projection.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
 import { resolveSpecialistWorkspacePath } from "./specialist-workspace.js";
 import { OpenCodeRequestError } from "./opencode-service.js";
@@ -247,6 +254,29 @@ export function createConversationService(options: {
       const conversation = await getConversationRow(agent.id, conversationId);
       await syncConversation(agent, conversation);
       return mapConversationDetail(conversation);
+    },
+
+    /**
+     * Older messages, for scrolling back through a long conversation. Reads
+     * straight from the database with no OpenCode sync: `get` already synced,
+     * and re-syncing per page would delete and reinsert every row mid-scroll.
+     */
+    async listOlderMessages(
+      conversationId: string,
+      beforeMessageId: string,
+      limit: number,
+    ): Promise<ConversationMessagePage> {
+      await getConversationAgent(conversationId);
+      return listOlderMessages(conversationId, beforeMessageId, limit);
+    },
+
+    /** Full parts for one message, for expanding a truncated tool card. */
+    async getMessageParts(
+      conversationId: string,
+      messageId: string,
+    ): Promise<ConversationMessageParts> {
+      await getConversationAgent(conversationId);
+      return getMessageParts(conversationId, messageId);
     },
 
     async getMedia(conversationId: string): Promise<SessionMediaItem[]> {
@@ -1660,14 +1690,94 @@ export function createConversationService(options: {
 
   async function mapConversationDetail(conversation: ConversationRow): Promise<ConversationDetail> {
     const summary = await mapConversationSummary(conversation);
+    // Newest page first, then flipped: a long conversation opens at the bottom,
+    // and older messages are fetched on demand.
     const rows = await options.db.query.messages.findMany({
       where: (table, operators) => operators.eq(table.conversation_id, conversation.id),
-      orderBy: (table, operators) => [operators.asc(table.created_at), operators.asc(table.id)],
+      orderBy: (table, operators) => [operators.desc(table.created_at), operators.desc(table.id)],
+      limit: CONVERSATION_MESSAGE_PAGE_SIZE + 1,
     });
+
+    const hasMoreMessages = rows.length > CONVERSATION_MESSAGE_PAGE_SIZE;
+    const page = (hasMoreMessages ? rows.slice(0, CONVERSATION_MESSAGE_PAGE_SIZE) : rows).reverse();
 
     return conversationDetailSchema.parse({
       ...summary,
-      messages: rows.map(mapConversationMessage),
+      messages: page.map((row) => mapConversationMessage(row)),
+      hasMoreMessages,
+    });
+  }
+
+  /**
+   * One page of messages older than `before` (a message id), oldest-first.
+   * Keyed on (created_at, id) so it matches the detail query's ordering and
+   * stays stable when several messages share a timestamp.
+   */
+  async function listOlderMessages(
+    conversationId: string,
+    beforeMessageId: string,
+    limit: number,
+  ): Promise<ConversationMessagePage> {
+    const anchor = await options.db.query.messages.findFirst({
+      where: (table, operators) =>
+        operators.and(
+          operators.eq(table.conversation_id, conversationId),
+          operators.eq(table.id, beforeMessageId),
+        ),
+      columns: { id: true, created_at: true },
+    });
+
+    if (!anchor) {
+      throw new NotFoundError("Message not found.");
+    }
+
+    const capped = Math.min(Math.max(limit, 1), CONVERSATION_MESSAGE_PAGE_MAX);
+    const rows = await options.db.query.messages.findMany({
+      where: (table, operators) =>
+        operators.and(
+          operators.eq(table.conversation_id, conversationId),
+          operators.or(
+            operators.lt(table.created_at, anchor.created_at),
+            operators.and(
+              operators.eq(table.created_at, anchor.created_at),
+              operators.lt(table.id, anchor.id),
+            ),
+          ),
+        ),
+      orderBy: (table, operators) => [operators.desc(table.created_at), operators.desc(table.id)],
+      limit: capped + 1,
+    });
+
+    const hasMore = rows.length > capped;
+    const page = (hasMore ? rows.slice(0, capped) : rows).reverse();
+
+    return conversationMessagePageSchema.parse({
+      messages: page.map((row) => mapConversationMessage(row)),
+      hasMore,
+    });
+  }
+
+  /** The full, untrimmed parts of one message, for expanding a truncated tool card. */
+  async function getMessageParts(
+    conversationId: string,
+    messageId: string,
+  ): Promise<ConversationMessageParts> {
+    const row = await options.db.query.messages.findFirst({
+      where: (table, operators) =>
+        operators.and(
+          operators.eq(table.conversation_id, conversationId),
+          operators.eq(table.id, messageId),
+        ),
+      columns: { id: true, parts_json: true },
+    });
+
+    if (!row) {
+      throw new NotFoundError("Message not found.");
+    }
+
+    return conversationMessagePartsSchema.parse({
+      messageId: row.id,
+      parts: parseJson(row.parts_json, []),
     });
   }
 
@@ -1765,7 +1875,7 @@ function mapConversationMessage(row: MessageRow): ConversationMessage {
     conversationId: row.conversation_id,
     role: row.role,
     content: row.content,
-    parts: parseJson(row.parts_json, []),
+    parts: projectPartsForList(parseJson(row.parts_json, [])),
     attachments: parseJson(row.attachments_json, []),
     error: parseJson(row.error_json, undefined),
     tokens: parseJson(row.tokens_json, undefined),

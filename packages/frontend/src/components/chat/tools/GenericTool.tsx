@@ -5,6 +5,7 @@ import { CopyIdButton } from "../CopyIdButton";
 import { getToolCallId, getToolState } from "./tool-registry";
 import { BasicTool } from "./BasicTool";
 import { getToolIcon } from "./tool-icons";
+import { TruncatedNotice } from "./TruncatedNotice";
 
 type GenericToolProps = {
   part: ConversationPart;
@@ -14,7 +15,13 @@ function toText(value: unknown): string {
   return typeof value === "string" ? value : JSON.stringify(value, null, 2);
 }
 
-function ToolDetail(props: { label: string; value: unknown; tone?: "default" | "danger" }) {
+function ToolDetail(props: {
+  label: string;
+  value: unknown;
+  tone?: "default" | "danger";
+  part?: ConversationPart;
+  field?: "output" | "error";
+}) {
   const text = toText(props.value);
   const labelClass =
     props.tone === "danger"
@@ -36,6 +43,7 @@ function ToolDetail(props: { label: string; value: unknown; tone?: "default" | "
           value={text}
         />
       </div>
+      {props.part && props.field ? <TruncatedNotice field={props.field} part={props.part} /> : null}
     </div>
   );
 }
@@ -51,9 +59,21 @@ export function GenericTool({ part }: GenericToolProps) {
 
   const details: ReactNode[] = [];
   if (input !== undefined) details.push(<ToolDetail key="input" label="Input" value={input} />);
-  if (output !== undefined) details.push(<ToolDetail key="output" label="Output" value={output} />);
+  if (output !== undefined)
+    details.push(
+      <ToolDetail field="output" key="output" label="Output" part={part} value={output} />,
+    );
   if (error !== undefined)
-    details.push(<ToolDetail key="error" label="Error" tone="danger" value={error} />);
+    details.push(
+      <ToolDetail
+        field="error"
+        key="error"
+        label="Error"
+        part={part}
+        tone="danger"
+        value={error}
+      />,
+    );
 
   return (
     <BasicTool

@@ -476,3 +476,74 @@ describe("usage info buttons", () => {
     expect(screen.queryByRole("button", { name: "Message tokens and timing" })).toBeNull();
   });
 });
+
+describe("older message paging", () => {
+  it("offers the load control only when older messages remain", () => {
+    const { rerender } = render(
+      <MessageTimeline messages={[makeMessage()]} parts={{}} sessionStatus={{ type: "idle" }} />,
+    );
+    expect(screen.queryByRole("button", { name: "Load older messages" })).toBeNull();
+
+    rerender(
+      <MessageTimeline
+        hasMoreMessages
+        messages={[makeMessage()]}
+        parts={{}}
+        sessionStatus={{ type: "idle" }}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Load older messages" })).toBeInTheDocument();
+  });
+
+  it("requests the previous page when the control is used", async () => {
+    const user = userEvent.setup();
+    const onLoadOlderMessages = vi.fn();
+    render(
+      <MessageTimeline
+        hasMoreMessages
+        messages={[makeMessage()]}
+        onLoadOlderMessages={onLoadOlderMessages}
+        parts={{}}
+        sessionStatus={{ type: "idle" }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Load older messages" }));
+
+    expect(onLoadOlderMessages).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows progress and blocks a second request while a page is in flight", async () => {
+    const user = userEvent.setup();
+    const onLoadOlderMessages = vi.fn();
+    render(
+      <MessageTimeline
+        hasMoreMessages
+        loadingOlderMessages
+        messages={[makeMessage()]}
+        onLoadOlderMessages={onLoadOlderMessages}
+        parts={{}}
+        sessionStatus={{ type: "idle" }}
+      />,
+    );
+
+    const button = screen.getByRole("button", { name: "Loading older messages…" });
+    expect(button).toBeDisabled();
+    await user.click(button);
+    expect(onLoadOlderMessages).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a failed page load", () => {
+    render(
+      <MessageTimeline
+        hasMoreMessages
+        messages={[makeMessage()]}
+        olderMessagesError="Request failed."
+        parts={{}}
+        sessionStatus={{ type: "idle" }}
+      />,
+    );
+
+    expect(screen.getByText("Request failed.")).toBeInTheDocument();
+  });
+});

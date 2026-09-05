@@ -3,6 +3,7 @@ import { Terminal } from "lucide-react";
 import type { ToolRendererProps } from "./tool-registry";
 import { getToolCallId, getToolInput, getToolState } from "./tool-registry";
 import { BasicTool } from "./BasicTool";
+import { TruncatedNotice } from "./TruncatedNotice";
 
 export function BashTool({ part }: ToolRendererProps) {
   const [copied, setCopied] = useState(false);
@@ -59,6 +60,7 @@ export function BashTool({ part }: ToolRendererProps) {
           </button>
         )}
       </div>
+      <TruncatedNotice field="output" part={part} />
     </BasicTool>
   );
 }

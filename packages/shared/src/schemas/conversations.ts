@@ -87,8 +87,31 @@ export const conversationSummarySchema = z.object({
   convertedAt: z.string().datetime().optional(),
 });
 
+/** Newest-first page size for the initial conversation load. */
+export const CONVERSATION_MESSAGE_PAGE_SIZE = 50;
+/** Upper bound a client may request when paging older messages. */
+export const CONVERSATION_MESSAGE_PAGE_MAX = 200;
+
 export const conversationDetailSchema = conversationSummarySchema.extend({
+  /**
+   * The newest page of messages, oldest-first. `messageCount` on the summary is
+   * the conversation's true total, so `hasMoreMessages` tells the client whether
+   * older ones remain to be fetched.
+   */
   messages: z.array(conversationMessageSchema),
+  hasMoreMessages: z.boolean().optional(),
+});
+
+/** One older page, oldest-first, returned by the message paging endpoint. */
+export const conversationMessagePageSchema = z.object({
+  messages: z.array(conversationMessageSchema),
+  hasMore: z.boolean().default(false),
+});
+
+/** Full, untrimmed parts for one message. */
+export const conversationMessagePartsSchema = z.object({
+  messageId: z.string().min(1),
+  parts: z.array(conversationPartSchema),
 });
 
 export const conversationListSchema = z.array(conversationSummarySchema);
@@ -139,6 +162,8 @@ export type ConversationAttachment = z.infer<typeof conversationAttachmentSchema
 export type ConversationDetail = z.infer<typeof conversationDetailSchema>;
 export type ConversationMessageError = z.infer<typeof conversationMessageErrorSchema>;
 export type ConversationMessage = z.infer<typeof conversationMessageSchema>;
+export type ConversationMessagePage = z.infer<typeof conversationMessagePageSchema>;
+export type ConversationMessageParts = z.infer<typeof conversationMessagePartsSchema>;
 export type ConversationMessageTokens = z.infer<typeof conversationMessageTokensSchema>;
 export type ConversationPart = z.infer<typeof conversationPartSchema>;
 export type ConversationSnapshot = z.infer<typeof conversationSnapshotSchema>;

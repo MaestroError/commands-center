@@ -4,6 +4,8 @@ import { useQuery } from "@tanstack/react-query";
 import {
   getActiveConversation,
   getConversation,
+  getMessageParts,
+  getOlderMessages,
   getPendingInteractions,
   startFreshConversation,
   sendPrompt,
@@ -79,6 +81,10 @@ export type ConversationState = {
   liveRequests: LiveRequest[];
   todos: TodoItem[];
   sendError: string | null;
+  /** True while an older page is in flight, so the timeline can show progress. */
+  loadingOlderMessages: boolean;
+  /** Set when an older page fails; cleared on the next attempt. */
+  olderMessagesError: string | null;
 };
 
 export type Action =
@@ -99,7 +105,11 @@ export type Action =
       };
     }
   | { type: "DISCARD_STALE_PERMISSION"; requestId: string }
-  | { type: "DISCARD_STALE_QUESTION"; requestId: string };
+  | { type: "DISCARD_STALE_QUESTION"; requestId: string }
+  | { type: "OLDER_MESSAGES_PENDING" }
+  | { type: "OLDER_MESSAGES_FAILED"; message: string }
+  | { type: "PREPEND_MESSAGES"; messages: ConversationMessage[]; hasMore: boolean }
+  | { type: "REPLACE_MESSAGE_PARTS"; messageId: string; parts: ConversationPart[] };
 
 export const initialState: ConversationState = {
   sessionStatus: { type: "idle" },
@@ -112,6 +122,8 @@ export const initialState: ConversationState = {
   liveRequests: [],
   todos: [],
   sendError: null,
+  loadingOlderMessages: false,
+  olderMessagesError: null,
 };
 
 const INITIAL_SSE_RECONNECT_DELAY_MS = 250;
@@ -322,6 +334,47 @@ export function conversationReducer(state: ConversationState, action: Action): C
         ),
       };
 
+    case "OLDER_MESSAGES_PENDING":
+      return { ...state, loadingOlderMessages: true, olderMessagesError: null };
+
+    case "OLDER_MESSAGES_FAILED":
+      return { ...state, loadingOlderMessages: false, olderMessagesError: action.message };
+
+    case "PREPEND_MESSAGES": {
+      if (!state.conversation) return state;
+
+      // Guard against a double fetch racing in the same page twice.
+      const known = new Set(state.conversation.messages.map((m) => m.id));
+      const fresh = action.messages.filter((m) => !known.has(m.id));
+
+      return {
+        ...state,
+        loadingOlderMessages: false,
+        olderMessagesError: null,
+        parts: { ...state.parts, ...buildPartsMap(fresh) },
+        conversation: {
+          ...state.conversation,
+          messages: [...fresh, ...state.conversation.messages],
+          hasMoreMessages: action.hasMore,
+        },
+      };
+    }
+
+    case "REPLACE_MESSAGE_PARTS": {
+      if (!state.conversation) return state;
+
+      return {
+        ...state,
+        parts: { ...state.parts, [action.messageId]: action.parts },
+        conversation: {
+          ...state.conversation,
+          messages: state.conversation.messages.map((m) =>
+            m.id === action.messageId ? { ...m, parts: action.parts } : m,
+          ),
+        },
+      };
+    }
+
     default:
       return state;
   }
@@ -506,6 +559,14 @@ export type UseConversationReturn = {
   status: "loading" | "ready" | "error";
   error: string | null;
   agent: Specialist | null;
+  /** Older messages remain beyond the loaded window. */
+  hasMoreMessages: boolean;
+  loadingOlderMessages: boolean;
+  olderMessagesError: string | null;
+  /** Prepend the page before the oldest loaded message. */
+  loadOlderMessages: () => Promise<void>;
+  /** Replace one message's truncated parts with the full ones. */
+  loadFullMessageParts: (messageId: string) => Promise<void>;
   agentStatus: "idle" | "busy" | "retry";
   sessionStatus: SessionStatus;
   sendError: string | null;
@@ -1055,6 +1116,46 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
     [state.conversation],
   );
 
+  const loadingOlderRef = useRef(false);
+
+  /**
+   * Fetch the page before the oldest message currently held. Guarded by a ref
+   * as well as state, because the scroll handler can fire again before the
+   * reducer's pending flag has been committed.
+   */
+  const loadOlderMessages = useCallback(async () => {
+    const conversation = state.conversation;
+    const oldest = conversation?.messages[0];
+    if (!conversation || !oldest || !conversation.hasMoreMessages) return;
+    if (loadingOlderRef.current) return;
+
+    loadingOlderRef.current = true;
+    dispatch({ type: "OLDER_MESSAGES_PENDING" });
+    try {
+      const page = await getOlderMessages(conversation.id, oldest.id);
+      dispatch({ type: "PREPEND_MESSAGES", messages: page.messages, hasMore: page.hasMore });
+    } catch (error) {
+      dispatch({
+        type: "OLDER_MESSAGES_FAILED",
+        message: error instanceof Error ? error.message : "Could not load older messages.",
+      });
+    } finally {
+      loadingOlderRef.current = false;
+    }
+  }, [state.conversation]);
+
+  /** Swap a message's truncated parts for the full ones. */
+  const loadFullMessageParts = useCallback(
+    async (messageId: string) => {
+      const conversation = state.conversation;
+      if (!conversation) return;
+
+      const full = await getMessageParts(conversation.id, messageId);
+      dispatch({ type: "REPLACE_MESSAGE_PARTS", messageId, parts: full.parts });
+    },
+    [state.conversation],
+  );
+
   // --- Derived status ---
 
   let status: "loading" | "ready" | "error" = "loading";
@@ -1074,6 +1175,11 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
     status,
     error,
     agent,
+    hasMoreMessages: state.conversation?.hasMoreMessages === true,
+    loadingOlderMessages: state.loadingOlderMessages,
+    olderMessagesError: state.olderMessagesError,
+    loadOlderMessages,
+    loadFullMessageParts,
     agentStatus: state.sessionStatus.type,
     sessionStatus: state.sessionStatus,
     sendError: state.sendError,
