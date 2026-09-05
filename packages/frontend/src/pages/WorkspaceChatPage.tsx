@@ -211,10 +211,12 @@ export function WorkspaceChatPage() {
     resolveLiveRequest,
   ]);
 
-  const handleAttachmentMediaSearch = (filename: string) => {
+  // useCallback-stable so it does not defeat UserMessage's memo: a fresh
+  // identity here would re-render every user message on any page state change.
+  const handleAttachmentMediaSearch = useCallback((filename: string) => {
     setMediaSearchQuery(filename);
     setActiveContextTabId("media");
-  };
+  }, []);
 
   const navigateToTaskCreation = useCallback(
     (prefill: TaskCreationPrefill) => {
