@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import type { Logger } from "pino";
 
 import { createId } from "../../src/db/ids";
@@ -186,6 +186,68 @@ describe("conversation-service delegating methods", () => {
     );
     expect(watchdog.rearm).not.toHaveBeenCalledWith(
       expect.objectContaining({ sessionID: idle.current.opencodeSessionId }),
+    );
+  });
+
+  it("re-arms active converted task-run conversations after restart", async () => {
+    const watchdog = {
+      rearm: vi.fn(() => Promise.resolve()),
+    } as unknown as InteractiveChatWatchdogService;
+    const { testDb, service, opencodeService, taskService, agent } = await setup({ watchdog });
+    const task = await taskService.create({ agentId: agent.id, title: "Converted recovery" });
+    const busyRun = await taskService.createRun({
+      taskId: task.id,
+      agentId: agent.id,
+      status: "completed",
+      triggerSource: "manual",
+      renderedPrompt: "Busy conversion.",
+    });
+    const retryingRun = await taskService.createRun({
+      taskId: task.id,
+      agentId: agent.id,
+      status: "completed",
+      triggerSource: "manual",
+      renderedPrompt: "Retrying conversion.",
+    });
+    const busy = await service.createTaskRunConversation({
+      agentId: agent.id,
+      taskId: task.id,
+      taskRunId: busyRun.id,
+      title: "Busy converted chat",
+    });
+    const retrying = await service.createTaskRunConversation({
+      agentId: agent.id,
+      taskId: task.id,
+      taskRunId: retryingRun.id,
+      title: "Retrying converted chat",
+    });
+    await testDb.client.db
+      .update(conversations)
+      .set({ converted_at: new Date() })
+      .where(inArray(conversations.id, [busy.id, retrying.id]));
+    opencodeService.getSessionStatus = vi.fn((_directory: string, sessionID: string) => {
+      if (sessionID === busy.opencodeSessionId) {
+        return Promise.resolve({ type: "busy" as const });
+      }
+      return Promise.resolve({
+        type: "retry" as const,
+        attempt: 1,
+        message: "retrying",
+        next: 1,
+      });
+    });
+
+    await service.resumeInteractiveChatWatchdogs();
+
+    expect(watchdog.rearm).toHaveBeenCalledTimes(2);
+    expect(watchdog.rearm).toHaveBeenCalledWith(
+      expect.objectContaining({ conversationId: busy.id, sessionID: busy.opencodeSessionId }),
+    );
+    expect(watchdog.rearm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: retrying.id,
+        sessionID: retrying.opencodeSessionId,
+      }),
     );
   });
 

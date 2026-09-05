@@ -800,7 +800,7 @@ describe("createTaskExecutionService", () => {
     },
   );
 
-  it("lets a concurrent conversion win before reply inspection without mutating the run", async () => {
+  it("serializes conversion permission changes before a concurrent reply", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
     const opencodeService = createMockOpenCodeService();
@@ -809,29 +809,9 @@ describe("createTaskExecutionService", () => {
       config: testDb.config,
       opencodeService,
     });
-    let convertBeforeReactivation = true;
-    let conversionRaceRunId: string | undefined;
-    const taskServiceWithConversionRace = {
-      ...taskService,
-      getRunningRunForAgent: async (
-        ...args: Parameters<typeof taskService.getRunningRunForAgent>
-      ): ReturnType<typeof taskService.getRunningRunForAgent> => {
-        if (convertBeforeReactivation) {
-          convertBeforeReactivation = false;
-          const run = conversionRaceRunId
-            ? await taskService.getRunById(conversionRaceRunId)
-            : undefined;
-          if (!run) throw new Error("Expected conversion race run.");
-          await conversationService.openTaskRunConversationInChat(run.taskId, run.id);
-        }
-
-        return taskService.getRunningRunForAgent(...args);
-      },
-    };
-    const inspect = vi.spyOn(conversationService, "inspectTaskRunConversation");
     const executionService = createTaskExecutionService({
       db: testDb.client.db,
-      taskService: taskServiceWithConversionRace,
+      taskService,
       conversationService,
       monitor: { autoStart: false },
     });
@@ -846,7 +826,6 @@ describe("createTaskExecutionService", () => {
         triggerSource: "manual",
         renderedPrompt: "Initial run.",
       });
-      conversionRaceRunId = run.id;
       const conversation = await conversationService.createTaskRunConversation({
         agentId: agent.id,
         taskId: task.id,
@@ -857,17 +836,43 @@ describe("createTaskExecutionService", () => {
       await taskService.setRunStatus(run.id, "completed", {
         completedAt: "2026-06-01T12:00:00.000Z",
       });
-      inspect.mockClear();
+      const sessionDirectory = vi.mocked(opencodeService.createSession).mock.calls.at(-1)?.[0];
+      expect(sessionDirectory).toBeDefined();
+      expect(
+        (await opencodeService.getSession(sessionDirectory ?? "", conversation.opencodeSessionId))
+          .permission,
+      ).toBeUndefined();
+      const permissionUpdateStarted = createDeferred<void>();
+      const releasePermissionUpdate = createDeferred<void>();
+      const updateSessionPermissions = opencodeService.updateSessionPermissions;
+      opencodeService.updateSessionPermissions = vi.fn(
+        async (
+          directory: string,
+          sessionID: string,
+          permission: OpenCodeSessionPermissionRule[],
+        ) => {
+          permissionUpdateStarted.resolve();
+          await releasePermissionUpdate.promise;
+          return updateSessionPermissions(directory, sessionID, permission);
+        },
+      );
 
-      await expect(
-        executionService.sendRunReply(run.id, { body: "Continue this run." }),
-      ).rejects.toMatchObject({
+      const conversion = conversationService.openTaskRunConversationInChat(task.id, run.id);
+      await permissionUpdateStarted.promise;
+      const reply = executionService.sendRunReply(run.id, { body: "Continue this run." });
+      await Promise.resolve();
+
+      expect((await taskService.getRunById(run.id))?.status).toBe("completed");
+      expect(await taskService.listFollowups(run.id)).toEqual([]);
+
+      releasePermissionUpdate.resolve();
+      await conversion;
+      await expect(reply).rejects.toMatchObject({
         code: "conflict",
         statusCode: 409,
         message: "This task run was continued in chat. Open its chat to continue.",
       });
 
-      expect(inspect).not.toHaveBeenCalled();
       expect((await taskService.getRunById(run.id))?.status).toBe("completed");
       expect(await taskService.listFollowups(run.id)).toEqual([]);
     } finally {

@@ -457,86 +457,88 @@ export function createConversationService(options: {
       taskId: string,
       taskRunId: string,
     ): Promise<ConversationSnapshot> {
-      const conversation = await options.db.query.conversations.findFirst({
-        where: (table, operators) =>
-          operators.and(
-            operators.eq(table.task_id, taskId),
-            operators.eq(table.task_run_id, taskRunId),
-            operators.eq(table.status, "active"),
-          ),
-      });
-
-      if (!conversation) {
-        throw new NotFoundError("Task run session not found.");
-      }
-
-      const run = await options.db.query.task_runs.findFirst({
-        where: (table, operators) =>
-          operators.and(operators.eq(table.id, taskRunId), operators.eq(table.task_id, taskId)),
-        columns: { status: true },
-      });
-
-      if (!run) {
-        throw new NotFoundError("Task run not found.");
-      }
-
-      if (!CONTINUABLE_TASK_RUN_STATUSES.has(run.status)) {
-        throw new ConflictError("Only terminal task runs can continue in chat.");
-      }
-
-      const agent = await getAgent(conversation.agent_id);
-      await syncConversation(agent, conversation);
-      const session = await options.opencodeService.getSession(
-        agent.workspace_path,
-        conversation.opencode_session_id,
-      );
-      await options.opencodeService.updateSessionPermissions(
-        agent.workspace_path,
-        conversation.opencode_session_id,
-        CONVERTED_CHAT_SESSION_PERMISSIONS,
-      );
-      try {
-        options.db.transaction((tx) => {
-          const run = tx
-            .select({ status: task_runs.status })
-            .from(task_runs)
-            .where(and(eq(task_runs.id, taskRunId), eq(task_runs.task_id, taskId)))
-            .get();
-
-          if (!run) {
-            throw new NotFoundError("Task run not found.");
-          }
-
-          if (!CONTINUABLE_TASK_RUN_STATUSES.has(run.status)) {
-            throw new ConflictError("Only terminal task runs can continue in chat.");
-          }
-
-          const timestamp = new Date();
-          tx.update(conversations)
-            .set({ is_current: false })
-            .where(eq(conversations.agent_id, agent.id))
-            .run();
-          tx.update(conversations)
-            .set({
-              is_current: true,
-              converted_at: conversation.converted_at ?? timestamp,
-              updated_at: timestamp,
-            })
-            .where(eq(conversations.id, conversation.id))
-            .run();
+      return taskRunOperationGuard.runExclusive(taskRunId, async () => {
+        const conversation = await options.db.query.conversations.findFirst({
+          where: (table, operators) =>
+            operators.and(
+              operators.eq(table.task_id, taskId),
+              operators.eq(table.task_run_id, taskRunId),
+              operators.eq(table.status, "active"),
+            ),
         });
-      } catch (error) {
-        if (session.permission) {
-          await options.opencodeService.updateSessionPermissions(
-            agent.workspace_path,
-            conversation.opencode_session_id,
-            session.permission,
-          );
-        }
-        throw error;
-      }
 
-      return getSnapshot(agent.id, conversation.id);
+        if (!conversation) {
+          throw new NotFoundError("Task run session not found.");
+        }
+
+        const run = await options.db.query.task_runs.findFirst({
+          where: (table, operators) =>
+            operators.and(operators.eq(table.id, taskRunId), operators.eq(table.task_id, taskId)),
+          columns: { status: true },
+        });
+
+        if (!run) {
+          throw new NotFoundError("Task run not found.");
+        }
+
+        if (!CONTINUABLE_TASK_RUN_STATUSES.has(run.status)) {
+          throw new ConflictError("Only terminal task runs can continue in chat.");
+        }
+
+        const agent = await getAgent(conversation.agent_id);
+        await syncConversation(agent, conversation);
+        const session = await options.opencodeService.getSession(
+          agent.workspace_path,
+          conversation.opencode_session_id,
+        );
+        await options.opencodeService.updateSessionPermissions(
+          agent.workspace_path,
+          conversation.opencode_session_id,
+          CONVERTED_CHAT_SESSION_PERMISSIONS,
+        );
+        try {
+          options.db.transaction((tx) => {
+            const run = tx
+              .select({ status: task_runs.status })
+              .from(task_runs)
+              .where(and(eq(task_runs.id, taskRunId), eq(task_runs.task_id, taskId)))
+              .get();
+
+            if (!run) {
+              throw new NotFoundError("Task run not found.");
+            }
+
+            if (!CONTINUABLE_TASK_RUN_STATUSES.has(run.status)) {
+              throw new ConflictError("Only terminal task runs can continue in chat.");
+            }
+
+            const timestamp = new Date();
+            tx.update(conversations)
+              .set({ is_current: false })
+              .where(eq(conversations.agent_id, agent.id))
+              .run();
+            tx.update(conversations)
+              .set({
+                is_current: true,
+                converted_at: conversation.converted_at ?? timestamp,
+                updated_at: timestamp,
+              })
+              .where(eq(conversations.id, conversation.id))
+              .run();
+          });
+        } catch (error) {
+          if (session.permission) {
+            await options.opencodeService.updateSessionPermissions(
+              agent.workspace_path,
+              conversation.opencode_session_id,
+              session.permission,
+            );
+          }
+          throw error;
+        }
+
+        return getSnapshot(agent.id, conversation.id);
+      });
     },
 
     async sendPrompt(
@@ -1059,7 +1061,10 @@ export function createConversationService(options: {
               where: (table, operators) =>
                 operators.and(
                   operators.eq(table.status, "active"),
-                  operators.eq(table.source, "chat"),
+                  operators.or(
+                    operators.eq(table.source, "chat"),
+                    operators.isNotNull(table.converted_at),
+                  ),
                 ),
             });
         break;
@@ -1086,7 +1091,10 @@ export function createConversationService(options: {
                 operators.and(
                   operators.eq(table.id, conversation.id),
                   operators.eq(table.status, "active"),
-                  operators.eq(table.source, "chat"),
+                  operators.or(
+                    operators.eq(table.source, "chat"),
+                    operators.isNotNull(table.converted_at),
+                  ),
                 ),
             });
             if (!currentConversation || signal.aborted) return undefined;
