@@ -45,7 +45,7 @@ describe("readContextWindow", () => {
   it("counts the prompt the model received: fresh input plus cache reads", () => {
     const context = read([assistant()]);
 
-    // input + cacheRead + output: what the window holds going into the next turn.
+    // Every component, as OpenCode totals it: input + output + reasoning + cache.
     expect(context?.usedTokens).toBe(526_600);
     expect(context?.limitTokens).toBe(1_000_000);
     expect(formatContextSummary(context!)).toBe("526.6k / 1M (53%)");
@@ -66,9 +66,10 @@ describe("readContextWindow", () => {
     expect(context?.usedTokens).toBe(1_000);
   });
 
-  it("ignores a compaction's own turns, which report the summarization request", () => {
-    // Shape taken from real sessions: a full window, two summary turns whose
-    // counts describe the summarize call, then the genuinely reduced context.
+  it("falls as soon as a compaction lands, not a turn later", () => {
+    // Shape taken from real sessions: a full window, then the compaction's own
+    // turns. Holding the pre-compaction figure here would tell the reader to
+    // compact again immediately after they just did.
     const context = read([
       assistant({
         id: "full",
@@ -86,8 +87,7 @@ describe("readContextWindow", () => {
       }),
     ]);
 
-    // Reading summary-2 would claim ~10k — far below the real window.
-    expect(context?.usedTokens).toBe(252_294);
+    expect(context?.usedTokens).toBe(10_159);
   });
 
   it("falls to the reduced window on the first real turn after a compaction", () => {
@@ -110,9 +110,11 @@ describe("readContextWindow", () => {
     expect(context?.usedTokens).toBe(20_180);
   });
 
-  it("ignores a trailing summary turn (real data from a reported chat)", () => {
-    // The chat that surfaced this: a real turn of 55,006 + 1,792 + 35, then a
-    // summary turn of 440 + 80. Reading the summary reported "520 / 200k (0%)".
+  it("drops to the compacted state on a summary turn (real data from a reported chat)", () => {
+    // A real turn of 55,006 + 1,792 + 35, then a /compact writing a summary
+    // turn of 440 + 80. The summary is the new baseline the next request builds
+    // from, so the window really is ~520 now — that is the signal to stop
+    // compacting, and matches what OpenCode's own UI shows.
     const context = readContextWindow({
       messages: [
         assistant({
@@ -133,8 +135,18 @@ describe("readContextWindow", () => {
       providers: [provider("opencode", { "big-pickle": { limit: { context: 200_000 } } })],
     });
 
-    expect(context?.usedTokens).toBe(56_833);
-    expect(formatContextSummary(context!)).toBe("56.8k / 200k (28%)");
+    expect(context?.usedTokens).toBe(520);
+    expect(formatContextSummary(context!)).toBe("520 / 200k (0%)");
+  });
+
+  it("counts cache writes, which OpenCode's own total includes", () => {
+    const context = read([
+      assistant({
+        tokens: { input: 100, output: 10, reasoning: 5, cacheRead: 20, cacheWrite: 30 },
+      }),
+    ]);
+
+    expect(context?.usedTokens).toBe(165);
   });
 
   it("resolves the limit per provider, so the same model can differ", () => {
