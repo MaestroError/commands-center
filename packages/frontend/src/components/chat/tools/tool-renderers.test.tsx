@@ -99,6 +99,24 @@ describe("TaskTool", () => {
 });
 
 describe("QuestionTool", () => {
+  it("shows timing for a completed question", async () => {
+    const user = userEvent.setup();
+    render(
+      <QuestionTool
+        part={makePart({
+          tool: "question",
+          state: {
+            status: "completed",
+            input: { questions: [{ question: "Pick one?" }] },
+            metadata: { answers: [["Yes"]] },
+            time: { start: 1000, end: 2500 },
+          },
+        })}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Timing for Question" }));
+    expect(await screen.findByRole("dialog")).toHaveTextContent("1.5s");
+  });
   it("returns null when pending", () => {
     const part = makePart({
       tool: "question",

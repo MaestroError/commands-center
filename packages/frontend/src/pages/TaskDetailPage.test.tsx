@@ -349,6 +349,21 @@ describe("TaskDetailPage run mode", () => {
     expect(screen.getByTestId("task-run-loading")).toBeInTheDocument();
   });
 
+  it("shows the full session message count for a paginated run", () => {
+    mockUseTaskQuery.mockReturnValue({ data: buildTask(), isLoading: false, error: null });
+    mockUseTaskRunQuery.mockReturnValue({ data: buildRun(), isLoading: false, error: null });
+    mockUseTaskRunSessionQuery.mockReturnValue({
+      data: {
+        conversation: { id: "paged", messageCount: 125, messages: [], hasMoreMessages: true },
+        diagnostics: [],
+      },
+      isLoading: false,
+      error: null,
+    });
+    renderPage("run");
+    expect(screen.getByText("Messages").parentElement).toHaveTextContent("125");
+  });
+
   it("shows the run error state", () => {
     mockUseTaskQuery.mockReturnValue({ data: buildTask(), isLoading: false, error: null });
     mockUseTaskRunQuery.mockReturnValue({

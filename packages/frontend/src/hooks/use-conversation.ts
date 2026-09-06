@@ -106,8 +106,8 @@ export type Action =
     }
   | { type: "DISCARD_STALE_PERMISSION"; requestId: string }
   | { type: "DISCARD_STALE_QUESTION"; requestId: string }
-  | { type: "OLDER_MESSAGES_PENDING" }
-  | { type: "OLDER_MESSAGES_FAILED"; message: string }
+  | { type: "OLDER_MESSAGES_PENDING"; conversationId: string }
+  | { type: "OLDER_MESSAGES_FAILED"; conversationId: string; message: string }
   | {
       type: "PREPEND_MESSAGES";
       /** The conversation the page was requested for; a late result for a
@@ -202,6 +202,10 @@ export function conversationReducer(state: ConversationState, action: Action): C
         previousConversations: action.snapshot.previous,
         sessionStatus: { type: "idle" },
         ...liveInteractionState(state, action.snapshot.current.id),
+        loadingOlderMessages:
+          state.conversation?.id === action.snapshot.current.id && state.loadingOlderMessages,
+        olderMessagesError:
+          state.conversation?.id === action.snapshot.current.id ? state.olderMessagesError : null,
         sendError: null,
       };
 
@@ -213,6 +217,10 @@ export function conversationReducer(state: ConversationState, action: Action): C
         previousConversations: action.previous ?? state.previousConversations,
         sessionStatus: { type: "idle" },
         ...liveInteractionState(state, action.detail.id),
+        loadingOlderMessages:
+          state.conversation?.id === action.detail.id && state.loadingOlderMessages,
+        olderMessagesError:
+          state.conversation?.id === action.detail.id ? state.olderMessagesError : null,
         sendError: null,
       };
 
@@ -347,9 +355,11 @@ export function conversationReducer(state: ConversationState, action: Action): C
       };
 
     case "OLDER_MESSAGES_PENDING":
+      if (state.conversation?.id !== action.conversationId) return state;
       return { ...state, loadingOlderMessages: true, olderMessagesError: null };
 
     case "OLDER_MESSAGES_FAILED":
+      if (state.conversation?.id !== action.conversationId) return state;
       return { ...state, loadingOlderMessages: false, olderMessagesError: action.message };
 
     case "PREPEND_MESSAGES": {
@@ -1129,7 +1139,7 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
     [state.conversation],
   );
 
-  const loadingOlderRef = useRef(false);
+  const loadingOlderRef = useRef(new Set<string>());
 
   /**
    * Fetch the page before the oldest message currently held. Guarded by a ref
@@ -1140,10 +1150,10 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
     const conversation = state.conversation;
     const oldest = conversation?.messages[0];
     if (!conversation || !oldest || !conversation.hasMoreMessages) return;
-    if (loadingOlderRef.current) return;
+    if (loadingOlderRef.current.has(conversation.id)) return;
 
-    loadingOlderRef.current = true;
-    dispatch({ type: "OLDER_MESSAGES_PENDING" });
+    loadingOlderRef.current.add(conversation.id);
+    dispatch({ type: "OLDER_MESSAGES_PENDING", conversationId: conversation.id });
     try {
       const page = await getOlderMessages(conversation.id, oldest.id);
       dispatch({
@@ -1155,10 +1165,11 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
     } catch (error) {
       dispatch({
         type: "OLDER_MESSAGES_FAILED",
+        conversationId: conversation.id,
         message: error instanceof Error ? error.message : "Could not load older messages.",
       });
     } finally {
-      loadingOlderRef.current = false;
+      loadingOlderRef.current.delete(conversation.id);
     }
   }, [state.conversation]);
 

@@ -315,13 +315,18 @@ export function TaskRunDetail(props: {
 
 function TaskRunSessionTab(props: {
   run: TaskRun;
-  conversation?: { id: string; messages: ConversationMessage[]; hasMoreMessages?: boolean };
+  conversation?: {
+    id: string;
+    messages: ConversationMessage[];
+    messageCount: number;
+    hasMoreMessages?: boolean;
+  };
   diagnostics: Array<{ code: string; message: string }>;
   isLoading: boolean;
 }) {
   const [logOpen, setLogOpen] = useState(false);
   const messageCount =
-    props.conversation?.messages.length ?? readResultMessageCount(props.run.result) ?? 0;
+    props.conversation?.messageCount ?? readResultMessageCount(props.run.result) ?? 0;
 
   return (
     <div className="grid gap-5">

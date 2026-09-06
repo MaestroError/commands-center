@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { createSpecialistService } from "../../src/services/specialist-service";
 import { createSchedulerService } from "../../src/services/scheduler-service";
@@ -15,10 +15,11 @@ describe("conversation routes", () => {
   let testDb: Awaited<ReturnType<typeof createTestDatabase>>;
   let server: Awaited<ReturnType<typeof createServer>>;
   let agentId: string;
+  let opencodeService: OpenCodeService;
 
   beforeAll(async () => {
     testDb = await createTestDatabase();
-    const opencodeService = createMockOpenCodeService();
+    opencodeService = createMockOpenCodeService();
     const agentService = createSpecialistService({
       db: testDb.client.db,
       config: testDb.config,
@@ -68,6 +69,33 @@ describe("conversation routes", () => {
     expect(snapshot.current.id).toBeDefined();
     expect(snapshot.previous).toEqual([]);
   });
+
+  it.each([
+    { query: "?sync=true", status: 200, syncs: 1 },
+    { query: "?sync=false", status: 200, syncs: 0 },
+    { query: "", status: 200, syncs: 0 },
+    { query: "?sync=invalid", status: 400, syncs: 0 },
+  ])(
+    "handles usage synchronization query '$query' explicitly",
+    async ({ query, status, syncs }) => {
+      const opened = await server.inject({
+        method: "GET",
+        url: `/api/specialists/${agentId}/conversations/active`,
+      });
+      const conversationId = opened.json<{ current: { id: string } }>().current.id;
+      const listMessages = vi.spyOn(opencodeService, "listSessionMessages");
+      try {
+        const response = await server.inject({
+          method: "GET",
+          url: `/api/conversations/${conversationId}/usage${query}`,
+        });
+        expect(response.statusCode).toBe(status);
+        expect(listMessages).toHaveBeenCalledTimes(syncs);
+      } finally {
+        listMessages.mockRestore();
+      }
+    },
+  );
 
   it("registers a file artifact for the exact conversation", async () => {
     const first = await server.inject({

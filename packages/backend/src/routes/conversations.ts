@@ -241,7 +241,7 @@ export function registerConversationRoutes(server: AppServer, context: RuntimeCo
         querystring: z.object({
           // Sync the OpenCode session into SQLite first. Needed after a
           // streaming turn, which persists nothing on its own.
-          sync: z.coerce.boolean().optional(),
+          sync: z.enum(["true", "false"]).optional(),
         }),
         response: {
           200: usageTotalsSchema,
@@ -249,7 +249,7 @@ export function registerConversationRoutes(server: AppServer, context: RuntimeCo
       },
     },
     async (request) => {
-      if (request.query.sync) {
+      if (request.query.sync === "true") {
         await service.syncConversationMessages(request.params.conversationId);
       }
 

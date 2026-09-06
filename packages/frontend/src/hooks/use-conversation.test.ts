@@ -15,6 +15,69 @@ import type { ChatEvent, TodoItem } from "@cc/shared/schemas";
 // Fixtures
 // ---------------------------------------------------------------------------
 
+describe("paging conversation isolation", () => {
+  it.each(["HYDRATE", "HYDRATE_DETAIL"] as const)(
+    "clears paging state when %s switches conversations",
+    (type) => {
+      const state = {
+        ...initialState,
+        conversation: makeConversation(),
+        loadingOlderMessages: true,
+        olderMessagesError: "old error",
+      };
+      const detail = makeConversation({ id: "conv-2" });
+      const next = conversationReducer(
+        state,
+        type === "HYDRATE"
+          ? { type, snapshot: { current: detail, previous: [] } }
+          : { type, detail },
+      );
+      expect({ loading: next.loadingOlderMessages, error: next.olderMessagesError }).toEqual({
+        loading: false,
+        error: null,
+      });
+    },
+  );
+
+  it("ignores a failed page from another conversation", () => {
+    const state = {
+      ...initialState,
+      conversation: makeConversation({ id: "conv-2" }),
+      loadingOlderMessages: true,
+    };
+    expect(
+      conversationReducer(state, {
+        type: "OLDER_MESSAGES_FAILED",
+        conversationId: "conv-1",
+        message: "old error",
+      }),
+    ).toBe(state);
+  });
+
+  it("ignores a pending page from another conversation", () => {
+    const state = { ...initialState, conversation: makeConversation({ id: "conv-2" }) };
+    expect(
+      conversationReducer(state, { type: "OLDER_MESSAGES_PENDING", conversationId: "conv-1" }),
+    ).toBe(state);
+  });
+
+  it("ignores a successful page from another conversation", () => {
+    const state = {
+      ...initialState,
+      conversation: makeConversation({ id: "conv-2" }),
+      loadingOlderMessages: true,
+    };
+    expect(
+      conversationReducer(state, {
+        type: "PREPEND_MESSAGES",
+        conversationId: "conv-1",
+        messages: [makeMessage()],
+        hasMore: false,
+      }),
+    ).toBe(state);
+  });
+});
+
 function makeMessage(overrides: Partial<ConversationMessage> = {}): ConversationMessage {
   return {
     id: "msg-1",
