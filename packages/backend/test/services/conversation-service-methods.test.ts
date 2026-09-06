@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import type { Logger } from "pino";
 
+import { CONVERSATION_MESSAGE_PAGE_SIZE } from "@cc/shared/schemas";
+
 import { createId } from "../../src/db/ids";
 import {
   artifact_share_links,
@@ -861,6 +863,64 @@ describe("conversation-service delegating methods", () => {
       tokens: { input: 1_200, output: 250, reasoning: 50, cacheRead: 10, cacheWrite: 5 },
     });
     expect(message?.completedAt).toBe(new Date(4_000).toISOString());
+  });
+
+  it("gives the run monitor the complete history, not a UI page", async () => {
+    // The monitor slices from a baseline taken against the full OpenCode
+    // session. Capping this read at the UI page size made that slice empty for
+    // any run past 50 messages, so a reply's answer was never observed and the
+    // run stalled until it timed out.
+    const { service, opencodeService, taskService, agent } = await setup();
+    const task = await taskService.create({ agentId: agent.id, title: "Long task" });
+    const run = await taskService.createRun({
+      id: "run-long",
+      taskId: task.id,
+      agentId: agent.id,
+      status: "running",
+      triggerSource: "manual",
+      renderedPrompt: "Run.",
+    });
+    const conversation = await service.createTaskRunConversation({
+      agentId: agent.id,
+      taskId: task.id,
+      taskRunId: run.id,
+      title: "Run",
+    });
+
+    const BASELINE = 60;
+    const remote = Array.from({ length: BASELINE }, (_, index) => ({
+      info: {
+        id: `hist-${String(index)}`,
+        sessionID: conversation.opencodeSessionId,
+        role: index % 2 === 0 ? ("user" as const) : ("assistant" as const),
+        time: { created: 1_000 + index, completed: 1_000 + index },
+      },
+      parts: [{ id: `hist-part-${String(index)}`, type: "text", text: `m${String(index)}` }],
+    }));
+    // The reply the monitor has to notice, arriving after the baseline.
+    remote.push({
+      info: {
+        id: "the-answer",
+        sessionID: conversation.opencodeSessionId,
+        role: "assistant" as const,
+        time: { created: 9_000, completed: 9_100 },
+      },
+      parts: [{ id: "answer-part", type: "text", text: "answered" }],
+    });
+    opencodeService.listSessionMessages = vi.fn(() => Promise.resolve(remote));
+
+    const detail = await service.syncTaskRunConversation(task.id, run.id);
+
+    expect(detail.messages).toHaveLength(BASELINE + 1);
+    // The monitor's own operation: slice past the baseline and find the reply.
+    const afterBaseline = detail.messages.slice(BASELINE);
+    expect(afterBaseline).toHaveLength(1);
+    expect(afterBaseline[0]?.id).toBe("the-answer");
+
+    // The UI-facing read stays paged.
+    const inspected = await service.inspectTaskRunConversation(task.id, run.id);
+    expect(inspected.conversation?.messages.length).toBe(CONVERSATION_MESSAGE_PAGE_SIZE);
+    expect(inspected.conversation?.hasMoreMessages).toBe(true);
   });
 
   it("pages and expands messages on task-run conversations, not just chat", async () => {

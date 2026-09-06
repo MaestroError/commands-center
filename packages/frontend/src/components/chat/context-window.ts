@@ -1,8 +1,7 @@
 import type { ConversationMessage, ConversationPart, Provider } from "@cc/shared/schemas";
 
 import { sumConversationMessageTokens } from "@cc/shared/schemas";
-
-import { readMessageUsage } from "./usage-stats";
+import { readOpenCodeTokens } from "@cc/shared/lib";
 
 /**
  * How much of the model's context window the conversation is using.
@@ -87,16 +86,38 @@ function findLatestUsage(
     const message = messages[index];
     if (!message || message.role !== "assistant") continue;
 
-    const usage = readMessageUsage(message, parts[message.id] ?? message.parts);
-    if (!usage?.tokens) continue;
-
-    const total = sumConversationMessageTokens(usage.tokens);
-    if (total <= 0) continue;
+    const total = readLatestCallTokens(message, parts[message.id] ?? message.parts);
+    if (total === undefined || total <= 0) continue;
 
     return { message, total };
   }
 
   return null;
+}
+
+/**
+ * Tokens for the turn's *last model call*, which is what occupies the window.
+ *
+ * Deliberately not `readMessageUsage`: that sums a multi-step turn's steps,
+ * because spending accumulates across calls. Occupancy does not — each call
+ * re-sends the conversation, so two 100k steps mean a 100k window, not 200k.
+ * The last `step-finish` part is the latest call; the stored message totals are
+ * only equivalent when the turn had a single step.
+ */
+function readLatestCallTokens(
+  message: ConversationMessage,
+  parts: ConversationPart[],
+): number | undefined {
+  const steps = parts.filter((part) => part.type === "step-finish");
+
+  for (let index = steps.length - 1; index >= 0; index -= 1) {
+    const tokens = readOpenCodeTokens(steps[index]?.["tokens"]);
+    if (tokens) return sumConversationMessageTokens(tokens);
+  }
+
+  // No step parts to read: the message totals are the only report available,
+  // and for a single-step turn they are exactly the last call.
+  return message.tokens ? sumConversationMessageTokens(message.tokens) : undefined;
 }
 
 function readModelIdentity(

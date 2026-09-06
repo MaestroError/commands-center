@@ -17,6 +17,9 @@ import { queryKeys } from "@/lib/query-keys";
 export function useConversationUsageQuery(conversationId?: string, isBusy = false) {
   const queryClient = useQueryClient();
   const wasBusy = useRef(false);
+  // A turn that just finished has not been persisted yet, so that refetch must
+  // sync first. The initial read follows a conversation GET, which already did.
+  const needsSync = useRef(false);
 
   useEffect(() => {
     if (isBusy) {
@@ -26,6 +29,7 @@ export function useConversationUsageQuery(conversationId?: string, isBusy = fals
 
     if (!wasBusy.current || !conversationId) return;
     wasBusy.current = false;
+    needsSync.current = true;
     void queryClient.invalidateQueries({
       queryKey: queryKeys.conversationUsage(conversationId),
     });
@@ -33,7 +37,11 @@ export function useConversationUsageQuery(conversationId?: string, isBusy = fals
 
   return useQuery({
     queryKey: queryKeys.conversationUsage(conversationId ?? "missing"),
-    queryFn: () => getConversationUsage(conversationId ?? ""),
+    queryFn: async () => {
+      const sync = needsSync.current;
+      needsSync.current = false;
+      return getConversationUsage(conversationId ?? "", { sync });
+    },
     enabled: Boolean(conversationId),
   });
 }

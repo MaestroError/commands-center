@@ -77,6 +77,9 @@ import type { SystemPromptRenderContext, SystemPromptScope } from "../system-pro
 type AgentRow = typeof agents.$inferSelect;
 type AgentRuntimeRow = AgentRow & { workspace_path: string };
 type ConversationRow = typeof conversations.$inferSelect;
+
+/** `paginate: false` returns the complete ordered history, for non-UI readers. */
+type ConversationDetailOptions = { paginate?: boolean };
 type MessageRow = typeof messages.$inferSelect;
 
 export type TaskRunSessionDiagnostic = {
@@ -272,6 +275,19 @@ export function createConversationService(options: {
       return listOlderMessages(conversationId, beforeMessageId, limit);
     },
 
+    /**
+     * Pull the session's latest messages into SQLite.
+     *
+     * Streaming sends deliberately skip this, so after a turn finishes nothing
+     * has persisted the reply yet. Anything that reads the database rather than
+     * OpenCode — the usage aggregate — has to sync first or it reports the
+     * pre-turn state.
+     */
+    async syncConversationMessages(conversationId: string): Promise<void> {
+      const loaded = await getConversationAgent(conversationId, { includeTaskRun: true });
+      await syncConversation(loaded.agent, loaded.conversation);
+    },
+
     /** Full parts for one message, for expanding a truncated tool card. */
     async getMessageParts(
       conversationId: string,
@@ -445,7 +461,10 @@ export function createConversationService(options: {
 
       const agent = await getAgent(conversation.agent_id);
       await syncConversation(agent, conversation);
-      return getConversationDetail(conversation.id);
+      // Complete history, not a UI page: the run monitor slices this from a
+      // baseline captured against the full OpenCode session, so a capped list
+      // would hide every new message once a run passes the page size.
+      return getConversationDetail(conversation.id, { paginate: false });
     },
 
     async getTaskRunSessionStatus(
@@ -1689,7 +1708,10 @@ export function createConversationService(options: {
     });
   }
 
-  async function getConversationDetail(conversationId: string): Promise<ConversationDetail> {
+  async function getConversationDetail(
+    conversationId: string,
+    detailOptions: ConversationDetailOptions = {},
+  ): Promise<ConversationDetail> {
     const conversation = await options.db.query.conversations.findFirst({
       where: (table, operators) => operators.eq(table.id, conversationId),
     });
@@ -1698,18 +1720,36 @@ export function createConversationService(options: {
       throw new NotFoundError("Conversation not found.");
     }
 
-    return mapConversationDetail(conversation);
+    return mapConversationDetail(conversation, detailOptions);
   }
 
-  async function mapConversationDetail(conversation: ConversationRow): Promise<ConversationDetail> {
+  async function mapConversationDetail(
+    conversation: ConversationRow,
+    detailOptions: ConversationDetailOptions = {},
+  ): Promise<ConversationDetail> {
     const summary = await mapConversationSummary(conversation);
+    const paginate = detailOptions.paginate ?? true;
+
     // Newest page first, then flipped: a long conversation opens at the bottom,
-    // and older messages are fetched on demand.
+    // and older messages are fetched on demand. Callers that need the complete
+    // ordered history — the task-run monitor, which indexes into it from a
+    // baseline taken against the full session — opt out.
     const rows = await options.db.query.messages.findMany({
       where: (table, operators) => operators.eq(table.conversation_id, conversation.id),
-      orderBy: (table, operators) => [operators.desc(table.created_at), operators.desc(table.id)],
-      limit: CONVERSATION_MESSAGE_PAGE_SIZE + 1,
+      orderBy: (table, operators) =>
+        paginate
+          ? [operators.desc(table.created_at), operators.desc(table.id)]
+          : [operators.asc(table.created_at), operators.asc(table.id)],
+      ...(paginate ? { limit: CONVERSATION_MESSAGE_PAGE_SIZE + 1 } : {}),
     });
+
+    if (!paginate) {
+      return conversationDetailSchema.parse({
+        ...summary,
+        messages: rows.map((row) => mapConversationMessage(row)),
+        hasMoreMessages: false,
+      });
+    }
 
     const hasMoreMessages = rows.length > CONVERSATION_MESSAGE_PAGE_SIZE;
     const page = (hasMoreMessages ? rows.slice(0, CONVERSATION_MESSAGE_PAGE_SIZE) : rows).reverse();

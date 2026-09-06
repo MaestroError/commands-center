@@ -238,12 +238,23 @@ export function registerConversationRoutes(server: AppServer, context: RuntimeCo
     {
       schema: {
         params: conversationParamsSchema,
+        querystring: z.object({
+          // Sync the OpenCode session into SQLite first. Needed after a
+          // streaming turn, which persists nothing on its own.
+          sync: z.coerce.boolean().optional(),
+        }),
         response: {
           200: usageTotalsSchema,
         },
       },
     },
-    async (request) => usageService.getConversationUsage(request.params.conversationId),
+    async (request) => {
+      if (request.query.sync) {
+        await service.syncConversationMessages(request.params.conversationId);
+      }
+
+      return usageService.getConversationUsage(request.params.conversationId);
+    },
   );
 
   app.get(

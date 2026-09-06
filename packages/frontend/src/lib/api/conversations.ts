@@ -79,9 +79,17 @@ export async function getOlderMessages(
 }
 
 /** Token and cost totals for the whole conversation, not just the loaded page. */
-export async function getConversationUsage(conversationId: string): Promise<UsageTotals> {
+export async function getConversationUsage(
+  conversationId: string,
+  options: { sync?: boolean } = {},
+): Promise<UsageTotals> {
+  // `sync` persists the session before aggregating. A streaming turn writes
+  // nothing to the database on its own, so a plain read after one would return
+  // the pre-turn total.
+  const query = options.sync ? "?sync=true" : "";
+
   return requestJson<UsageTotals>(
-    `/api/conversations/${encodeURIComponent(conversationId)}/usage`,
+    `/api/conversations/${encodeURIComponent(conversationId)}/usage${query}`,
     usageTotalsSchema,
   );
 }

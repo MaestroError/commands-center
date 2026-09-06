@@ -139,6 +139,62 @@ describe("readContextWindow", () => {
     expect(formatContextSummary(context!)).toBe("520 / 200k (0%)");
   });
 
+  it("reports the latest call on a multi-step turn, not the cumulative sum", () => {
+    // Each call re-sends the conversation, so two 100k steps mean a 100k
+    // window, not 200k. Summing them would read 202,000 / 200,000 (100%) on a
+    // turn whose last call used barely half the window.
+    const context = readContextWindow({
+      messages: [assistant({ id: "multi", tokens: undefined })],
+      parts: {
+        multi: [
+          {
+            id: "sf1",
+            type: "step-finish",
+            tokens: { input: 100_000, output: 1_000, reasoning: 0, cache: { read: 0, write: 0 } },
+          },
+          {
+            id: "sf2",
+            type: "step-finish",
+            tokens: { input: 100_000, output: 1_000, reasoning: 0, cache: { read: 0, write: 0 } },
+          },
+        ] as ConversationPart[],
+      },
+      providers: PROVIDERS,
+    });
+
+    expect(context?.usedTokens).toBe(101_000);
+    expect(formatContextSummary(context!)).toBe("101k / 1M (10%)");
+  });
+
+  it("reads the latest call from a persisted multi-step message's parts", () => {
+    // The stored message totals are cumulative after the multi-step fix, so the
+    // step parts remain the only per-call report.
+    const context = readContextWindow({
+      messages: [
+        assistant({
+          id: "multi",
+          tokens: { input: 200_000, output: 2_000, reasoning: 0, cacheRead: 0, cacheWrite: 0 },
+          parts: [
+            {
+              id: "sf1",
+              type: "step-finish",
+              tokens: { input: 100_000, output: 1_000, reasoning: 0, cache: { read: 0, write: 0 } },
+            },
+            {
+              id: "sf2",
+              type: "step-finish",
+              tokens: { input: 100_000, output: 1_000, reasoning: 0, cache: { read: 0, write: 0 } },
+            },
+          ] as ConversationPart[],
+        }),
+      ],
+      parts: {},
+      providers: PROVIDERS,
+    });
+
+    expect(context?.usedTokens).toBe(101_000);
+  });
+
   it("counts cache writes, which OpenCode's own total includes", () => {
     const context = read([
       assistant({
