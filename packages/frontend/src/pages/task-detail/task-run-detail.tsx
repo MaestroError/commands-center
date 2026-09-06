@@ -450,7 +450,10 @@ function renderSessionLogContent(props: {
   }
 
   if (props.conversation?.messages.length) {
-    return <SessionLog conversation={props.conversation} />;
+    // Keyed by conversation: SessionLog holds per-run paging and expanded-parts
+    // state, and React would otherwise reuse the instance across runs and mix
+    // the previous run's messages into the next.
+    return <SessionLog conversation={props.conversation} key={props.conversation.id} />;
   }
 
   if (!props.conversation?.messages.length && props.diagnostics.length === 0) {

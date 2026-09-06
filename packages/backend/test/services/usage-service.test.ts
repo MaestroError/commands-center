@@ -233,6 +233,28 @@ describe("getTaskUsage", () => {
     }
   });
 
+  it("counts a run whose conversation has no messages yet", async () => {
+    const { testDb, service, addConversation, addMessage } = await fixture();
+
+    try {
+      await addConversation("conv-run-1", "task-1", "run-1");
+      // A run whose session exists but has produced nothing yet — it must still
+      // be a run, or the UI reports "across 1 run" for a task that has two.
+      await addConversation("conv-run-2", "task-1", "run-2");
+      await addMessage("conv-run-1", "assistant", { input: 10, output: 1 });
+
+      const usage = await service.getTaskUsage("task-1");
+
+      expect(usage.runCount).toBe(2);
+      expect(usage.runs["run-2"]).toBeDefined();
+      expect(usage.runs["run-2"]?.messageCount).toBe(0);
+      expect(isUsageUnknown(usage.runs["run-2"]!)).toBe(true);
+      expect(usage.total.messageCount).toBe(1);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("keeps a run whose messages carry no metrics visible but unknown", async () => {
     const { testDb, service, addConversation, addMessage } = await fixture();
 

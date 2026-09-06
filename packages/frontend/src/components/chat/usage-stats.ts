@@ -75,7 +75,15 @@ export function readMessageUsage(
   const finish = message.finish;
 
   const startedAt = parseTimestamp(message.createdAt);
-  const endedAt = parseTimestamp(message.updatedAt);
+  // `completedAt` is the unambiguous signal: absent means the turn never
+  // finished. `updatedAt` cannot say that — it falls back to `createdAt`, so an
+  // unfinished turn and an instant one look identical. Older messages have no
+  // `completedAt`, and for them the legacy inequality is the best available
+  // evidence that a completion happened at all.
+  const endedAt =
+    message.completedAt !== undefined
+      ? parseTimestamp(message.completedAt)
+      : readLegacyCompletion(message);
   const durationMs = readSpan(startedAt, endedAt);
 
   if (
@@ -238,11 +246,21 @@ function sumStepCost(steps: ConversationPart[]): number | undefined {
   return total > 0 ? total : undefined;
 }
 
+/**
+ * A completed turn may legitimately span zero milliseconds, so only a negative
+ * span (clock skew) is rejected. Distinguishing "instant" from "never finished"
+ * is `completedAt`'s job, decided by the caller.
+ */
 function readSpan(startedAt?: number, endedAt?: number): number | undefined {
   if (startedAt === undefined || endedAt === undefined) return undefined;
 
   const span = endedAt - startedAt;
-  return span > 0 ? span : undefined;
+  return span >= 0 ? span : undefined;
+}
+
+/** Pre-`completedAt` messages: unequal timestamps are the only completion hint. */
+function readLegacyCompletion(message: ConversationMessage): number | undefined {
+  return message.updatedAt !== message.createdAt ? parseTimestamp(message.updatedAt) : undefined;
 }
 
 function parseTimestamp(value: string): number | undefined {

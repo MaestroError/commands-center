@@ -28,7 +28,9 @@ const USAGE_COLUMNS = {
   cacheRead: sql<number | null>`sum(${messages.tokens_cache_read})`,
   cacheWrite: sql<number | null>`sum(${messages.tokens_cache_write})`,
   cost: sql<number | null>`sum(${messages.cost})`,
-  messageCount: sql<number>`count(*)`,
+  // count(id) not count(*): a left-joined conversation with no messages
+  // produces one all-null row, which count(*) would score as a message.
+  messageCount: sql<number>`count(${messages.id})`,
   assistantMessageCount: sql<number>`sum(case when ${messages.role} = 'assistant' then 1 else 0 end)`,
   countedMessageCount: sql<number>`count(${messages.tokens_input})`,
 };
@@ -65,10 +67,13 @@ export function createUsageService(options: { db: AppDb }) {
      * that run's total rather than appearing as a new run.
      */
     async getTaskUsage(taskId: string): Promise<TaskUsage> {
+      // Driven from conversations, not messages: a run whose session exists but
+      // has no messages yet must still appear, with a zero count. Starting from
+      // messages would drop it from both `runs` and `runCount`.
       const rows = await options.db
         .select({ taskRunId: conversations.task_run_id, ...USAGE_COLUMNS })
-        .from(messages)
-        .innerJoin(conversations, eq(messages.conversation_id, conversations.id))
+        .from(conversations)
+        .leftJoin(messages, eq(messages.conversation_id, conversations.id))
         .where(and(eq(conversations.task_id, taskId), isNotNull(conversations.task_run_id)))
         .groupBy(conversations.task_run_id);
 

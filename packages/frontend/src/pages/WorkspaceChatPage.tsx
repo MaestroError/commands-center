@@ -70,7 +70,11 @@ export function WorkspaceChatPage() {
   // Model context limits live on the provider catalogue, which is cached
   // globally, so this is a cache read on every chat after the first.
   const providersQuery = useProvidersQuery();
-  const conversationUsageQuery = useConversationUsageQuery(conv.conversation?.id);
+  // Optional-chained and defaulting to "not in flight": the status is absent
+  // while the conversation is still loading or errored.
+  const isTurnInFlight =
+    conv.sessionStatus?.type === "busy" || conv.sessionStatus?.type === "retry";
+  const conversationUsageQuery = useConversationUsageQuery(conv.conversation?.id, isTurnInFlight);
   const taskMutations = useTaskMutations();
   const resolveLiveRequest = conv.resolveLiveRequest;
   const replyPermission = conv.replyPermission;

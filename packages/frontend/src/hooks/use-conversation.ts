@@ -108,8 +108,20 @@ export type Action =
   | { type: "DISCARD_STALE_QUESTION"; requestId: string }
   | { type: "OLDER_MESSAGES_PENDING" }
   | { type: "OLDER_MESSAGES_FAILED"; message: string }
-  | { type: "PREPEND_MESSAGES"; messages: ConversationMessage[]; hasMore: boolean }
-  | { type: "REPLACE_MESSAGE_PARTS"; messageId: string; parts: ConversationPart[] };
+  | {
+      type: "PREPEND_MESSAGES";
+      /** The conversation the page was requested for; a late result for a
+       *  different one must be dropped rather than merged. */
+      conversationId: string;
+      messages: ConversationMessage[];
+      hasMore: boolean;
+    }
+  | {
+      type: "REPLACE_MESSAGE_PARTS";
+      conversationId: string;
+      messageId: string;
+      parts: ConversationPart[];
+    };
 
 export const initialState: ConversationState = {
   sessionStatus: { type: "idle" },
@@ -341,7 +353,8 @@ export function conversationReducer(state: ConversationState, action: Action): C
       return { ...state, loadingOlderMessages: false, olderMessagesError: action.message };
 
     case "PREPEND_MESSAGES": {
-      if (!state.conversation) return state;
+      // A page can resolve after the reader has switched conversations.
+      if (!state.conversation || state.conversation.id !== action.conversationId) return state;
 
       // Guard against a double fetch racing in the same page twice.
       const known = new Set(state.conversation.messages.map((m) => m.id));
@@ -361,7 +374,7 @@ export function conversationReducer(state: ConversationState, action: Action): C
     }
 
     case "REPLACE_MESSAGE_PARTS": {
-      if (!state.conversation) return state;
+      if (!state.conversation || state.conversation.id !== action.conversationId) return state;
 
       return {
         ...state,
@@ -1133,7 +1146,12 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
     dispatch({ type: "OLDER_MESSAGES_PENDING" });
     try {
       const page = await getOlderMessages(conversation.id, oldest.id);
-      dispatch({ type: "PREPEND_MESSAGES", messages: page.messages, hasMore: page.hasMore });
+      dispatch({
+        type: "PREPEND_MESSAGES",
+        conversationId: conversation.id,
+        messages: page.messages,
+        hasMore: page.hasMore,
+      });
     } catch (error) {
       dispatch({
         type: "OLDER_MESSAGES_FAILED",
@@ -1151,7 +1169,12 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
       if (!conversation) return;
 
       const full = await getMessageParts(conversation.id, messageId);
-      dispatch({ type: "REPLACE_MESSAGE_PARTS", messageId, parts: full.parts });
+      dispatch({
+        type: "REPLACE_MESSAGE_PARTS",
+        conversationId: conversation.id,
+        messageId,
+        parts: full.parts,
+      });
     },
     [state.conversation],
   );

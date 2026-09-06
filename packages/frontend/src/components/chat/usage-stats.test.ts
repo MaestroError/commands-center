@@ -115,6 +115,58 @@ describe("readMessageUsage", () => {
     expect(usage?.durationMs).toBeUndefined();
   });
 
+  it("prefers completedAt over updatedAt for the duration", () => {
+    const usage = readMessageUsage(
+      makeMessage({
+        createdAt: "2026-01-01T00:00:00.000Z",
+        completedAt: "2026-01-01T00:00:03.000Z",
+        // Deliberately different: updatedAt must not win.
+        updatedAt: "2026-01-01T00:00:99.000Z".replace("99", "30"),
+      }),
+      [makeStepFinish()],
+    );
+
+    expect(usage?.durationMs).toBe(3_000);
+  });
+
+  it("reports a genuinely instant completed turn as zero, not unknown", () => {
+    const usage = readMessageUsage(
+      makeMessage({
+        createdAt: "2026-01-01T00:00:00.000Z",
+        completedAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      }),
+      [makeStepFinish()],
+    );
+
+    expect(usage?.durationMs).toBe(0);
+  });
+
+  it("treats an unfinished turn as having no duration", () => {
+    // No completedAt, and updatedAt fell back to createdAt.
+    const usage = readMessageUsage(
+      makeMessage({
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      }),
+      [makeStepFinish()],
+    );
+
+    expect(usage?.durationMs).toBeUndefined();
+  });
+
+  it("falls back to updatedAt for messages stored before completedAt existed", () => {
+    const usage = readMessageUsage(
+      makeMessage({
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:12.500Z",
+      }),
+      [makeStepFinish()],
+    );
+
+    expect(usage?.durationMs).toBe(12_500);
+  });
+
   it("ignores user messages and messages with nothing to report", () => {
     expect(readMessageUsage(makeMessage({ role: "user" }), [makeStepFinish()])).toBeNull();
     expect(
