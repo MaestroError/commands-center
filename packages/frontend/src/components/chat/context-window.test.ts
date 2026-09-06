@@ -45,11 +45,10 @@ describe("readContextWindow", () => {
   it("counts the prompt the model received: fresh input plus cache reads", () => {
     const context = read([assistant()]);
 
-    // Output is excluded — it joins the next request, not the one just sent.
-    expect(context?.usedTokens).toBe(521_600);
+    // input + cacheRead + output: what the window holds going into the next turn.
+    expect(context?.usedTokens).toBe(526_600);
     expect(context?.limitTokens).toBe(1_000_000);
-    expect(context?.fraction).toBeCloseTo(0.5216, 4);
-    expect(formatContextSummary(context!)).toBe("521.6k / 1M (52%)");
+    expect(formatContextSummary(context!)).toBe("526.6k / 1M (53%)");
   });
 
   it("uses the newest assistant turn, not the first", () => {
@@ -65,6 +64,50 @@ describe("readContextWindow", () => {
     ]);
 
     expect(context?.usedTokens).toBe(1_000);
+  });
+
+  it("ignores a compaction's own turns, which report the summarization request", () => {
+    // Shape taken from real sessions: a full window, two summary turns whose
+    // counts describe the summarize call, then the genuinely reduced context.
+    const context = read([
+      assistant({
+        id: "full",
+        tokens: { input: 252_162, output: 132, reasoning: 0, cacheRead: 0, cacheWrite: 0 },
+      }),
+      assistant({
+        id: "summary-1",
+        summary: true,
+        tokens: { input: 92_592, output: 2_237, reasoning: 0, cacheRead: 0, cacheWrite: 0 },
+      }),
+      assistant({
+        id: "summary-2",
+        summary: true,
+        tokens: { input: 8_229, output: 1_930, reasoning: 0, cacheRead: 0, cacheWrite: 0 },
+      }),
+    ]);
+
+    // Reading summary-2 would claim ~10k — far below the real window.
+    expect(context?.usedTokens).toBe(252_294);
+  });
+
+  it("falls to the reduced window on the first real turn after a compaction", () => {
+    const context = read([
+      assistant({
+        id: "full",
+        tokens: { input: 252_162, output: 132, reasoning: 0, cacheRead: 0, cacheWrite: 0 },
+      }),
+      assistant({
+        id: "summary",
+        summary: true,
+        tokens: { input: 8_229, output: 1_930, reasoning: 0, cacheRead: 0, cacheWrite: 0 },
+      }),
+      assistant({
+        id: "after",
+        tokens: { input: 20_017, output: 163, reasoning: 0, cacheRead: 0, cacheWrite: 0 },
+      }),
+    ]);
+
+    expect(context?.usedTokens).toBe(20_180);
   });
 
   it("resolves the limit per provider, so the same model can differ", () => {
@@ -99,7 +142,7 @@ describe("readContextWindow", () => {
       providers: PROVIDERS,
     });
 
-    expect(context?.usedTokens).toBe(1_000);
+    expect(context?.usedTokens).toBe(1_010);
   });
 
   it("clamps a window reported over its limit rather than showing past 100%", () => {

@@ -5,10 +5,16 @@ import { readMessageUsage } from "./usage-stats";
 /**
  * How much of the model's context window the conversation is using.
  *
- * "Used" is the prompt the model actually received on the most recent turn —
- * its fresh input plus whatever was served from cache. Output is excluded: it
- * joins the history for the *next* request, and reporting it here would show a
- * number the last turn never actually sent.
+ * "Used" is what the window holds right now: the prompt the model received on
+ * the most recent real turn, plus that turn's own reply, which is already in the
+ * history the next request will carry. Checked against consecutive turns in real
+ * sessions, that predicts the next prompt closely.
+ *
+ * Summary turns are skipped. A `/compact` writes messages flagged `summary`
+ * whose token counts describe the summarization request itself, not the
+ * conversation — reading one would report a number far below the real context
+ * in the window between compacting and the next turn. The turn after a
+ * compaction reports the genuinely reduced context, so the ring falls then.
  *
  * The limit is per provider *and* model, not per model: the same model is
  * offered with different context windows by different providers.
@@ -37,7 +43,8 @@ export function readContextWindow(input: {
   const limitTokens = readContextLimit(input.providers, identity);
   if (limitTokens === undefined || limitTokens <= 0) return null;
 
-  const usedTokens = latest.tokens.input + latest.tokens.cacheRead;
+  const usedTokens =
+    latest.tokens.input + latest.tokens.cacheRead + latest.tokens.output + latest.tokens.reasoning;
   if (usedTokens <= 0) return null;
 
   return {
@@ -67,19 +74,36 @@ export function formatContextSummary(context: ContextWindow): string {
   )} (${String(percent)}%)`;
 }
 
+type LatestTokens = {
+  input: number;
+  cacheRead: number;
+  output: number;
+  reasoning: number;
+};
+
 function findLatestUsage(
   messages: ConversationMessage[],
   parts: Record<string, ConversationPart[]>,
-): { message: ConversationMessage; tokens: { input: number; cacheRead: number } } | null {
-  // Newest first: only the last turn describes the current window.
+): { message: ConversationMessage; tokens: LatestTokens } | null {
+  // Newest first: only the last real turn describes the current window.
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
     if (!message || message.role !== "assistant") continue;
+    // A compaction's own turns report the summarization request, not the chat.
+    if (message.summary === true) continue;
 
     const usage = readMessageUsage(message, parts[message.id] ?? message.parts);
     if (!usage?.tokens) continue;
 
-    return { message, tokens: { input: usage.tokens.input, cacheRead: usage.tokens.cacheRead } };
+    return {
+      message,
+      tokens: {
+        input: usage.tokens.input,
+        cacheRead: usage.tokens.cacheRead,
+        output: usage.tokens.output,
+        reasoning: usage.tokens.reasoning,
+      },
+    };
   }
 
   return null;
