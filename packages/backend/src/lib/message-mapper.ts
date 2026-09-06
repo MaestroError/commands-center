@@ -7,7 +7,7 @@ import {
   type ConversationMessage,
   type SessionMediaItem,
 } from "@cc/shared/schemas";
-import { readOpenCodeCost, readOpenCodeTokens } from "@cc/shared/lib";
+import { readOpenCodeCost, readOpenCodeTokens, sumOpenCodeTokens } from "@cc/shared/lib";
 
 import type { OpenCodeSessionMessage } from "../services/opencode-service.js";
 import {
@@ -39,7 +39,7 @@ export function mapRemoteMessage(
       parts,
       attachments,
       error: sanitizeMessageError(message.info["error"]),
-      tokens: readOpenCodeTokens(message.info["tokens"]),
+      tokens: readMessageTokens(message),
       cost: readOpenCodeCost(message.info["cost"]),
       modelId: readNonEmptyString(message.info["modelID"]),
       providerId: readNonEmptyString(message.info["providerID"]),
@@ -54,6 +54,27 @@ export function mapRemoteMessage(
     createdAtMs,
     updatedAtMs,
   };
+}
+
+/**
+ * Token counts for a turn.
+ *
+ * OpenCode assigns rather than accumulates the message-level counts on every
+ * step — `ctx.assistantMessage.tokens = usage.tokens` in its finish-step
+ * handler, where cost right above it uses `+=`. So on a multi-step turn `info`
+ * carries only the last step, while each step's own counts survive on its
+ * `step-finish` part. Summing those parts is the only way to get the whole
+ * turn; `info` is used for single-step turns, where it is identical and also
+ * carries the provider's reported total.
+ */
+function readMessageTokens(message: OpenCodeSessionMessage) {
+  const steps = message.parts.filter((part) => part.type === "step-finish");
+
+  if (steps.length > 1) {
+    return sumOpenCodeTokens(steps.map((step) => step["tokens"]));
+  }
+
+  return readOpenCodeTokens(message.info["tokens"]);
 }
 
 function readNonEmptyString(value: unknown): string | undefined {

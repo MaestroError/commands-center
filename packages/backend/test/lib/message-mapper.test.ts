@@ -289,6 +289,84 @@ describe("message usage", () => {
     expect(mapped.tokens).toMatchObject({ input: 10, output: 4, reasoning: 1 });
   });
 
+  it("sums step-finish parts on a multi-step turn, which info.tokens under-reports", () => {
+    // OpenCode assigns rather than accumulates the message-level counts on each
+    // step (tokens = usage.tokens, while cost uses +=), so info carries only
+    // the last step. Each step's own counts survive on its step-finish part.
+    const mapped = mapRemoteMessage(
+      "conv-1",
+      message({
+        info: {
+          id: "m-multi",
+          sessionID: "s1",
+          role: "assistant",
+          time: { created: 1000, completed: 2000 },
+          // What OpenCode leaves behind: the final step only.
+          tokens: { input: 30, output: 3, reasoning: 0, cache: { read: 0, write: 0 } },
+          cost: 0.006,
+        },
+        parts: [
+          {
+            id: "sf1",
+            type: "step-finish",
+            tokens: { input: 100, output: 10, reasoning: 1, cache: { read: 5, write: 2 } },
+          },
+          {
+            id: "sf2",
+            type: "step-finish",
+            tokens: { input: 30, output: 3, reasoning: 0, cache: { read: 0, write: 0 } },
+          },
+        ],
+      } as Partial<OpenCodeSessionMessage>),
+    );
+
+    expect(mapped.tokens).toMatchObject({
+      input: 130,
+      output: 13,
+      reasoning: 1,
+      cacheRead: 5,
+      cacheWrite: 2,
+    });
+    // Cost accumulates upstream, so info is right for it.
+    expect(mapped.cost).toBe(0.006);
+  });
+
+  it("uses info.tokens for a single-step turn, keeping the reported total", () => {
+    const mapped = mapRemoteMessage(
+      "conv-1",
+      message({
+        info: {
+          id: "m-single",
+          sessionID: "s1",
+          role: "assistant",
+          time: { created: 1000, completed: 2000 },
+          tokens: {
+            total: 111,
+            input: 100,
+            output: 10,
+            reasoning: 1,
+            cache: { read: 0, write: 0 },
+          },
+        },
+        parts: [
+          {
+            id: "sf1",
+            type: "step-finish",
+            tokens: {
+              total: 111,
+              input: 100,
+              output: 10,
+              reasoning: 1,
+              cache: { read: 0, write: 0 },
+            },
+          },
+        ],
+      } as Partial<OpenCodeSessionMessage>),
+    );
+
+    expect(mapped.tokens).toMatchObject({ input: 100, output: 10, reportedTotal: 111 });
+  });
+
   it("records no reportedTotal when the provider omits one", () => {
     expect(
       readOpenCodeTokens({ input: 10, output: 4, reasoning: 1 })?.reportedTotal,
