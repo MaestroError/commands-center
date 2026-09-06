@@ -28,8 +28,10 @@ import type {
   TaskSubtask,
   TaskUsage,
 } from "@cc/shared/schemas";
-import { Fragment, type ReactNode, useState } from "react";
-import { getOlderMessages } from "@/lib/api/conversations";
+import { Fragment, type ReactNode, useCallback, useState } from "react";
+import { getMessageParts, getOlderMessages } from "@/lib/api/conversations";
+import { FullPartsProvider } from "@/components/chat/tools/FullPartsProvider";
+import { TruncatedNotice } from "@/components/chat/tools/TruncatedNotice";
 import { Link, useLocation, useNavigate } from "react-router";
 import {
   formatRunDuration,
@@ -480,6 +482,18 @@ function SessionLog(props: {
   const [hasMore, setHasMore] = useState(props.conversation.hasMoreMessages === true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Tool output arrives trimmed to a preview; expanding a card swaps in the
+  // message's full parts, keyed by message id.
+  const [fullParts, setFullParts] = useState<Record<string, ConversationPart[]>>({});
+
+  const conversationId = props.conversation.id;
+  const loadFullParts = useCallback(
+    async (messageId: string) => {
+      const full = await getMessageParts(conversationId, messageId);
+      setFullParts((current) => ({ ...current, [messageId]: full.parts }));
+    },
+    [conversationId],
+  );
 
   const messages = [...older, ...props.conversation.messages];
 
@@ -515,9 +529,16 @@ function SessionLog(props: {
         </div>
       ) : null}
       {error ? <p className="text-center text-xs text-danger">{error}</p> : null}
-      {messages.map((message) => (
-        <SessionLogEntry key={message.id} message={message} />
-      ))}
+      <FullPartsProvider loadFullParts={loadFullParts}>
+        {messages.map((message) => (
+          <SessionLogEntry
+            key={message.id}
+            message={
+              fullParts[message.id] ? { ...message, parts: fullParts[message.id]! } : message
+            }
+          />
+        ))}
+      </FullPartsProvider>
     </div>
   );
 }
@@ -591,8 +612,18 @@ function ToolLogBlock(props: { part: ConversationPart }) {
       </div>
 
       {input !== undefined ? <ToolLogField label="Input" value={input} /> : null}
-      {output !== undefined ? <ToolLogField label="Output" value={output} /> : null}
-      {error !== undefined ? <ToolLogField label="Error" value={error} /> : null}
+      {output !== undefined ? (
+        <>
+          <ToolLogField label="Output" value={output} />
+          <TruncatedNotice field="output" part={props.part} />
+        </>
+      ) : null}
+      {error !== undefined ? (
+        <>
+          <ToolLogField label="Error" value={error} />
+          <TruncatedNotice field="error" part={props.part} />
+        </>
+      ) : null}
 
       {input === undefined && output === undefined && error === undefined ? (
         <p className="mt-3 text-sm text-text-secondary">No tool details recorded.</p>

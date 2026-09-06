@@ -26,10 +26,17 @@ const mockUseTaskSubtasksQuery = vi.fn<() => unknown>();
 const mockUseTaskRunQuery = vi.fn<() => unknown>();
 const mockUseTaskRunSessionQuery = vi.fn<() => unknown>();
 const mockUseTaskUsageQuery = vi.fn<() => unknown>();
+const getMessagePartsMock = vi.fn();
+const getOlderMessagesMock = vi.fn();
 const duplicateMutateAsync = vi.fn();
 const updateMutate = vi.fn();
 const triggerMutate = vi.fn();
 const openInChatMutateAsync = vi.fn();
+
+vi.mock("@/lib/api/conversations", () => ({
+  getMessageParts: (...args: unknown[]) => getMessagePartsMock(...args) as unknown,
+  getOlderMessages: (...args: unknown[]) => getOlderMessagesMock(...args) as unknown,
+}));
 
 vi.mock("@/hooks/use-tasks-query", () => ({
   useTaskQuery: () => mockUseTaskQuery(),
@@ -418,6 +425,70 @@ describe("TaskDetailPage run mode", () => {
     await waitFor(() => {
       expect(navigateMock).toHaveBeenCalledWith("/chat/planner/conv-9");
     });
+  });
+
+  it("offers the full output when the run log's tool output was trimmed", async () => {
+    // The session log renders projected parts, so long tool output arrives cut
+    // to a preview. Without the notice it would be silently truncated.
+    getMessagePartsMock.mockResolvedValue({
+      messageId: "m1",
+      parts: [
+        {
+          id: "p1",
+          type: "tool",
+          tool: "read",
+          messageID: "m1",
+          state: { status: "completed", input: { path: "a.ts" }, output: "THE COMPLETE OUTPUT" },
+        },
+      ],
+    });
+    mockUseTaskQuery.mockReturnValue({ data: buildTask(), isLoading: false, error: null });
+    mockUseTaskRunQuery.mockReturnValue({ data: buildRun(), isLoading: false, error: null });
+    mockUseTaskRunSessionQuery.mockReturnValue({
+      data: {
+        canOpenInChat: false,
+        conversation: {
+          id: "conv-1",
+          messages: [
+            {
+              id: "m1",
+              role: "assistant",
+              content: "",
+              parts: [
+                {
+                  id: "p1",
+                  type: "tool",
+                  tool: "read",
+                  messageID: "m1",
+                  state: {
+                    status: "completed",
+                    input: { path: "a.ts" },
+                    output: "truncated preview",
+                    outputTruncated: true,
+                    outputLength: 12_345,
+                  },
+                },
+              ],
+              attachments: [],
+              createdAt: "2026-01-01T00:00:00.000Z",
+            },
+          ],
+        },
+        diagnostics: [],
+      },
+      isLoading: false,
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    renderPage("run");
+    await user.click(screen.getByTestId("task-run-session-log"));
+
+    expect(screen.getByText(/12,345 characters/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Show full output" }));
+
+    expect(getMessagePartsMock).toHaveBeenCalledWith("conv-1", "m1");
+    expect(await screen.findByText(/THE COMPLETE OUTPUT/)).toBeInTheDocument();
   });
 
   it("shows token and timing figures in the run session log", async () => {

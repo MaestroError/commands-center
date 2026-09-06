@@ -77,6 +77,10 @@ export const messages = sqliteTable(
   },
   (table) => [
     index("messages_conversation_id_idx").on(table.conversation_id),
+    // Paging seeks and orders by (conversation_id, created_at, id). Without
+    // this SQLite filters on conversation_id then builds a temp B-tree to sort
+    // the whole conversation for every page.
+    index("messages_paging_idx").on(table.conversation_id, table.created_at, table.id),
     // Covering index for usage rollups: SQLite answers the aggregate from the
     // index alone, so the scan never touches the row bodies and its cost is
     // independent of how large parts_json is.
