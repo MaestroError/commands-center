@@ -1,17 +1,25 @@
 import type { CSSProperties } from "react";
 
-import type { ConversationMessage, ConversationPart, Provider } from "@cc/shared/schemas";
+import type {
+  ConversationMessage,
+  ConversationPart,
+  Provider,
+  UsageTotals,
+} from "@cc/shared/schemas";
 
 import { cn } from "@/lib/cn";
 
 import { UsageInfoButton } from "./UsageInfoButton";
 import { formatContextCount, formatContextSummary, readContextWindow } from "./context-window";
+import { buildUsageTotalRows } from "./usage-totals";
 
 type ContextWindowIndicatorProps = {
   messages: ConversationMessage[];
   parts: Record<string, ConversationPart[]>;
   providers: Provider[];
   fallbackModel?: string;
+  /** Cumulative totals for the conversation, shown in the dialog. */
+  conversationUsage?: UsageTotals;
 };
 
 /** Fractions at which a filling window stops being background information. */
@@ -56,6 +64,15 @@ export function ContextWindowIndicator(props: ContextWindowIndicatorProps) {
         { label: "Used", value: formatContextCount(context.usedTokens) },
         { label: "Limit", value: formatContextCount(context.limitTokens) },
         { label: "Model", value: context.model, detail: true },
+        // The window is the last turn's prompt; these are the whole
+        // conversation's running totals, so they live in the dialog only.
+        ...(props.conversationUsage
+          ? buildUsageTotalRows(props.conversationUsage).map((row) => ({
+              ...row,
+              label: row.label === "Total tokens" ? "Conversation tokens" : row.label,
+              detail: true,
+            }))
+          : []),
       ]}
       title={`Context ${summary}`}
     />

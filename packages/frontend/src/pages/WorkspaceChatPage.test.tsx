@@ -31,6 +31,10 @@ vi.mock("@/hooks/use-providers-query", () => ({
   useProvidersQuery: () => ({ data: undefined }),
 }));
 
+vi.mock("@/hooks/use-conversation-usage-query", () => ({
+  useConversationUsageQuery: () => ({ data: undefined }),
+}));
+
 vi.mock("@/hooks/use-media-query", () => ({
   useMediaQuery: (query: string) => Boolean(useMediaQueryMock(query)),
 }));

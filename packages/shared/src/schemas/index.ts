@@ -801,3 +801,10 @@ export {
   type TerminalSessionHandle,
   type TerminalSessionResponse,
 } from "./terminal.js";
+export {
+  isUsageUnknown,
+  taskUsageSchema,
+  usageTotalsSchema,
+  type TaskUsage,
+  type UsageTotals,
+} from "./usage.js";

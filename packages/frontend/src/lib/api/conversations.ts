@@ -7,6 +7,7 @@ import {
   conversationMessagePageSchema,
   conversationMessagePartsSchema,
   conversationSnapshotSchema,
+  usageTotalsSchema,
   pendingInteractionsSchema,
   resolvedSystemPromptSchema,
   sessionMediaListSchema,
@@ -17,6 +18,7 @@ import {
   type ConversationMessagePage,
   type ConversationMessageParts,
   type ConversationSnapshot,
+  type UsageTotals,
   type ConversationSummary,
   type PendingInteractions,
   type ResolvedSystemPrompt,
@@ -73,6 +75,14 @@ export async function getOlderMessages(
   return requestJson<ConversationMessagePage>(
     `/api/conversations/${encodeURIComponent(conversationId)}/messages?${query.toString()}`,
     conversationMessagePageSchema,
+  );
+}
+
+/** Token and cost totals for the whole conversation, not just the loaded page. */
+export async function getConversationUsage(conversationId: string): Promise<UsageTotals> {
+  return requestJson<UsageTotals>(
+    `/api/conversations/${encodeURIComponent(conversationId)}/usage`,
+    usageTotalsSchema,
   );
 }
 

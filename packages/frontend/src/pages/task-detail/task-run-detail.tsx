@@ -3,11 +3,21 @@
 import { PageHeader } from "@/components/common/PageHeader";
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
 import { TabBar } from "@/components/common/TabBar";
-import { MessageUsageInfoButton, ToolUsageInfoButton } from "@/components/chat/UsageInfoButton";
+import {
+  MessageUsageInfoButton,
+  ToolUsageInfoButton,
+  UsageInfoButton,
+} from "@/components/chat/UsageInfoButton";
+import { buildUsageTotalRows, formatUsageTotal } from "@/components/chat/usage-totals";
 import { RunReplyPanel } from "@/components/tasks/task-feedback-section";
 import { formatDate, formatToken, readAgentName } from "@/components/tasks/task-format";
 import { StatusBadge } from "@/components/tasks/task-ui";
-import { useTaskMutations, useTaskRunQuery, useTaskRunSessionQuery } from "@/hooks/use-tasks-query";
+import {
+  useTaskMutations,
+  useTaskRunQuery,
+  useTaskRunSessionQuery,
+  useTaskUsageQuery,
+} from "@/hooks/use-tasks-query";
 import type {
   ConversationMessage,
   ConversationPart,
@@ -16,6 +26,7 @@ import type {
   TaskPermissionProfile,
   TaskRun,
   TaskSubtask,
+  TaskUsage,
 } from "@cc/shared/schemas";
 import { Fragment, type ReactNode, useState } from "react";
 import { getOlderMessages } from "@/lib/api/conversations";
@@ -41,6 +52,8 @@ export function RunHistory(props: {
   subtasks?: TaskSubtask[];
   isLoading: boolean;
   error: unknown;
+  /** Per-run token totals, keyed by run id. */
+  usage?: TaskUsage;
 }) {
   const [openReplyRunId, setOpenReplyRunId] = useState<string>();
 
@@ -76,6 +89,7 @@ export function RunHistory(props: {
                 <th className="py-3 pr-3">Target</th>
                 <th className="py-3 pr-3">Started</th>
                 <th className="py-3 pr-3">Duration</th>
+                <th className="py-3 pr-3">Tokens</th>
                 <th className="py-3 pr-3">Artifacts</th>
                 <th className="py-3 pr-3">Session</th>
                 <th className="py-3 pr-3">Summary</th>
@@ -103,6 +117,11 @@ export function RunHistory(props: {
                     </td>
                     <td className="py-3 pr-3 text-text-secondary">{formatDate(run.startedAt)}</td>
                     <td className="py-3 pr-3 text-text-secondary">{formatRunDuration(run)}</td>
+                    <td className="py-3 pr-3 tabular-nums text-text-secondary">
+                      {props.usage?.runs[run.id]
+                        ? formatUsageTotal(props.usage.runs[run.id]!)
+                        : "—"}
+                    </td>
                     <td className="py-3 pr-3 text-text-secondary">{run.artifacts.length}</td>
                     <td className="py-3 pr-3 text-text-secondary">
                       {run.opencodeSessionId ? "Recorded" : "Unavailable"}
@@ -171,9 +190,13 @@ export function TaskRunDetail(props: {
   const location = useLocation();
   const runQuery = useTaskRunQuery(props.taskId, props.runId);
   const sessionQuery = useTaskRunSessionQuery(props.taskId, props.runId);
+  // Aggregated server-side: the session log is paged, so summing what is loaded
+  // would under-report a long run.
+  const usageQuery = useTaskUsageQuery(props.taskId);
   const mutations = useTaskMutations();
   const [activeTabId, setActiveTabId] = useState<"session" | "details">("session");
   const run = runQuery.data;
+  const runUsage = props.runId ? usageQuery.data?.runs[props.runId] : undefined;
   const agentSlug = props.agents?.find(
     (entry) => entry.id === (run?.agentId ?? props.task?.agentId),
   )?.slug;
@@ -249,6 +272,16 @@ export function TaskRunDetail(props: {
                 {formatToken(run.triggerSource)}
               </span>
             </div>
+            {runUsage ? (
+              <div className="flex items-center justify-between gap-2">
+                <Metric label="Tokens" value={formatUsageTotal(runUsage)} />
+                <UsageInfoButton
+                  label="Run token and cost totals"
+                  rows={buildUsageTotalRows(runUsage)}
+                  title="Run usage"
+                />
+              </div>
+            ) : null}
             <Metric label="Started" value={formatDate(run.startedAt)} />
             <Metric label="Completed" value={formatDate(run.completedAt)} />
             <Metric label="Session" value={run.opencodeSessionId ?? "No session"} />

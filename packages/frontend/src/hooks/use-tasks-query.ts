@@ -42,6 +42,7 @@ import {
   getTask,
   getTaskTemplate,
   getTaskRun,
+  getTaskUsage,
   inspectTaskRunSession,
   listRunFollowups,
   listConversationArtifacts,
@@ -187,6 +188,15 @@ export function useTaskRunSessionQuery(taskId?: string, runId?: string) {
     queryKey: queryKeys.taskRunSession(taskId ?? "missing", runId ?? "missing"),
     queryFn: () => inspectTaskRunSession(taskId ?? "", runId ?? ""),
     enabled: Boolean(taskId && runId),
+  });
+}
+
+/** A task's token and cost totals, with the per-run breakdown. */
+export function useTaskUsageQuery(taskId?: string) {
+  return useQuery({
+    queryKey: queryKeys.taskUsage(taskId ?? "missing"),
+    queryFn: () => getTaskUsage(taskId ?? ""),
+    enabled: Boolean(taskId),
   });
 }
 

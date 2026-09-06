@@ -34,6 +34,7 @@ import { QuickFilePanel } from "@/components/workspace/QuickFilePanel";
 import { WorkspaceFilesTab } from "@/components/workspace/WorkspaceFilesTab";
 import { useChatInspectionTabs } from "@/hooks/use-chat-inspection-tabs";
 import { useProvidersQuery } from "@/hooks/use-providers-query";
+import { useConversationUsageQuery } from "@/hooks/use-conversation-usage-query";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { useConversation } from "@/hooks/use-conversation";
 import { useSpecialistCatalogQuery } from "@/hooks/use-specialists-query";
@@ -69,6 +70,7 @@ export function WorkspaceChatPage() {
   // Model context limits live on the provider catalogue, which is cached
   // globally, so this is a cache read on every chat after the first.
   const providersQuery = useProvidersQuery();
+  const conversationUsageQuery = useConversationUsageQuery(conv.conversation?.id);
   const taskMutations = useTaskMutations();
   const resolveLiveRequest = conv.resolveLiveRequest;
   const replyPermission = conv.replyPermission;
@@ -403,6 +405,7 @@ export function WorkspaceChatPage() {
                   parts={conv.parts}
                   providers={providersQuery.data?.map((entry) => entry.provider) ?? []}
                   fallbackModel={conv.agent?.defaultModel}
+                  conversationUsage={conversationUsageQuery.data}
                 />
               }
             />

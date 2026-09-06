@@ -75,5 +75,19 @@ export const messages = sqliteTable(
     created_at: integer("created_at", { mode: "timestamp_ms" }).notNull(),
     updated_at: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
   },
-  (table) => [index("messages_conversation_id_idx").on(table.conversation_id)],
+  (table) => [
+    index("messages_conversation_id_idx").on(table.conversation_id),
+    // Covering index for usage rollups: SQLite answers the aggregate from the
+    // index alone, so the scan never touches the row bodies and its cost is
+    // independent of how large parts_json is.
+    index("messages_usage_idx").on(
+      table.conversation_id,
+      table.tokens_input,
+      table.tokens_output,
+      table.tokens_reasoning,
+      table.tokens_cache_read,
+      table.tokens_cache_write,
+      table.cost,
+    ),
+  ],
 );

@@ -25,6 +25,7 @@ const mockUseTaskRunsQuery = vi.fn<() => unknown>();
 const mockUseTaskSubtasksQuery = vi.fn<() => unknown>();
 const mockUseTaskRunQuery = vi.fn<() => unknown>();
 const mockUseTaskRunSessionQuery = vi.fn<() => unknown>();
+const mockUseTaskUsageQuery = vi.fn<() => unknown>();
 const duplicateMutateAsync = vi.fn();
 const updateMutate = vi.fn();
 const triggerMutate = vi.fn();
@@ -37,6 +38,7 @@ vi.mock("@/hooks/use-tasks-query", () => ({
   useTaskRunQuery: () => mockUseTaskRunQuery(),
   useTaskRunSessionQuery: () => mockUseTaskRunSessionQuery(),
   useArtifactDeliveryUrlsQuery: () => ({ data: undefined }),
+  useTaskUsageQuery: () => mockUseTaskUsageQuery(),
   useTaskMutations: () => ({
     duplicate: { mutateAsync: duplicateMutateAsync },
     update: { mutate: updateMutate, isPending: false },
@@ -141,6 +143,7 @@ beforeEach(() => {
   mockUseTaskSubtasksQuery.mockReturnValue({ data: [], isLoading: false, error: null });
   mockUseTaskRunQuery.mockReturnValue({ data: undefined, isLoading: false, error: null });
   mockUseTaskRunSessionQuery.mockReturnValue({ data: undefined, isLoading: false, error: null });
+  mockUseTaskUsageQuery.mockReturnValue({ data: undefined, isLoading: false, error: null });
 });
 
 afterEach(() => {
@@ -192,6 +195,52 @@ describe("TaskDetailPage overview", () => {
 
     await user.click(screen.getByTestId("task-detail-tab-context"));
     expect(screen.getByText("brief.pdf")).toBeInTheDocument();
+  });
+
+  it("shows per-run token totals in the run history", async () => {
+    mockUseTaskQuery.mockReturnValue({ data: buildTask(), isLoading: false, error: null });
+    mockUseTaskRunsQuery.mockReturnValue({
+      data: [buildRun({ id: "run-1" }), buildRun({ id: "run-2" })],
+      isLoading: false,
+      error: null,
+    });
+    mockUseTaskUsageQuery.mockReturnValue({
+      data: {
+        taskId: "task-1",
+        runCount: 2,
+        total: {
+          totalTokens: 1_500,
+          messageCount: 4,
+          assistantMessageCount: 2,
+          countedMessageCount: 2,
+        },
+        runs: {
+          "run-1": {
+            totalTokens: 1_200,
+            messageCount: 2,
+            assistantMessageCount: 1,
+            countedMessageCount: 1,
+          },
+          // run-2 has a conversation but nothing recorded yet.
+          "run-2": {
+            totalTokens: 0,
+            messageCount: 2,
+            assistantMessageCount: 1,
+            countedMessageCount: 0,
+          },
+        },
+      },
+      isLoading: false,
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(screen.getByTestId("task-detail-tab-runs"));
+
+    expect(screen.getByTestId("task-run-row-run-1")).toHaveTextContent("1.2k tokens");
+    // Unrecorded reads as a dash, never as a confident zero.
+    expect(screen.getByTestId("task-run-row-run-2")).toHaveTextContent("—");
   });
 
   it("duplicates a task and navigates to the copy's editor", async () => {

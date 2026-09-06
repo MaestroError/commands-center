@@ -14,12 +14,14 @@ import {
   sendConversationShellInputSchema,
   CONVERSATION_MESSAGE_PAGE_MAX,
   CONVERSATION_MESSAGE_PAGE_SIZE,
+  usageTotalsSchema,
 } from "@cc/shared/schemas";
 
 import type { AppServer } from "../lib/fastify-zod.js";
 import type { RuntimeContext } from "../lib/start-server-runtime.js";
 import { createArtifactService } from "../services/artifact-service.js";
 import { createConversationService } from "../services/conversation-service.js";
+import { createUsageService } from "../services/usage-service.js";
 
 const agentIdParamsSchema = z.object({
   id: z.string().min(1),
@@ -40,6 +42,7 @@ const agentConversationParamsSchema = agentIdParamsSchema.extend({
 
 export function registerConversationRoutes(server: AppServer, context: RuntimeContext): void {
   const app = server.withTypeProvider<ZodTypeProvider>();
+  const usageService = createUsageService({ db: context.database.db });
   const service = createConversationService({
     db: context.database.db,
     config: context.config,
@@ -226,6 +229,21 @@ export function registerConversationRoutes(server: AppServer, context: RuntimeCo
     },
     async (request) =>
       service.getMessageParts(request.params.conversationId, request.params.messageId),
+  );
+
+  // Token and cost totals for the whole conversation. Aggregated server-side
+  // because the client only holds the newest page of messages.
+  app.get(
+    "/api/conversations/:conversationId/usage",
+    {
+      schema: {
+        params: conversationParamsSchema,
+        response: {
+          200: usageTotalsSchema,
+        },
+      },
+    },
+    async (request) => usageService.getConversationUsage(request.params.conversationId),
   );
 
   app.get(
