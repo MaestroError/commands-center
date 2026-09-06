@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { sumConversationMessageTokens } from "../../src/schemas/conversations";
+
 import {
   readOpenCodeCost,
   readOpenCodeTokens,
@@ -22,21 +24,30 @@ describe("readOpenCodeTokens", () => {
       reasoning: 213,
       cacheRead: 12_040,
       cacheWrite: 3100,
-      total: 47_335,
+      reportedTotal: 47_335,
     });
   });
 
-  it("derives a missing total from the components", () => {
-    expect(readOpenCodeTokens({ input: 10, output: 4, reasoning: 1 })?.total).toBe(15);
+  it("records the reported total without adopting it", () => {
+    // Providers disagree on what `total` covers: observed reports variously
+    // include reasoning while excluding cache, and the reverse. We keep the
+    // number for reference and compute our own from the components.
+    const tokens = readOpenCodeTokens({
+      total: 99,
+      input: 10,
+      output: 4,
+      cache: { read: 500, write: 0 },
+    });
+
+    expect(tokens?.reportedTotal).toBe(99);
+    expect(sumConversationMessageTokens(tokens!)).toBe(514);
   });
 
-  it("prefers the reported total over its own arithmetic", () => {
-    // Cache reads are real tokens the provider may or may not fold into the
-    // total; whatever it says wins.
-    expect(
-      readOpenCodeTokens({ total: 99, input: 10, output: 4, cache: { read: 500, write: 0 } })
-        ?.total,
-    ).toBe(99);
+  it("leaves reportedTotal absent when the provider omits it", () => {
+    const tokens = readOpenCodeTokens({ input: 10, output: 4, reasoning: 1 });
+
+    expect(tokens?.reportedTotal).toBeUndefined();
+    expect(sumConversationMessageTokens(tokens!)).toBe(15);
   });
 
   it("treats a report with nothing in it as absent", () => {
@@ -81,14 +92,13 @@ describe("sumOpenCodeTokens", () => {
       reasoning: 0,
       cacheRead: 6,
       cacheWrite: 7,
-      total: 150,
     });
   });
 
   it("skips empty and malformed entries rather than counting them as zero", () => {
     expect(
       sumOpenCodeTokens([undefined, { input: 0, output: 0 }, { input: 5, output: 1 }]),
-    ).toEqual({ input: 5, output: 1, reasoning: 0, cacheRead: 0, cacheWrite: 0, total: 6 });
+    ).toEqual({ input: 5, output: 1, reasoning: 0, cacheRead: 0, cacheWrite: 0 });
   });
 
   it("returns undefined when nothing reported anything", () => {

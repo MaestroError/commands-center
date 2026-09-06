@@ -803,6 +803,66 @@ describe("conversation-service delegating methods", () => {
     },
   );
 
+  it("persists usage metrics on task-run conversations, not just chat", async () => {
+    // Task runs share syncConversation and the messages table with chat, but
+    // that is worth asserting rather than assuming.
+    const { service, opencodeService, taskService, agent } = await setup();
+    const task = await taskService.create({ agentId: agent.id, title: "Metered task" });
+    const run = await taskService.createRun({
+      id: "run-metrics",
+      taskId: task.id,
+      agentId: agent.id,
+      status: "running",
+      triggerSource: "manual",
+      renderedPrompt: "Run.",
+    });
+    const conversation = await service.createTaskRunConversation({
+      agentId: agent.id,
+      taskId: task.id,
+      taskRunId: run.id,
+      title: "Run",
+    });
+
+    opencodeService.listSessionMessages = vi.fn(() =>
+      Promise.resolve([
+        {
+          info: {
+            id: "run-msg-1",
+            sessionID: conversation.opencodeSessionId,
+            role: "assistant" as const,
+            time: { created: 1_000, completed: 4_000 },
+            modelID: "gpt-4.1",
+            providerID: "openai",
+            agent: "build",
+            finish: "stop",
+            cost: 0.004,
+            tokens: {
+              total: 1_500,
+              input: 1_200,
+              output: 250,
+              reasoning: 50,
+              cache: { read: 10, write: 5 },
+            },
+          },
+          parts: [{ id: "run-part-1", type: "text", text: "done" }],
+        },
+      ]),
+    );
+
+    const detail = await service.syncTaskRunConversation(task.id, run.id);
+    const message = detail.messages.find((entry) => entry.id === "run-msg-1");
+
+    expect(message).toMatchObject({
+      modelId: "gpt-4.1",
+      providerId: "openai",
+      agent: "build",
+      finish: "stop",
+      cost: 0.004,
+      tokens: { input: 1_200, output: 250, reasoning: 50, cacheRead: 10, cacheWrite: 5 },
+    });
+    expect(message?.completedAt).toBe(new Date(4_000).toISOString());
+  });
+
   it("auto-approves verified descendant permissions for task runs", async () => {
     const { service, opencodeService, taskService, agent } = await setup();
     const task = await taskService.create({ agentId: agent.id, title: "Task" });

@@ -4,6 +4,7 @@ import type {
   ConversationPart,
 } from "@cc/shared/schemas";
 import { readOpenCodeCost, sumOpenCodeTokens } from "@cc/shared/lib";
+import { sumConversationMessageTokens } from "@cc/shared/schemas";
 
 /**
  * Token and timing figures for one message or tool call.
@@ -27,6 +28,10 @@ export type MessageUsage = {
   steps: number;
   /** Qualified model that produced the message, e.g. `anthropic/claude-opus-5`. */
   model?: string;
+  /** OpenCode agent that produced the message. */
+  agent?: string;
+  /** Why the turn stopped, when reported. */
+  finish?: string;
   startedAt?: number;
   endedAt?: number;
   durationMs?: number;
@@ -64,12 +69,20 @@ export function readMessageUsage(
   const tokens = message.tokens ?? sumOpenCodeTokens(steps.map((step) => step["tokens"]));
   const cost = message.cost ?? sumStepCost(steps);
   const model = readModel(message);
+  const agent = message.agent;
+  const finish = message.finish;
 
   const startedAt = parseTimestamp(message.createdAt);
   const endedAt = parseTimestamp(message.updatedAt);
   const durationMs = readSpan(startedAt, endedAt);
 
-  if (!tokens && cost === undefined && durationMs === undefined && model === undefined) {
+  if (
+    !tokens &&
+    cost === undefined &&
+    durationMs === undefined &&
+    model === undefined &&
+    agent === undefined
+  ) {
     return null;
   }
 
@@ -78,6 +91,8 @@ export function readMessageUsage(
     ...(cost === undefined ? {} : { cost }),
     steps: steps.length,
     ...(model === undefined ? {} : { model }),
+    ...(agent === undefined ? {} : { agent }),
+    ...(finish === undefined ? {} : { finish }),
     ...(startedAt === undefined ? {} : { startedAt }),
     ...(endedAt === undefined ? {} : { endedAt }),
     ...(durationMs === undefined ? {} : { durationMs }),
@@ -115,12 +130,23 @@ export function buildMessageUsageRows(usage: MessageUsage): UsageRow[] {
   if (usage.model !== undefined) {
     rows.push({ label: "Model", value: usage.model });
   }
+  if (usage.agent !== undefined) {
+    rows.push({ label: "Agent", value: usage.agent, detail: true });
+  }
+  if (usage.finish !== undefined) {
+    rows.push({ label: "Finish", value: usage.finish, detail: true });
+  }
   if (usage.durationMs !== undefined) {
     rows.push({ label: "Duration", value: formatDuration(usage.durationMs) });
   }
   if (usage.tokens) {
-    const { input, output, reasoning, cacheRead, cacheWrite, total } = usage.tokens;
-    rows.push({ label: "Total tokens", value: formatCount(total) });
+    const { input, output, reasoning, cacheRead, cacheWrite } = usage.tokens;
+    // Summed from the components rather than the provider's own total, which is
+    // inconsistent about whether it counts reasoning and cache.
+    rows.push({
+      label: "Total tokens",
+      value: formatCount(sumConversationMessageTokens(usage.tokens)),
+    });
     rows.push({ label: "Input", value: formatCount(input) });
     rows.push({ label: "Output", value: formatCount(output) });
     if (reasoning > 0) rows.push({ label: "Reasoning", value: formatCount(reasoning) });

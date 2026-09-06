@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import type { ConversationMessage, ConversationPart } from "@cc/shared/schemas";
+import {
+  sumConversationMessageTokens,
+  type ConversationMessage,
+  type ConversationPart,
+} from "@cc/shared/schemas";
 
 import {
   buildMessageUsageRows,
@@ -55,7 +59,9 @@ describe("readMessageUsage", () => {
     expect(usage).toMatchObject({
       steps: 1,
       durationMs: 12_500,
-      tokens: { input: 46_890, output: 232, reasoning: 213, total: 47_335 },
+      // The step-finish fallback sums components; it drops each step's reported
+      // total, which is not meaningful to add up across calls.
+      tokens: { input: 46_890, output: 232, reasoning: 213 },
     });
   });
 
@@ -79,19 +85,18 @@ describe("readMessageUsage", () => {
       output: 40,
       cacheRead: 6,
       cacheWrite: 7,
-      total: 150,
     });
     expect(usage?.cost).toBeCloseTo(0.003, 6);
   });
 
-  it("falls back to component sums when the provider omits a total", () => {
+  it("sums the components regardless of what the provider reported", () => {
     const usage = readMessageUsage(makeMessage(), [
       makeStepFinish({
-        tokens: { input: 10, output: 4, reasoning: 1, cache: { read: 0, write: 0 } },
+        tokens: { total: 999, input: 10, output: 4, reasoning: 1, cache: { read: 0, write: 0 } },
       }),
     ]);
 
-    expect(usage?.tokens?.total).toBe(15);
+    expect(sumConversationMessageTokens(usage!.tokens!)).toBe(15);
   });
 
   it("omits a zero cost, which means the provider does not bill per request", () => {
@@ -190,7 +195,6 @@ describe("persisted usage takes precedence", () => {
           reasoning: 0,
           cacheRead: 50,
           cacheWrite: 20,
-          total: 1_100,
         },
         cost: 0.004,
         modelId: "claude-opus-5",
@@ -206,7 +210,6 @@ describe("persisted usage takes precedence", () => {
       reasoning: 0,
       cacheRead: 50,
       cacheWrite: 20,
-      total: 1_100,
     });
     expect(usage?.cost).toBe(0.004);
     expect(usage?.model).toBe("anthropic/claude-opus-5");
@@ -215,7 +218,8 @@ describe("persisted usage takes precedence", () => {
   it("falls back to step-finish for messages synced before the columns existed", () => {
     const usage = readMessageUsage(makeMessage(), [makeStepFinish()]);
 
-    expect(usage?.tokens?.total).toBe(47_335);
+    // Summed from components, not the provider's inconsistent reported total.
+    expect(sumConversationMessageTokens(usage!.tokens!)).toBe(47_335);
     expect(usage?.model).toBeUndefined();
   });
 

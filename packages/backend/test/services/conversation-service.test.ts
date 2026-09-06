@@ -481,7 +481,7 @@ describe("createConversationService", () => {
           reasoning: 213,
           cacheRead: 12_040,
           cacheWrite: 3100,
-          total: 47_335,
+          reportedTotal: 47_335,
         },
       });
       // User messages carry no usage of their own.

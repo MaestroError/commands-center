@@ -204,6 +204,10 @@ describe("message usage", () => {
           time: { created: 1000, completed: 2000 },
           modelID: "claude-opus-5",
           providerID: "anthropic",
+          agent: "build",
+          variant: "thinking",
+          finish: "stop",
+          summary: false,
           cost: 0.01558692,
           tokens: {
             total: 47_335,
@@ -222,15 +226,73 @@ describe("message usage", () => {
       reasoning: 213,
       cacheRead: 12_040,
       cacheWrite: 3100,
-      total: 47_335,
+      reportedTotal: 47_335,
     });
     expect(mapped.cost).toBe(0.01558692);
     expect(mapped.modelId).toBe("claude-opus-5");
     expect(mapped.providerId).toBe("anthropic");
+    expect(mapped.agent).toBe("build");
+    expect(mapped.variant).toBe("thinking");
+    expect(mapped.finish).toBe("stop");
+    expect(mapped.summary).toBe(false);
+    expect(mapped.completedAt).toBe(new Date(2000).toISOString());
   });
 
-  it("derives a missing total from the reported components", () => {
-    expect(readOpenCodeTokens({ input: 10, output: 4, reasoning: 1 })?.total).toBe(15);
+  it("maps every metric as absent on a user message", () => {
+    const mapped = mapRemoteMessage(
+      "conv-1",
+      message({
+        info: { id: "u1", sessionID: "s1", role: "user", time: { created: 1000 } },
+        parts: [{ id: "p1", type: "text", text: "hi" }],
+      } as Partial<OpenCodeSessionMessage>),
+    );
+
+    expect(mapped.tokens).toBeUndefined();
+    expect(mapped.cost).toBeUndefined();
+    expect(mapped.modelId).toBeUndefined();
+    expect(mapped.providerId).toBeUndefined();
+    expect(mapped.agent).toBeUndefined();
+    expect(mapped.variant).toBeUndefined();
+    expect(mapped.finish).toBeUndefined();
+    expect(mapped.summary).toBeUndefined();
+    expect(mapped.completedAt).toBeUndefined();
+  });
+
+  it("leaves completedAt absent when the turn never completed, unlike updatedAt", () => {
+    const mapped = mapRemoteMessage(
+      "conv-1",
+      message({
+        info: { id: "m9", sessionID: "s1", role: "assistant", time: { created: 1000 } },
+      } as Partial<OpenCodeSessionMessage>),
+    );
+
+    // updatedAt falls back to createdAt, which cannot express "unfinished".
+    expect(mapped.updatedAt).toBe(mapped.createdAt);
+    expect(mapped.completedAt).toBeUndefined();
+  });
+
+  it("keeps the components when the provider omits a total", () => {
+    const mapped = mapRemoteMessage(
+      "conv-1",
+      message({
+        info: {
+          id: "m1",
+          sessionID: "s1",
+          role: "assistant",
+          time: { created: 1000, completed: 2000 },
+          tokens: { input: 10, output: 4, reasoning: 1, cache: { read: 0, write: 0 } },
+        },
+      } as Partial<OpenCodeSessionMessage>),
+    );
+
+    expect(mapped.tokens?.reportedTotal).toBeUndefined();
+    expect(mapped.tokens).toMatchObject({ input: 10, output: 4, reasoning: 1 });
+  });
+
+  it("records no reportedTotal when the provider omits one", () => {
+    expect(
+      readOpenCodeTokens({ input: 10, output: 4, reasoning: 1 })?.reportedTotal,
+    ).toBeUndefined();
   });
 
   it("treats an all-zero token report as absent", () => {
@@ -256,7 +318,7 @@ describe("message usage", () => {
         reasoning: 500,
         cache: { read: 0, write: 0 },
       }),
-    ).toMatchObject({ reasoning: 500, total: 0 });
+    ).toMatchObject({ reasoning: 500, reportedTotal: 0 });
   });
 
   it("keeps a cache-only report", () => {

@@ -34,10 +34,17 @@ export function readOpenCodeTokens(value: unknown): ConversationMessageTokens | 
     return undefined;
   }
 
-  // Prefer the provider's own total so our arithmetic never contradicts it.
-  const total = readNonNegativeNumber(value["total"]) ?? input + output + reasoning;
+  // Recorded, never trusted: providers disagree on what the total covers.
+  const reportedTotal = readNonNegativeNumber(value["total"]);
 
-  return { input, output, reasoning, cacheRead, cacheWrite, total };
+  return {
+    input,
+    output,
+    reasoning,
+    cacheRead,
+    cacheWrite,
+    ...(reportedTotal === undefined ? {} : { reportedTotal }),
+  };
 }
 
 /**
@@ -51,7 +58,6 @@ export function sumOpenCodeTokens(values: unknown[]): ConversationMessageTokens 
     reasoning: 0,
     cacheRead: 0,
     cacheWrite: 0,
-    total: 0,
   };
   let found = false;
 
@@ -65,7 +71,6 @@ export function sumOpenCodeTokens(values: unknown[]): ConversationMessageTokens 
     totals.reasoning += tokens.reasoning;
     totals.cacheRead += tokens.cacheRead;
     totals.cacheWrite += tokens.cacheWrite;
-    totals.total += tokens.total;
   }
 
   return found ? totals : undefined;

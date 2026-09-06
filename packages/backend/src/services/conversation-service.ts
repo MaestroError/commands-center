@@ -19,6 +19,7 @@ import {
   systemPromptOverridesSchema,
   type ConversationDetail,
   type ConversationMessagePage,
+  type ConversationMessageTokens,
   type ConversationMessageParts,
   type ConversationMessage,
   type ConversationMessageError,
@@ -1645,10 +1646,20 @@ export function createConversationService(options: {
         parts_json: JSON.stringify(message.parts),
         attachments_json: JSON.stringify(message.attachments),
         error_json: message.error ? JSON.stringify(message.error) : null,
-        tokens_json: message.tokens ? JSON.stringify(message.tokens) : null,
+        tokens_input: message.tokens?.input ?? null,
+        tokens_output: message.tokens?.output ?? null,
+        tokens_reasoning: message.tokens?.reasoning ?? null,
+        tokens_cache_read: message.tokens?.cacheRead ?? null,
+        tokens_cache_write: message.tokens?.cacheWrite ?? null,
+        tokens_reported_total: message.tokens?.reportedTotal ?? null,
         cost: message.cost ?? null,
         model_id: message.modelId ?? null,
         provider_id: message.providerId ?? null,
+        agent: message.agent ?? null,
+        variant: message.variant ?? null,
+        finish: message.finish ?? null,
+        summary: message.summary ?? null,
+        completed_at: message.completedAt ? new Date(message.completedAt) : null,
         system_prompt_snapshot_json: existingSnapshots.has(message.id)
           ? existingSnapshots.get(message.id)
           : message.id === snapshotTargetId && pendingSnapshot
@@ -1878,14 +1889,38 @@ function mapConversationMessage(row: MessageRow): ConversationMessage {
     parts: projectPartsForList(parseJson(row.parts_json, [])),
     attachments: parseJson(row.attachments_json, []),
     error: parseJson(row.error_json, undefined),
-    tokens: parseJson(row.tokens_json, undefined),
+    tokens: readRowTokens(row),
     cost: row.cost ?? undefined,
     modelId: row.model_id ?? undefined,
     providerId: row.provider_id ?? undefined,
+    agent: row.agent ?? undefined,
+    variant: row.variant ?? undefined,
+    finish: row.finish ?? undefined,
+    summary: row.summary ?? undefined,
+    completedAt: row.completed_at?.toISOString(),
     systemPromptSnapshot: parseJson(row.system_prompt_snapshot_json, undefined),
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   });
+}
+
+/**
+ * Rebuild the token counts from their columns. All-null means the row predates
+ * the columns (or is a user message), and the caller falls back to parts.
+ */
+function readRowTokens(row: MessageRow): ConversationMessageTokens | undefined {
+  if (row.tokens_input === null && row.tokens_output === null) {
+    return undefined;
+  }
+
+  return {
+    input: row.tokens_input ?? 0,
+    output: row.tokens_output ?? 0,
+    reasoning: row.tokens_reasoning ?? 0,
+    cacheRead: row.tokens_cache_read ?? 0,
+    cacheWrite: row.tokens_cache_write ?? 0,
+    ...(row.tokens_reported_total === null ? {} : { reportedTotal: row.tokens_reported_total }),
+  };
 }
 
 function parseJson<T>(value: string | null, fallback: T): T {

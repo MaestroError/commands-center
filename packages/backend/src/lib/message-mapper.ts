@@ -24,7 +24,11 @@ export function mapRemoteMessage(
   const attachments = extractAttachments(message.parts);
   const parts = message.parts.map(sanitizePart);
   const createdAtMs = message.info.time.created;
+  // Left as-is: existing readers depend on updatedAt falling back to created.
   const updatedAtMs = message.info.time.completed ?? createdAtMs;
+  // Unlike updatedAt, this stays absent when the turn never completed, so an
+  // unfinished turn is not mistaken for an instant one.
+  const completedAtMs = message.info.time.completed;
 
   return {
     ...conversationMessageSchema.parse({
@@ -39,6 +43,11 @@ export function mapRemoteMessage(
       cost: readOpenCodeCost(message.info["cost"]),
       modelId: readNonEmptyString(message.info["modelID"]),
       providerId: readNonEmptyString(message.info["providerID"]),
+      agent: readNonEmptyString(message.info["agent"]),
+      variant: readNonEmptyString(message.info["variant"]),
+      finish: readNonEmptyString(message.info["finish"]),
+      summary: typeof message.info["summary"] === "boolean" ? message.info["summary"] : undefined,
+      completedAt: completedAtMs === undefined ? undefined : new Date(completedAtMs).toISOString(),
       createdAt: new Date(createdAtMs).toISOString(),
       updatedAt: new Date(updatedAtMs).toISOString(),
     }),

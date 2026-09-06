@@ -350,6 +350,7 @@ export {
   conversationMessagePageSchema,
   conversationMessagePartsSchema,
   conversationMessageTokensSchema,
+  sumConversationMessageTokens,
   conversationPartSchema,
   conversationSourceSchema,
   conversationSnapshotSchema,

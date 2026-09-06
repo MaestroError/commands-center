@@ -18,8 +18,25 @@ export const conversationMessageTokensSchema = z.object({
   reasoning: z.number().nonnegative().default(0),
   cacheRead: z.number().nonnegative().default(0),
   cacheWrite: z.number().nonnegative().default(0),
-  total: z.number().nonnegative().default(0),
+  /**
+   * OpenCode's own total, when it reported one. Kept for reference and never
+   * displayed: it is provider-dependent and inconsistent — observed reports
+   * variously include reasoning while excluding cache, and the reverse. Use
+   * `sumConversationMessageTokens` for any total shown to a person.
+   */
+  reportedTotal: z.number().nonnegative().optional(),
 });
+
+/** The total we display: every component we store, summed consistently. */
+export function sumConversationMessageTokens(tokens: {
+  input: number;
+  output: number;
+  reasoning: number;
+  cacheRead: number;
+  cacheWrite: number;
+}): number {
+  return tokens.input + tokens.output + tokens.reasoning + tokens.cacheRead + tokens.cacheWrite;
+}
 
 export const conversationMessageErrorSchema = z.object({
   name: z.string().min(1),
@@ -64,6 +81,18 @@ export const conversationMessageSchema = z.object({
   cost: z.number().nonnegative().optional(),
   modelId: z.string().min(1).optional(),
   providerId: z.string().min(1).optional(),
+  /** OpenCode agent that produced the message (e.g. `build`, `plan`). */
+  agent: z.string().min(1).optional(),
+  variant: z.string().min(1).optional(),
+  /** Why the turn stopped — `stop`, `length`, `aborted`, … */
+  finish: z.string().min(1).optional(),
+  summary: z.boolean().optional(),
+  /**
+   * When OpenCode reported the turn complete. Absent when it never did, which
+   * `updatedAt` cannot express: it falls back to `createdAt`, making an
+   * unfinished turn look instantaneous.
+   */
+  completedAt: z.string().datetime().optional(),
   // The system prompts composed and sent with this message, captured at send
   // time. Present on user messages once captured; absent on older messages.
   systemPromptSnapshot: z.array(resolvedSystemPromptSchema).optional(),

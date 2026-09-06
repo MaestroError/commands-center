@@ -49,10 +49,26 @@ export const messages = sqliteTable(
     // Provider-reported usage for assistant messages, captured from OpenCode's
     // `info` on each sync. Null on user messages and on messages synced before
     // CC persisted these, which fall back to their `step-finish` parts.
-    tokens_json: text("tokens_json"),
+    // Typed columns rather than a blob so usage can be aggregated in SQL.
+    tokens_input: integer("tokens_input"),
+    tokens_output: integer("tokens_output"),
+    tokens_reasoning: integer("tokens_reasoning"),
+    tokens_cache_read: integer("tokens_cache_read"),
+    tokens_cache_write: integer("tokens_cache_write"),
+    // OpenCode's own total when reported. Never displayed — providers disagree
+    // on what it covers; totals shown are summed from the components.
+    tokens_reported_total: integer("tokens_reported_total"),
     cost: real("cost"),
     model_id: text("model_id"),
     provider_id: text("provider_id"),
+    agent: text("agent"),
+    variant: text("variant"),
+    finish: text("finish"),
+    summary: integer("summary", { mode: "boolean" }),
+    // Explicitly null when OpenCode never reported completion. `updated_at`
+    // cannot express that: it falls back to created_at, so an unfinished turn
+    // is indistinguishable from an instant one.
+    completed_at: integer("completed_at", { mode: "timestamp_ms" }),
     // Snapshot of the system prompts sent with this (user) message. Preserved
     // across the delete+reinsert resync by keying on the stable OpenCode id.
     system_prompt_snapshot_json: text("system_prompt_snapshot_json"),
