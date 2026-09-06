@@ -92,6 +92,15 @@ export function MessageTimeline({
     el.scrollTop = anchor.scrollTop + (el.scrollHeight - anchor.scrollHeight);
   }, [oldestMessageId]);
 
+  // A failed page never prepends, so the effect above never runs and never
+  // clears the anchor. Left set, it would suppress auto-scroll-to-bottom for
+  // the rest of the session once the reader returns to the bottom.
+  useEffect(() => {
+    if (olderMessagesError) {
+      prependAnchorRef.current = null;
+    }
+  }, [olderMessagesError]);
+
   useEffect(() => {
     // A prepend also changes `messages`; the anchor effect owns the scroll
     // position in that case, and the user is scrolled up anyway.

@@ -267,7 +267,8 @@ export function createConversationService(options: {
       beforeMessageId: string,
       limit: number,
     ): Promise<ConversationMessagePage> {
-      await getConversationAgent(conversationId);
+      // Task-run sessions page too — the run inspector's log uses this.
+      await getConversationAgent(conversationId, { includeTaskRun: true });
       return listOlderMessages(conversationId, beforeMessageId, limit);
     },
 
@@ -276,7 +277,8 @@ export function createConversationService(options: {
       conversationId: string,
       messageId: string,
     ): Promise<ConversationMessageParts> {
-      await getConversationAgent(conversationId);
+      // Tool cards are expanded in the run inspector as well as in chat.
+      await getConversationAgent(conversationId, { includeTaskRun: true });
       return getMessageParts(conversationId, messageId);
     },
 

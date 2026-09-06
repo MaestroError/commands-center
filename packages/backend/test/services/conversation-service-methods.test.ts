@@ -863,6 +863,60 @@ describe("conversation-service delegating methods", () => {
     expect(message?.completedAt).toBe(new Date(4_000).toISOString());
   });
 
+  it("pages and expands messages on task-run conversations, not just chat", async () => {
+    // The run inspector's session log uses both of these; guarding them to
+    // source: "chat" made its "Load older messages" and "Show full output"
+    // return 404.
+    const { service, opencodeService, taskService, agent } = await setup();
+    const task = await taskService.create({ agentId: agent.id, title: "Paged task" });
+    const run = await taskService.createRun({
+      id: "run-paging",
+      taskId: task.id,
+      agentId: agent.id,
+      status: "running",
+      triggerSource: "manual",
+      renderedPrompt: "Run.",
+    });
+    const conversation = await service.createTaskRunConversation({
+      agentId: agent.id,
+      taskId: task.id,
+      taskRunId: run.id,
+      title: "Run",
+    });
+
+    opencodeService.listSessionMessages = vi.fn(() =>
+      Promise.resolve([
+        {
+          info: {
+            id: "run-msg-1",
+            sessionID: conversation.opencodeSessionId,
+            role: "assistant" as const,
+            time: { created: 1_000, completed: 2_000 },
+          },
+          parts: [{ id: "run-part-1", type: "text", text: "first" }],
+        },
+        {
+          info: {
+            id: "run-msg-2",
+            sessionID: conversation.opencodeSessionId,
+            role: "assistant" as const,
+            time: { created: 3_000, completed: 4_000 },
+          },
+          parts: [{ id: "run-part-2", type: "text", text: "second" }],
+        },
+      ]),
+    );
+    await service.syncTaskRunConversation(task.id, run.id);
+
+    await expect(
+      service.listOlderMessages(conversation.id, "run-msg-2", 10),
+    ).resolves.toMatchObject({ messages: [{ id: "run-msg-1" }], hasMore: false });
+
+    await expect(service.getMessageParts(conversation.id, "run-msg-2")).resolves.toMatchObject({
+      messageId: "run-msg-2",
+    });
+  });
+
   it("auto-approves verified descendant permissions for task runs", async () => {
     const { service, opencodeService, taskService, agent } = await setup();
     const task = await taskService.create({ agentId: agent.id, title: "Task" });

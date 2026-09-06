@@ -547,3 +547,38 @@ describe("older message paging", () => {
     expect(screen.getByText("Request failed.")).toBeInTheDocument();
   });
 });
+
+describe("scroll anchor recovery", () => {
+  it("recovers auto-scroll after a failed page load", async () => {
+    // The scroll anchor is captured before the request. A failure never
+    // prepends, so nothing clears it; left set it would suppress
+    // scroll-to-bottom for the rest of the session.
+    const user = userEvent.setup();
+    const scrollTo = vi.fn();
+    Element.prototype.scrollTo = scrollTo;
+
+    const props = {
+      messages: [makeMessage({ id: "m1" })],
+      parts: {},
+      sessionStatus: { type: "idle" } as const,
+      hasMoreMessages: true,
+      onLoadOlderMessages: vi.fn(),
+    };
+    const { rerender } = render(<MessageTimeline {...props} />);
+
+    await user.click(screen.getByRole("button", { name: "Load older messages" }));
+    rerender(<MessageTimeline {...props} olderMessagesError="Request failed." />);
+
+    scrollTo.mockClear();
+    // A later message arrives; the timeline must still follow it.
+    rerender(
+      <MessageTimeline
+        {...props}
+        olderMessagesError="Request failed."
+        messages={[makeMessage({ id: "m1" }), makeMessage({ id: "m2" })]}
+      />,
+    );
+
+    expect(scrollTo).toHaveBeenCalled();
+  });
+});
