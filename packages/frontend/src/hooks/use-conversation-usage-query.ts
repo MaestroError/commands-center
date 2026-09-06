@@ -16,20 +16,19 @@ import { queryKeys } from "@/lib/query-keys";
  */
 export function useConversationUsageQuery(conversationId?: string, isBusy = false) {
   const queryClient = useQueryClient();
-  const wasBusy = useRef(false);
-  // A turn that just finished has not been persisted yet, so that refetch must
-  // sync first. The initial read follows a conversation GET, which already did.
-  const needsSync = useRef(false);
+  const busyConversationId = useRef<string | undefined>(undefined);
+  const pendingSyncs = useRef(new Map<string, symbol>());
 
   useEffect(() => {
     if (isBusy) {
-      wasBusy.current = true;
+      busyConversationId.current = conversationId;
       return;
     }
 
-    if (!wasBusy.current || !conversationId) return;
-    wasBusy.current = false;
-    needsSync.current = true;
+    const finishedConversationId = busyConversationId.current;
+    busyConversationId.current = undefined;
+    if (!conversationId || finishedConversationId !== conversationId) return;
+    pendingSyncs.current.set(conversationId, Symbol());
     void queryClient.invalidateQueries({
       queryKey: queryKeys.conversationUsage(conversationId),
     });
@@ -38,9 +37,13 @@ export function useConversationUsageQuery(conversationId?: string, isBusy = fals
   return useQuery({
     queryKey: queryKeys.conversationUsage(conversationId ?? "missing"),
     queryFn: async () => {
-      const sync = needsSync.current;
-      needsSync.current = false;
-      return getConversationUsage(conversationId ?? "", { sync });
+      const id = conversationId ?? "";
+      const pendingSync = pendingSyncs.current.get(id);
+      const usage = await getConversationUsage(id, { sync: pendingSync !== undefined });
+      if (pendingSync !== undefined && pendingSyncs.current.get(id) === pendingSync) {
+        pendingSyncs.current.delete(id);
+      }
+      return usage;
     },
     enabled: Boolean(conversationId),
   });
