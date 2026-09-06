@@ -46,6 +46,8 @@ export type ToolUsage = {
 export type UsageRow = {
   label: string;
   value: string;
+  /** Groups rows under a heading, so unrelated figures cannot be misread as one set. */
+  section?: string;
   /**
    * Reference detail rather than glanceable figures. The hover card drops these
    * to stay compact; the dialog shows every row.

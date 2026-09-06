@@ -10,10 +10,14 @@ import type {
   TaskFeedbackThread,
   TaskRun,
   TaskRunFollowup,
+  TaskUsage,
 } from "@cc/shared/schemas";
 
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
 import { Markdown } from "@/components/chat/Markdown";
+import { UsageInfoButton } from "@/components/chat/UsageInfoButton";
+import { buildUsageTotalRows, formatUsageTotal } from "@/components/chat/usage-totals";
+import { formatRunDuration } from "@/pages/task-detail/task-detail-helpers";
 import { ArtifactShareControls } from "@/components/tasks/ArtifactShareControls";
 import { TaskPromptComposer } from "@/components/tasks/TaskPromptComposer";
 import { buildArtifactHref, formatDate, readAgentName } from "@/components/tasks/task-format";
@@ -29,6 +33,7 @@ import {
   useTaskFeedbackQuery,
   useTaskMutations,
   useTaskRunFollowupsQuery,
+  useTaskUsageQuery,
 } from "@/hooks/use-tasks-query";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -45,6 +50,7 @@ export function TaskFeedbackPanelSection(props: {
   runs: TaskRun[];
 }) {
   const feedbackQuery = useTaskFeedbackQuery(props.taskId);
+  const usageQuery = useTaskUsageQuery(props.taskId);
   const catalogQuery = useSpecialistCatalogQuery();
   const mutations = useTaskMutations();
   const feedbackSkills = useTaskComposerSkills(props.agent, catalogQuery.data);
@@ -86,6 +92,7 @@ export function TaskFeedbackPanelSection(props: {
           })
         }
         parentRuns={props.runs}
+        usage={usageQuery.data}
         skills={feedbackSkills}
         task={props.task}
       />
@@ -101,6 +108,8 @@ function TaskFeedbackSection(props: {
   parentRuns: TaskRun[];
   isLoading: boolean;
   error: unknown;
+  /** Per-run token totals, keyed by run id. */
+  usage?: TaskUsage;
   isSubmitting: boolean;
   isUpdatingFeedback: boolean;
   onSubmit: (
@@ -323,6 +332,19 @@ function TaskFeedbackSection(props: {
                   <>
                     <StatusBadge status={run.status} />
                     <span>{formatDate(readRunCommentAt(run))}</span>
+                    <span className="tabular-nums">{formatRunDuration(run)}</span>
+                    {props.usage?.runs[run.id] ? (
+                      <span className="inline-flex items-center gap-0.5">
+                        <span className="tabular-nums">
+                          {formatUsageTotal(props.usage.runs[run.id]!)}
+                        </span>
+                        <UsageInfoButton
+                          label={`Token and cost totals for this run`}
+                          rows={buildUsageTotalRows(props.usage.runs[run.id]!)}
+                          title="Run usage"
+                        />
+                      </span>
+                    ) : null}
                     <Link
                       className="font-medium text-accent underline-offset-4 hover:underline"
                       to={`/tasks/${props.task.id}/runs/${run.id}`}

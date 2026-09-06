@@ -110,6 +110,33 @@ describe("readContextWindow", () => {
     expect(context?.usedTokens).toBe(20_180);
   });
 
+  it("ignores a trailing summary turn (real data from a reported chat)", () => {
+    // The chat that surfaced this: a real turn of 55,006 + 1,792 + 35, then a
+    // summary turn of 440 + 80. Reading the summary reported "520 / 200k (0%)".
+    const context = readContextWindow({
+      messages: [
+        assistant({
+          id: "real",
+          providerId: "opencode",
+          modelId: "big-pickle",
+          tokens: { input: 55_006, output: 35, reasoning: 0, cacheRead: 1_792, cacheWrite: 0 },
+        }),
+        assistant({
+          id: "summary",
+          summary: true,
+          providerId: "opencode",
+          modelId: "big-pickle",
+          tokens: { input: 440, output: 80, reasoning: 0, cacheRead: 0, cacheWrite: 0 },
+        }),
+      ],
+      parts: {},
+      providers: [provider("opencode", { "big-pickle": { limit: { context: 200_000 } } })],
+    });
+
+    expect(context?.usedTokens).toBe(56_833);
+    expect(formatContextSummary(context!)).toBe("56.8k / 200k (28%)");
+  });
+
   it("resolves the limit per provider, so the same model can differ", () => {
     expect(read([assistant({ providerId: "anthropic" })])?.limitTokens).toBe(1_000_000);
     expect(read([assistant({ providerId: "xpersona" })])?.limitTokens).toBe(372_000);

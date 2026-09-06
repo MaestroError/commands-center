@@ -159,3 +159,30 @@ describe("MessageUsageInfoButton", () => {
     expect(container).toBeEmptyDOMElement();
   });
 });
+
+describe("sectioned rows", () => {
+  it("groups rows under headings so unrelated figures cannot be read as one set", async () => {
+    const user = userEvent.setup();
+    render(
+      <UsageInfoButton
+        label="Context"
+        rows={[
+          { label: "Used", value: "56.8k", section: "Context window" },
+          { label: "Limit", value: "200k", section: "Context window" },
+          { label: "Total tokens", value: "57,353", section: "Burned in this chat" },
+          { label: "Input", value: "55,446", section: "Burned in this chat" },
+        ]}
+        title="Context 56.8k / 200k (28%)"
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Context" }));
+    const dialog = await screen.findByRole("dialog");
+
+    expect(dialog).toHaveTextContent("Context window");
+    expect(dialog).toHaveTextContent("Burned in this chat");
+    // The heading appears once per group, not once per row.
+    expect(screen.getAllByText("Context window")).toHaveLength(1);
+    expect(screen.getAllByText("Burned in this chat")).toHaveLength(1);
+  });
+});

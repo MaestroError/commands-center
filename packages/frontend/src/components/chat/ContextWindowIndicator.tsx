@@ -61,16 +61,20 @@ export function ContextWindowIndicator(props: ContextWindowIndicatorProps) {
       }
       label={`Context ${summary}`}
       rows={[
-        { label: "Used", value: formatContextCount(context.usedTokens) },
-        { label: "Limit", value: formatContextCount(context.limitTokens) },
-        { label: "Model", value: context.model, detail: true },
+        { label: "Used", value: formatContextCount(context.usedTokens), section: "Context window" },
+        {
+          label: "Limit",
+          value: formatContextCount(context.limitTokens),
+          section: "Context window",
+        },
+        { label: "Model", value: context.model, detail: true, section: "Context window" },
         // The window is the last turn's prompt; these are the whole
         // conversation's running totals, so they live in the dialog only.
         ...(props.conversationUsage
           ? buildUsageTotalRows(props.conversationUsage).map((row) => ({
               ...row,
-              label: row.label === "Total tokens" ? "Conversation tokens" : row.label,
               detail: true,
+              section: "Burned in this chat",
             }))
           : []),
       ]}

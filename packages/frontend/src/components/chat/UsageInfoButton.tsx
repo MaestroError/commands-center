@@ -142,14 +142,22 @@ function UsageRows(props: { rows: UsageRow[]; title?: string; compact?: boolean 
       <dl
         className={cn("grid grid-cols-[auto_1fr] gap-x-4", props.compact ? "gap-y-0.5" : "gap-y-2")}
       >
-        {props.rows.map((row) => (
-          <div className="contents" key={row.label}>
-            <dt className="text-xs text-text-secondary">{row.label}</dt>
-            <dd className="text-right text-xs font-medium tabular-nums text-text-primary">
-              {row.value}
-            </dd>
-          </div>
-        ))}
+        {props.rows.map((row, index) => {
+          const previous = index > 0 ? props.rows[index - 1]?.section : undefined;
+          return (
+            <div className="contents" key={`${row.section ?? ""}:${row.label}`}>
+              {row.section && row.section !== previous ? (
+                <dt className="col-span-2 pt-1.5 text-[11px] font-semibold uppercase tracking-wide text-text-secondary">
+                  {row.section}
+                </dt>
+              ) : null}
+              <dt className="text-xs text-text-secondary">{row.label}</dt>
+              <dd className="text-right text-xs font-medium tabular-nums text-text-primary">
+                {row.value}
+              </dd>
+            </div>
+          );
+        })}
       </dl>
     </div>
   );
