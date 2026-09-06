@@ -4,6 +4,7 @@ import type { ConversationMessage, ConversationPart, LiveRequest } from "@cc/sha
 
 import { ChatComposer } from "@/components/chat/ChatComposer";
 import { ChatHeader } from "@/components/chat/ChatHeader";
+import { ContextWindowIndicator } from "@/components/chat/ContextWindowIndicator";
 import { ChatSplitPaneLayout } from "@/components/chat/ChatSplitPaneLayout";
 import { MediaTab } from "@/components/chat/MediaTab";
 import { MessageTimeline } from "@/components/chat/MessageTimeline";
@@ -32,6 +33,7 @@ import { QuickFileModal } from "@/components/workspace/QuickFileModal";
 import { QuickFilePanel } from "@/components/workspace/QuickFilePanel";
 import { WorkspaceFilesTab } from "@/components/workspace/WorkspaceFilesTab";
 import { useChatInspectionTabs } from "@/hooks/use-chat-inspection-tabs";
+import { useProvidersQuery } from "@/hooks/use-providers-query";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { useConversation } from "@/hooks/use-conversation";
 import { useSpecialistCatalogQuery } from "@/hooks/use-specialists-query";
@@ -64,6 +66,9 @@ export function WorkspaceChatPage() {
   const { data: catalog } = useSpecialistCatalogQuery();
   const isDesktop = useMediaQuery("(min-width: 1200px)");
   const inspection = useChatInspectionTabs(conv.conversation?.id);
+  // Model context limits live on the provider catalogue, which is cached
+  // globally, so this is a cache read on every chat after the first.
+  const providersQuery = useProvidersQuery();
   const taskMutations = useTaskMutations();
   const resolveLiveRequest = conv.resolveLiveRequest;
   const replyPermission = conv.replyPermission;
@@ -392,6 +397,14 @@ export function WorkspaceChatPage() {
               quickEditorOpen={inspection.open && inspection.tabs.length > 0}
               onToggleQuickEditor={() => inspection.setOpen(!inspection.open)}
               onToggleTerminal={() => setTerminalOpen((current) => !current)}
+              contextIndicator={
+                <ContextWindowIndicator
+                  messages={conv.conversation.messages}
+                  parts={conv.parts}
+                  providers={providersQuery.data?.map((entry) => entry.provider) ?? []}
+                  fallbackModel={conv.agent?.defaultModel}
+                />
+              }
             />
 
             {conv.conversation.taskId && conv.conversation.taskRunId ? (

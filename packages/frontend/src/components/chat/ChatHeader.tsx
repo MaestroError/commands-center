@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { History, Pencil, Plus, Terminal } from "lucide-react";
 
 import { SpecialistAvatar } from "@/components/specialists/specialist-avatar";
@@ -18,6 +18,8 @@ type ChatHeaderProps = {
   quickEditorOpen?: boolean;
   quickEditorAvailable?: boolean;
   onToggleQuickEditor?: () => void;
+  /** Rendered at the head of the action group; omitted when unavailable. */
+  contextIndicator?: ReactNode;
 };
 
 export function ChatHeader({
@@ -33,6 +35,7 @@ export function ChatHeader({
   quickEditorOpen = false,
   quickEditorAvailable = false,
   onToggleQuickEditor,
+  contextIndicator,
 }: ChatHeaderProps) {
   const [showHistory, setShowHistory] = useState(false);
 
@@ -47,6 +50,7 @@ export function ChatHeader({
       </div>
 
       <div className="flex items-center gap-1 shrink-0">
+        {contextIndicator}
         {/* Start Fresh */}
         <button
           aria-label="Start fresh conversation"

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Info, X } from "lucide-react";
 
 import type { ConversationMessage, ConversationPart } from "@cc/shared/schemas";
@@ -22,6 +22,8 @@ type UsageInfoButtonProps = {
   /** Screen-reader name for the trigger; also the fallback tooltip label. */
   label: string;
   className?: string;
+  /** Replaces the default "i" glyph — e.g. the context-window ring. */
+  icon?: ReactNode;
 };
 
 /**
@@ -30,7 +32,7 @@ type UsageInfoButtonProps = {
  * clicking or tapping opens the same figures in a dialog, which is the only
  * path touch devices get since pointer hover never fires there.
  */
-export function UsageInfoButton({ title, rows, label, className }: UsageInfoButtonProps) {
+export function UsageInfoButton({ title, rows, label, className, icon }: UsageInfoButtonProps) {
   const [tooltipOpen, setTooltipOpen] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
 
@@ -67,7 +69,7 @@ export function UsageInfoButton({ title, rows, label, className }: UsageInfoButt
             }}
             type="button"
           >
-            <Info aria-hidden="true" className="h-3.5 w-3.5" />
+            {icon ?? <Info aria-hidden="true" className="h-3.5 w-3.5" />}
           </button>
         </TooltipTrigger>
         <TooltipContent className="max-w-none">

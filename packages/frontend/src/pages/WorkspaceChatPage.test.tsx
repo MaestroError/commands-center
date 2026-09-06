@@ -25,6 +25,12 @@ vi.mock("@/hooks/use-specialists-query", () => ({
   useSpecialistCatalogQuery: () => useSpecialistCatalogQueryMock() as unknown,
 }));
 
+// The context-window ring reads the provider catalogue; this page test renders
+// without a QueryClientProvider, so the hook is stubbed like the others.
+vi.mock("@/hooks/use-providers-query", () => ({
+  useProvidersQuery: () => ({ data: undefined }),
+}));
+
 vi.mock("@/hooks/use-media-query", () => ({
   useMediaQuery: (query: string) => Boolean(useMediaQueryMock(query)),
 }));
