@@ -2,7 +2,11 @@ import { desc, eq, inArray } from "drizzle-orm";
 import type { Logger } from "pino";
 
 import {
+  CONVERSATION_MESSAGE_PAGE_MAX,
+  CONVERSATION_MESSAGE_PAGE_SIZE,
   conversationDetailSchema,
+  conversationMessagePageSchema,
+  conversationMessagePartsSchema,
   conversationMessageSchema,
   conversationSnapshotSchema,
   conversationSummarySchema,
@@ -14,6 +18,9 @@ import {
   taskPermissionProfileSchema,
   systemPromptOverridesSchema,
   type ConversationDetail,
+  type ConversationMessagePage,
+  type ConversationMessageTokens,
+  type ConversationMessageParts,
   type ConversationMessage,
   type ConversationMessageError,
   type ConversationSnapshot,
@@ -45,6 +52,7 @@ import {
   mapRemoteMessage,
   readModelError,
 } from "../lib/message-mapper.js";
+import { projectPartsForList } from "../lib/message-projection.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
 import { resolveSpecialistWorkspacePath } from "./specialist-workspace.js";
 import { OpenCodeRequestError } from "./opencode-service.js";
@@ -69,6 +77,9 @@ import type { SystemPromptRenderContext, SystemPromptScope } from "../system-pro
 type AgentRow = typeof agents.$inferSelect;
 type AgentRuntimeRow = AgentRow & { workspace_path: string };
 type ConversationRow = typeof conversations.$inferSelect;
+
+/** `paginate: false` returns the complete ordered history, for non-UI readers. */
+type ConversationDetailOptions = { paginate?: boolean };
 type MessageRow = typeof messages.$inferSelect;
 
 export type TaskRunSessionDiagnostic = {
@@ -249,6 +260,44 @@ export function createConversationService(options: {
       return mapConversationDetail(conversation);
     },
 
+    /**
+     * Older messages, for scrolling back through a long conversation. Reads
+     * straight from the database with no OpenCode sync: `get` already synced,
+     * and re-syncing per page would delete and reinsert every row mid-scroll.
+     */
+    async listOlderMessages(
+      conversationId: string,
+      beforeMessageId: string,
+      limit: number,
+    ): Promise<ConversationMessagePage> {
+      // Task-run sessions page too — the run inspector's log uses this.
+      await getConversationAgent(conversationId, { includeTaskRun: true });
+      return listOlderMessages(conversationId, beforeMessageId, limit);
+    },
+
+    /**
+     * Pull the session's latest messages into SQLite.
+     *
+     * Streaming sends deliberately skip this, so after a turn finishes nothing
+     * has persisted the reply yet. Anything that reads the database rather than
+     * OpenCode — the usage aggregate — has to sync first or it reports the
+     * pre-turn state.
+     */
+    async syncConversationMessages(conversationId: string): Promise<void> {
+      const loaded = await getConversationAgent(conversationId, { includeTaskRun: true });
+      await syncConversation(loaded.agent, loaded.conversation);
+    },
+
+    /** Full parts for one message, for expanding a truncated tool card. */
+    async getMessageParts(
+      conversationId: string,
+      messageId: string,
+    ): Promise<ConversationMessageParts> {
+      // Tool cards are expanded in the run inspector as well as in chat.
+      await getConversationAgent(conversationId, { includeTaskRun: true });
+      return getMessageParts(conversationId, messageId);
+    },
+
     async getMedia(conversationId: string): Promise<SessionMediaItem[]> {
       const loaded = await getConversationAgent(conversationId);
       const remoteMessages = await options.opencodeService.listSessionMessages(
@@ -412,7 +461,10 @@ export function createConversationService(options: {
 
       const agent = await getAgent(conversation.agent_id);
       await syncConversation(agent, conversation);
-      return getConversationDetail(conversation.id);
+      // Complete history, not a UI page: the run monitor slices this from a
+      // baseline captured against the full OpenCode session, so a capped list
+      // would hide every new message once a run passes the page size.
+      return getConversationDetail(conversation.id, { paginate: false });
     },
 
     async getTaskRunSessionStatus(
@@ -1615,6 +1667,20 @@ export function createConversationService(options: {
         parts_json: JSON.stringify(message.parts),
         attachments_json: JSON.stringify(message.attachments),
         error_json: message.error ? JSON.stringify(message.error) : null,
+        tokens_input: message.tokens?.input ?? null,
+        tokens_output: message.tokens?.output ?? null,
+        tokens_reasoning: message.tokens?.reasoning ?? null,
+        tokens_cache_read: message.tokens?.cacheRead ?? null,
+        tokens_cache_write: message.tokens?.cacheWrite ?? null,
+        tokens_reported_total: message.tokens?.reportedTotal ?? null,
+        cost: message.cost ?? null,
+        model_id: message.modelId ?? null,
+        provider_id: message.providerId ?? null,
+        agent: message.agent ?? null,
+        variant: message.variant ?? null,
+        finish: message.finish ?? null,
+        summary: message.summary ?? null,
+        completed_at: message.completedAt ? new Date(message.completedAt) : null,
         system_prompt_snapshot_json: existingSnapshots.has(message.id)
           ? existingSnapshots.get(message.id)
           : message.id === snapshotTargetId && pendingSnapshot
@@ -1642,7 +1708,10 @@ export function createConversationService(options: {
     });
   }
 
-  async function getConversationDetail(conversationId: string): Promise<ConversationDetail> {
+  async function getConversationDetail(
+    conversationId: string,
+    detailOptions: ConversationDetailOptions = {},
+  ): Promise<ConversationDetail> {
     const conversation = await options.db.query.conversations.findFirst({
       where: (table, operators) => operators.eq(table.id, conversationId),
     });
@@ -1651,19 +1720,117 @@ export function createConversationService(options: {
       throw new NotFoundError("Conversation not found.");
     }
 
-    return mapConversationDetail(conversation);
+    return mapConversationDetail(conversation, detailOptions);
   }
 
-  async function mapConversationDetail(conversation: ConversationRow): Promise<ConversationDetail> {
+  async function mapConversationDetail(
+    conversation: ConversationRow,
+    detailOptions: ConversationDetailOptions = {},
+  ): Promise<ConversationDetail> {
     const summary = await mapConversationSummary(conversation);
+    const paginate = detailOptions.paginate ?? true;
+
+    // Newest page first, then flipped: a long conversation opens at the bottom,
+    // and older messages are fetched on demand. Callers that need the complete
+    // ordered history — the task-run monitor, which indexes into it from a
+    // baseline taken against the full session — opt out.
     const rows = await options.db.query.messages.findMany({
       where: (table, operators) => operators.eq(table.conversation_id, conversation.id),
-      orderBy: (table, operators) => [operators.asc(table.created_at), operators.asc(table.id)],
+      orderBy: (table, operators) =>
+        paginate
+          ? [operators.desc(table.created_at), operators.desc(table.id)]
+          : [operators.asc(table.created_at), operators.asc(table.id)],
+      ...(paginate ? { limit: CONVERSATION_MESSAGE_PAGE_SIZE + 1 } : {}),
     });
+
+    if (!paginate) {
+      return conversationDetailSchema.parse({
+        ...summary,
+        messages: rows.map((row) => mapConversationMessage(row)),
+        hasMoreMessages: false,
+      });
+    }
+
+    const hasMoreMessages = rows.length > CONVERSATION_MESSAGE_PAGE_SIZE;
+    const page = (hasMoreMessages ? rows.slice(0, CONVERSATION_MESSAGE_PAGE_SIZE) : rows).reverse();
 
     return conversationDetailSchema.parse({
       ...summary,
-      messages: rows.map(mapConversationMessage),
+      messages: page.map((row) => mapConversationMessage(row)),
+      hasMoreMessages,
+    });
+  }
+
+  /**
+   * One page of messages older than `before` (a message id), oldest-first.
+   * Keyed on (created_at, id) so it matches the detail query's ordering and
+   * stays stable when several messages share a timestamp.
+   */
+  async function listOlderMessages(
+    conversationId: string,
+    beforeMessageId: string,
+    limit: number,
+  ): Promise<ConversationMessagePage> {
+    const anchor = await options.db.query.messages.findFirst({
+      where: (table, operators) =>
+        operators.and(
+          operators.eq(table.conversation_id, conversationId),
+          operators.eq(table.id, beforeMessageId),
+        ),
+      columns: { id: true, created_at: true },
+    });
+
+    if (!anchor) {
+      throw new NotFoundError("Message not found.");
+    }
+
+    const capped = Math.min(Math.max(limit, 1), CONVERSATION_MESSAGE_PAGE_MAX);
+    const rows = await options.db.query.messages.findMany({
+      where: (table, operators) =>
+        operators.and(
+          operators.eq(table.conversation_id, conversationId),
+          operators.or(
+            operators.lt(table.created_at, anchor.created_at),
+            operators.and(
+              operators.eq(table.created_at, anchor.created_at),
+              operators.lt(table.id, anchor.id),
+            ),
+          ),
+        ),
+      orderBy: (table, operators) => [operators.desc(table.created_at), operators.desc(table.id)],
+      limit: capped + 1,
+    });
+
+    const hasMore = rows.length > capped;
+    const page = (hasMore ? rows.slice(0, capped) : rows).reverse();
+
+    return conversationMessagePageSchema.parse({
+      messages: page.map((row) => mapConversationMessage(row)),
+      hasMore,
+    });
+  }
+
+  /** The full, untrimmed parts of one message, for expanding a truncated tool card. */
+  async function getMessageParts(
+    conversationId: string,
+    messageId: string,
+  ): Promise<ConversationMessageParts> {
+    const row = await options.db.query.messages.findFirst({
+      where: (table, operators) =>
+        operators.and(
+          operators.eq(table.conversation_id, conversationId),
+          operators.eq(table.id, messageId),
+        ),
+      columns: { id: true, parts_json: true },
+    });
+
+    if (!row) {
+      throw new NotFoundError("Message not found.");
+    }
+
+    return conversationMessagePartsSchema.parse({
+      messageId: row.id,
+      parts: parseJson(row.parts_json, []),
     });
   }
 
@@ -1761,13 +1928,41 @@ function mapConversationMessage(row: MessageRow): ConversationMessage {
     conversationId: row.conversation_id,
     role: row.role,
     content: row.content,
-    parts: parseJson(row.parts_json, []),
+    parts: projectPartsForList(parseJson(row.parts_json, [])),
     attachments: parseJson(row.attachments_json, []),
     error: parseJson(row.error_json, undefined),
+    tokens: readRowTokens(row),
+    cost: row.cost ?? undefined,
+    modelId: row.model_id ?? undefined,
+    providerId: row.provider_id ?? undefined,
+    agent: row.agent ?? undefined,
+    variant: row.variant ?? undefined,
+    finish: row.finish ?? undefined,
+    summary: row.summary ?? undefined,
+    completedAt: row.completed_at?.toISOString(),
     systemPromptSnapshot: parseJson(row.system_prompt_snapshot_json, undefined),
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   });
+}
+
+/**
+ * Rebuild the token counts from their columns. All-null means the row predates
+ * the columns (or is a user message), and the caller falls back to parts.
+ */
+function readRowTokens(row: MessageRow): ConversationMessageTokens | undefined {
+  if (row.tokens_input === null && row.tokens_output === null) {
+    return undefined;
+  }
+
+  return {
+    input: row.tokens_input ?? 0,
+    output: row.tokens_output ?? 0,
+    reasoning: row.tokens_reasoning ?? 0,
+    cacheRead: row.tokens_cache_read ?? 0,
+    cacheWrite: row.tokens_cache_write ?? 0,
+    ...(row.tokens_reported_total === null ? {} : { reportedTotal: row.tokens_reported_total }),
+  };
 }
 
 function parseJson<T>(value: string | null, fallback: T): T {

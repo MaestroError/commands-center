@@ -6,6 +6,7 @@ import type {
   Specialist,
   ChatEvent,
   ConversationDetail,
+  ConversationMessagePage,
   ConversationSnapshot,
   LiveRequest,
   PendingInteractions,
@@ -22,6 +23,7 @@ vi.mock("@/lib/api", () => ({
   connectConversationEvents: vi.fn(),
   getActiveConversation: vi.fn(),
   getConversation: vi.fn(),
+  getOlderMessages: vi.fn(),
   getPendingInteractions: vi.fn(),
   rejectQuestion: vi.fn(),
   replyPermission: vi.fn(),
@@ -41,6 +43,7 @@ import {
   connectConversationEvents,
   getActiveConversation,
   getConversation,
+  getOlderMessages,
   getPendingInteractions,
   rejectQuestion,
   replyPermission,
@@ -215,6 +218,68 @@ describe("useConversation", () => {
     expect(connectConversationEvents).toHaveBeenCalledWith("conv-1", expect.any(AbortSignal));
     expect(result.current.conversation?.id).toBe("conv-1");
   });
+
+  it.each(["success", "failure"] as const)(
+    "keeps paging available after navigation with a late %s",
+    async (outcome) => {
+      const firstPage = createDeferred<ConversationMessagePage>();
+      const secondPage = createDeferred<ConversationMessagePage>();
+      const message = {
+        id: "newest",
+        conversationId: "conv-1",
+        role: "assistant" as const,
+        content: "Reply",
+        parts: [],
+        attachments: [],
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      };
+      vi.mocked(getActiveConversation).mockResolvedValue(
+        makeSnapshot({
+          current: makeConversation({ messages: [message], hasMoreMessages: true }),
+        }),
+      );
+      vi.mocked(getConversation).mockResolvedValue(
+        makeConversation({
+          id: "conv-2",
+          messages: [{ ...message, conversationId: "conv-2" }],
+          hasMoreMessages: true,
+        }),
+      );
+      vi.mocked(getOlderMessages)
+        .mockReturnValueOnce(firstPage.promise)
+        .mockReturnValueOnce(secondPage.promise);
+      const { result, unmount } = renderHook(() => useConversation("writer"), {
+        wrapper: createWrapper(createQueryClient()),
+      });
+      await waitFor(() => expect(result.current.status).toBe("ready"));
+      act(() => {
+        void result.current.loadOlderMessages();
+      });
+      act(() => {
+        result.current.switchConversation("conv-2");
+      });
+      await waitFor(() => expect(result.current.conversation?.id).toBe("conv-2"));
+      expect(result.current.loadingOlderMessages).toBe(false);
+      act(() => {
+        void result.current.loadOlderMessages();
+      });
+      expect(getOlderMessages).toHaveBeenLastCalledWith("conv-2", "newest");
+      await act(async () => {
+        if (outcome === "success") firstPage.resolve({ messages: [], hasMore: false });
+        else firstPage.reject(new Error("Old conversation request failed"));
+        await firstPage.promise.catch(() => {});
+      });
+      expect(result.current.loadingOlderMessages).toBe(true);
+      expect(result.current.olderMessagesError).toBeNull();
+      await act(async () => {
+        secondPage.resolve({ messages: [], hasMore: false });
+        await secondPage.promise;
+      });
+      expect(result.current.loadingOlderMessages).toBe(false);
+      unmount();
+    },
+  );
 
   it("loads a specific conversation when an id is provided", async () => {
     const queryClient = createQueryClient();

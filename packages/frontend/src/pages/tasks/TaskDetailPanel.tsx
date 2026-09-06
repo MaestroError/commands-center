@@ -8,6 +8,9 @@ import { ArtifactGeneratedUrls } from "@/components/tasks/ArtifactGeneratedUrls"
 import { ArtifactShareControls } from "@/components/tasks/ArtifactShareControls";
 import { TaskFeedbackPanelSection } from "@/components/tasks/task-feedback-section";
 import { formatDate, formatToken } from "@/components/tasks/task-format";
+import { UsageInfoButton } from "@/components/chat/UsageInfoButton";
+import { buildUsageTotalRows, formatUsageTotal } from "@/components/chat/usage-totals";
+import { formatRunDuration } from "@/pages/task-detail/task-detail-helpers";
 import {
   buildTaskPromptText,
   createTaskPromptValue,
@@ -20,8 +23,16 @@ import {
   useTaskQuery,
   useTaskRunsQuery,
   useTaskSubtasksQuery,
+  useTaskUsageQuery,
 } from "@/hooks/use-tasks-query";
-import type { Specialist, Task, TaskQueuePreview, TaskRun } from "@cc/shared/schemas";
+import {
+  isUsageUnknown,
+  type Specialist,
+  type Task,
+  type TaskQueuePreview,
+  type TaskRun,
+  type TaskUsage,
+} from "@cc/shared/schemas";
 import { Check, Pencil, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
@@ -66,6 +77,7 @@ export function TaskDetailPanel(props: {
 }) {
   const taskQuery = useTaskQuery(props.taskId);
   const runsQuery = useTaskRunsQuery(props.taskId);
+  const usageQuery = useTaskUsageQuery(props.taskId);
   const mutations = useTaskMutations();
   const [selectedSectionId, setSelectedSectionId] = useState<DetailSectionId>();
   const [queuePreview, setQueuePreview] = useState<TaskQueuePreview>();
@@ -215,6 +227,23 @@ export function TaskDetailPanel(props: {
                     </span>
                   ) : null}
                   <TaskTimingBadges task={task} surface="surface" />
+                  {usageQuery.data && !isUsageUnknown(usageQuery.data.total) ? (
+                    <span
+                      className="inline-flex items-center gap-1 rounded-full border border-border bg-surface py-1 pl-3 pr-1 text-xs text-text-secondary"
+                      data-testid="task-panel-usage-total"
+                    >
+                      <span className="tabular-nums">
+                        {formatUsageTotal(usageQuery.data.total)}
+                      </span>
+                      <UsageInfoButton
+                        label="Task token and cost totals"
+                        rows={buildUsageTotalRows(usageQuery.data.total)}
+                        title={`Task usage across ${String(usageQuery.data.runCount)} run${
+                          usageQuery.data.runCount === 1 ? "" : "s"
+                        }`}
+                      />
+                    </span>
+                  ) : null}
                   {task.sourceTemplateId ? (
                     <span className="rounded-full border border-accent/20 bg-accent/10 px-3 py-1 text-xs text-accent">
                       Generated
@@ -372,6 +401,7 @@ export function TaskDetailPanel(props: {
                     agent={agent}
                     agents={props.agents}
                     isRunsLoading={runsQuery.isLoading}
+                    usage={usageQuery.data}
                     runs={runsQuery.data ?? []}
                     runsError={runsQuery.error}
                     sectionId={activeSectionId}
@@ -514,6 +544,7 @@ function TaskDetailSectionContent(props: {
   runs: TaskRun[];
   isRunsLoading: boolean;
   runsError: unknown;
+  usage?: TaskUsage;
 }) {
   const subtasksQuery = useTaskSubtasksQuery(props.taskId);
   const isSubtasksSection = props.sectionId === "subtasks";
@@ -544,6 +575,7 @@ function TaskDetailSectionContent(props: {
         runs={props.runs}
         task={props.task}
         taskId={props.taskId}
+        usage={props.usage}
       />
     );
   }
@@ -677,6 +709,8 @@ export function RunHistory(props: {
   runs: TaskRun[];
   isLoading: boolean;
   error: unknown;
+  /** Per-run token totals, keyed by run id. */
+  usage?: TaskUsage;
 }) {
   if (props.isLoading) return <LoadingState testId="task-panel-runs-loading" />;
   if (props.error) {
@@ -707,6 +741,16 @@ export function RunHistory(props: {
           <div className="flex flex-wrap items-center gap-2">
             <StatusBadge status={run.status} />
             <span className="text-text-secondary">{formatToken(run.triggerSource)}</span>
+            <span className="text-text-secondary">·</span>
+            <span className="tabular-nums text-text-secondary">{formatRunDuration(run)}</span>
+            {props.usage?.runs[run.id] ? (
+              <>
+                <span className="text-text-secondary">·</span>
+                <span className="tabular-nums text-text-secondary">
+                  {formatUsageTotal(props.usage.runs[run.id]!)}
+                </span>
+              </>
+            ) : null}
           </div>
           <p className="mt-2 break-words text-text-secondary [overflow-wrap:anywhere]">
             {run.finalMessage ?? run.errorMessage ?? "No summary"}

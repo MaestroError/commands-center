@@ -7,6 +7,7 @@ import {
   type ConversationMessage,
   type SessionMediaItem,
 } from "@cc/shared/schemas";
+import { readOpenCodeCost, readOpenCodeTokens, sumOpenCodeTokens } from "@cc/shared/lib";
 
 import type { OpenCodeSessionMessage } from "../services/opencode-service.js";
 import {
@@ -23,7 +24,11 @@ export function mapRemoteMessage(
   const attachments = extractAttachments(message.parts);
   const parts = message.parts.map(sanitizePart);
   const createdAtMs = message.info.time.created;
+  // Left as-is: existing readers depend on updatedAt falling back to created.
   const updatedAtMs = message.info.time.completed ?? createdAtMs;
+  // Unlike updatedAt, this stays absent when the turn never completed, so an
+  // unfinished turn is not mistaken for an instant one.
+  const completedAtMs = message.info.time.completed;
 
   return {
     ...conversationMessageSchema.parse({
@@ -34,12 +39,48 @@ export function mapRemoteMessage(
       parts,
       attachments,
       error: sanitizeMessageError(message.info["error"]),
+      tokens: readMessageTokens(message),
+      cost: readOpenCodeCost(message.info["cost"]),
+      modelId: readNonEmptyString(message.info["modelID"]),
+      providerId: readNonEmptyString(message.info["providerID"]),
+      agent: readNonEmptyString(message.info["agent"]),
+      variant: readNonEmptyString(message.info["variant"]),
+      finish: readNonEmptyString(message.info["finish"]),
+      summary: typeof message.info["summary"] === "boolean" ? message.info["summary"] : undefined,
+      completedAt: completedAtMs === undefined ? undefined : new Date(completedAtMs).toISOString(),
       createdAt: new Date(createdAtMs).toISOString(),
       updatedAt: new Date(updatedAtMs).toISOString(),
     }),
     createdAtMs,
     updatedAtMs,
   };
+}
+
+/**
+ * Token counts for a turn.
+ *
+ * OpenCode assigns rather than accumulates the message-level counts on every
+ * step — `ctx.assistantMessage.tokens = usage.tokens` in its finish-step
+ * handler, where cost right above it uses `+=`. So on a multi-step turn `info`
+ * carries only the last step, while each step's own counts survive on its
+ * `step-finish` part. Summing those parts is the only way to get the whole
+ * turn; `info` is used for single-step turns, where it is identical and also
+ * carries the provider's reported total.
+ */
+function readMessageTokens(message: OpenCodeSessionMessage) {
+  const steps = message.parts.filter((part) => part.type === "step-finish");
+
+  if (steps.length > 1) {
+    return sumOpenCodeTokens(steps.map((step) => step["tokens"]));
+  }
+
+  return readOpenCodeTokens(message.info["tokens"]);
+}
+
+function readNonEmptyString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
 }
 
 export function readContent(parts: OpenCodePart[]): string {

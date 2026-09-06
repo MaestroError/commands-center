@@ -12,6 +12,8 @@ import {
   sanitizePart,
   sanitizeToolState,
 } from "../../src/lib/message-mapper";
+import { readOpenCodeCost, readOpenCodeTokens } from "@cc/shared/lib";
+
 import type { OpenCodeSessionMessage } from "../../src/services/opencode-service";
 
 const DATA_URL = "data:image/png;base64,AAAA";
@@ -187,5 +189,239 @@ describe("message-mapper", () => {
     ] as never);
     const types = typed.map((a) => a.type);
     expect(types).toEqual(expect.arrayContaining(["image", "document", "file"]));
+  });
+});
+
+describe("message usage", () => {
+  it("carries provider-reported tokens, cost and model off info", () => {
+    const mapped = mapRemoteMessage(
+      "conv-1",
+      message({
+        info: {
+          id: "m1",
+          sessionID: "s1",
+          role: "assistant",
+          time: { created: 1000, completed: 2000 },
+          modelID: "claude-opus-5",
+          providerID: "anthropic",
+          agent: "build",
+          variant: "thinking",
+          finish: "stop",
+          summary: false,
+          cost: 0.01558692,
+          tokens: {
+            total: 47_335,
+            input: 46_890,
+            output: 232,
+            reasoning: 213,
+            cache: { read: 12_040, write: 3100 },
+          },
+        },
+      } as Partial<OpenCodeSessionMessage>),
+    );
+
+    expect(mapped.tokens).toEqual({
+      input: 46_890,
+      output: 232,
+      reasoning: 213,
+      cacheRead: 12_040,
+      cacheWrite: 3100,
+      reportedTotal: 47_335,
+    });
+    expect(mapped.cost).toBe(0.01558692);
+    expect(mapped.modelId).toBe("claude-opus-5");
+    expect(mapped.providerId).toBe("anthropic");
+    expect(mapped.agent).toBe("build");
+    expect(mapped.variant).toBe("thinking");
+    expect(mapped.finish).toBe("stop");
+    expect(mapped.summary).toBe(false);
+    expect(mapped.completedAt).toBe(new Date(2000).toISOString());
+  });
+
+  it("maps every metric as absent on a user message", () => {
+    const mapped = mapRemoteMessage(
+      "conv-1",
+      message({
+        info: { id: "u1", sessionID: "s1", role: "user", time: { created: 1000 } },
+        parts: [{ id: "p1", type: "text", text: "hi" }],
+      } as Partial<OpenCodeSessionMessage>),
+    );
+
+    expect(mapped.tokens).toBeUndefined();
+    expect(mapped.cost).toBeUndefined();
+    expect(mapped.modelId).toBeUndefined();
+    expect(mapped.providerId).toBeUndefined();
+    expect(mapped.agent).toBeUndefined();
+    expect(mapped.variant).toBeUndefined();
+    expect(mapped.finish).toBeUndefined();
+    expect(mapped.summary).toBeUndefined();
+    expect(mapped.completedAt).toBeUndefined();
+  });
+
+  it("leaves completedAt absent when the turn never completed, unlike updatedAt", () => {
+    const mapped = mapRemoteMessage(
+      "conv-1",
+      message({
+        info: { id: "m9", sessionID: "s1", role: "assistant", time: { created: 1000 } },
+      } as Partial<OpenCodeSessionMessage>),
+    );
+
+    // updatedAt falls back to createdAt, which cannot express "unfinished".
+    expect(mapped.updatedAt).toBe(mapped.createdAt);
+    expect(mapped.completedAt).toBeUndefined();
+  });
+
+  it("keeps the components when the provider omits a total", () => {
+    const mapped = mapRemoteMessage(
+      "conv-1",
+      message({
+        info: {
+          id: "m1",
+          sessionID: "s1",
+          role: "assistant",
+          time: { created: 1000, completed: 2000 },
+          tokens: { input: 10, output: 4, reasoning: 1, cache: { read: 0, write: 0 } },
+        },
+      } as Partial<OpenCodeSessionMessage>),
+    );
+
+    expect(mapped.tokens?.reportedTotal).toBeUndefined();
+    expect(mapped.tokens).toMatchObject({ input: 10, output: 4, reasoning: 1 });
+  });
+
+  it("sums step-finish parts on a multi-step turn, which info.tokens under-reports", () => {
+    // OpenCode assigns rather than accumulates the message-level counts on each
+    // step (tokens = usage.tokens, while cost uses +=), so info carries only
+    // the last step. Each step's own counts survive on its step-finish part.
+    const mapped = mapRemoteMessage(
+      "conv-1",
+      message({
+        info: {
+          id: "m-multi",
+          sessionID: "s1",
+          role: "assistant",
+          time: { created: 1000, completed: 2000 },
+          // What OpenCode leaves behind: the final step only.
+          tokens: { input: 30, output: 3, reasoning: 0, cache: { read: 0, write: 0 } },
+          cost: 0.006,
+        },
+        parts: [
+          {
+            id: "sf1",
+            type: "step-finish",
+            tokens: { input: 100, output: 10, reasoning: 1, cache: { read: 5, write: 2 } },
+          },
+          {
+            id: "sf2",
+            type: "step-finish",
+            tokens: { input: 30, output: 3, reasoning: 0, cache: { read: 0, write: 0 } },
+          },
+        ],
+      } as Partial<OpenCodeSessionMessage>),
+    );
+
+    expect(mapped.tokens).toMatchObject({
+      input: 130,
+      output: 13,
+      reasoning: 1,
+      cacheRead: 5,
+      cacheWrite: 2,
+    });
+    // Cost accumulates upstream, so info is right for it.
+    expect(mapped.cost).toBe(0.006);
+  });
+
+  it("uses info.tokens for a single-step turn, keeping the reported total", () => {
+    const mapped = mapRemoteMessage(
+      "conv-1",
+      message({
+        info: {
+          id: "m-single",
+          sessionID: "s1",
+          role: "assistant",
+          time: { created: 1000, completed: 2000 },
+          tokens: {
+            total: 111,
+            input: 100,
+            output: 10,
+            reasoning: 1,
+            cache: { read: 0, write: 0 },
+          },
+        },
+        parts: [
+          {
+            id: "sf1",
+            type: "step-finish",
+            tokens: {
+              total: 111,
+              input: 100,
+              output: 10,
+              reasoning: 1,
+              cache: { read: 0, write: 0 },
+            },
+          },
+        ],
+      } as Partial<OpenCodeSessionMessage>),
+    );
+
+    expect(mapped.tokens).toMatchObject({ input: 100, output: 10, reportedTotal: 111 });
+  });
+
+  it("records no reportedTotal when the provider omits one", () => {
+    expect(
+      readOpenCodeTokens({ input: 10, output: 4, reasoning: 1 })?.reportedTotal,
+    ).toBeUndefined();
+  });
+
+  it("treats an all-zero token report as absent", () => {
+    expect(
+      readOpenCodeTokens({
+        total: 0,
+        input: 0,
+        output: 0,
+        reasoning: 0,
+        cache: { read: 0, write: 0 },
+      }),
+    ).toBeUndefined();
+  });
+
+  it("keeps a reasoning-only report even when the provider stamps total: 0", () => {
+    // Regression: testing the total alone discarded this, so a reasoning-heavy
+    // model that reports an explicit zero total lost its counts entirely.
+    expect(
+      readOpenCodeTokens({
+        total: 0,
+        input: 0,
+        output: 0,
+        reasoning: 500,
+        cache: { read: 0, write: 0 },
+      }),
+    ).toMatchObject({ reasoning: 500, reportedTotal: 0 });
+  });
+
+  it("keeps a cache-only report", () => {
+    expect(
+      readOpenCodeTokens({ input: 0, output: 0, cache: { read: 900, write: 0 } }),
+    ).toMatchObject({ cacheRead: 900 });
+  });
+
+  it("ignores malformed token payloads", () => {
+    expect(readOpenCodeTokens(undefined)).toBeUndefined();
+    expect(readOpenCodeTokens("nope")).toBeUndefined();
+    expect(readOpenCodeTokens({ input: -5, output: "x" })).toBeUndefined();
+  });
+
+  it("drops a zero cost, which means the provider does not bill per request", () => {
+    expect(readOpenCodeCost(0)).toBeUndefined();
+    expect(readOpenCodeCost(0.005)).toBe(0.005);
+    expect(readOpenCodeCost("free")).toBeUndefined();
+  });
+
+  it("leaves usage undefined on a message that reports none", () => {
+    const mapped = mapRemoteMessage("conv-1", message());
+
+    expect(mapped.tokens).toBeUndefined();
+    expect(mapped.cost).toBeUndefined();
+    expect(mapped.modelId).toBeUndefined();
   });
 });

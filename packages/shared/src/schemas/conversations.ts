@@ -7,6 +7,37 @@ const looseRecordSchema = z.record(z.string(), z.unknown());
 /** Per-conversation system prompt enabled overrides: prompt id → enabled. */
 export const systemPromptOverridesSchema = z.record(z.string().min(1), z.boolean());
 
+/**
+ * Per-message token counts as the model provider reported them. Present on
+ * assistant messages synced after CC started persisting them; older messages
+ * fall back to the `step-finish` parts still carried in `parts`.
+ */
+export const conversationMessageTokensSchema = z.object({
+  input: z.number().nonnegative().default(0),
+  output: z.number().nonnegative().default(0),
+  reasoning: z.number().nonnegative().default(0),
+  cacheRead: z.number().nonnegative().default(0),
+  cacheWrite: z.number().nonnegative().default(0),
+  /**
+   * OpenCode's own total, when it reported one. Kept for reference and never
+   * displayed: it is provider-dependent and inconsistent — observed reports
+   * variously include reasoning while excluding cache, and the reverse. Use
+   * `sumConversationMessageTokens` for any total shown to a person.
+   */
+  reportedTotal: z.number().nonnegative().optional(),
+});
+
+/** The total we display: every component we store, summed consistently. */
+export function sumConversationMessageTokens(tokens: {
+  input: number;
+  output: number;
+  reasoning: number;
+  cacheRead: number;
+  cacheWrite: number;
+}): number {
+  return tokens.input + tokens.output + tokens.reasoning + tokens.cacheRead + tokens.cacheWrite;
+}
+
 export const conversationMessageErrorSchema = z.object({
   name: z.string().min(1),
   message: z.string().min(1),
@@ -42,6 +73,26 @@ export const conversationMessageSchema = z.object({
   attachments: z.array(conversationAttachmentSchema),
   parentId: z.string().min(1).optional(),
   error: conversationMessageErrorSchema.optional(),
+  tokens: conversationMessageTokensSchema.optional(),
+  /**
+   * Provider-reported cost in USD. Absent when the provider bills nothing per
+   * request (subscription and OAuth models report a literal 0).
+   */
+  cost: z.number().nonnegative().optional(),
+  modelId: z.string().min(1).optional(),
+  providerId: z.string().min(1).optional(),
+  /** OpenCode agent that produced the message (e.g. `build`, `plan`). */
+  agent: z.string().min(1).optional(),
+  variant: z.string().min(1).optional(),
+  /** Why the turn stopped — `stop`, `length`, `aborted`, … */
+  finish: z.string().min(1).optional(),
+  summary: z.boolean().optional(),
+  /**
+   * When OpenCode reported the turn complete. Absent when it never did, which
+   * `updatedAt` cannot express: it falls back to `createdAt`, making an
+   * unfinished turn look instantaneous.
+   */
+  completedAt: z.string().datetime().optional(),
   // The system prompts composed and sent with this message, captured at send
   // time. Present on user messages once captured; absent on older messages.
   systemPromptSnapshot: z.array(resolvedSystemPromptSchema).optional(),
@@ -65,8 +116,31 @@ export const conversationSummarySchema = z.object({
   convertedAt: z.string().datetime().optional(),
 });
 
+/** Newest-first page size for the initial conversation load. */
+export const CONVERSATION_MESSAGE_PAGE_SIZE = 50;
+/** Upper bound a client may request when paging older messages. */
+export const CONVERSATION_MESSAGE_PAGE_MAX = 200;
+
 export const conversationDetailSchema = conversationSummarySchema.extend({
+  /**
+   * The newest page of messages, oldest-first. `messageCount` on the summary is
+   * the conversation's true total, so `hasMoreMessages` tells the client whether
+   * older ones remain to be fetched.
+   */
   messages: z.array(conversationMessageSchema),
+  hasMoreMessages: z.boolean().optional(),
+});
+
+/** One older page, oldest-first, returned by the message paging endpoint. */
+export const conversationMessagePageSchema = z.object({
+  messages: z.array(conversationMessageSchema),
+  hasMore: z.boolean().default(false),
+});
+
+/** Full, untrimmed parts for one message. */
+export const conversationMessagePartsSchema = z.object({
+  messageId: z.string().min(1),
+  parts: z.array(conversationPartSchema),
 });
 
 export const conversationListSchema = z.array(conversationSummarySchema);
@@ -117,6 +191,9 @@ export type ConversationAttachment = z.infer<typeof conversationAttachmentSchema
 export type ConversationDetail = z.infer<typeof conversationDetailSchema>;
 export type ConversationMessageError = z.infer<typeof conversationMessageErrorSchema>;
 export type ConversationMessage = z.infer<typeof conversationMessageSchema>;
+export type ConversationMessagePage = z.infer<typeof conversationMessagePageSchema>;
+export type ConversationMessageParts = z.infer<typeof conversationMessagePartsSchema>;
+export type ConversationMessageTokens = z.infer<typeof conversationMessageTokensSchema>;
 export type ConversationPart = z.infer<typeof conversationPartSchema>;
 export type ConversationSnapshot = z.infer<typeof conversationSnapshotSchema>;
 export type ConversationSource = z.infer<typeof conversationSourceSchema>;

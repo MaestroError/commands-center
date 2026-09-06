@@ -1,4 +1,4 @@
-import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 import { agents } from "./agents.js";
 import { task_runs, tasks } from "./tasks.js";
@@ -46,11 +46,52 @@ export const messages = sqliteTable(
     parts_json: text("parts_json"),
     attachments_json: text("attachments_json"),
     error_json: text("error_json"),
+    // Provider-reported usage for assistant messages, captured from OpenCode's
+    // `info` on each sync. Null on user messages and on messages synced before
+    // CC persisted these, which fall back to their `step-finish` parts.
+    // Typed columns rather than a blob so usage can be aggregated in SQL.
+    tokens_input: integer("tokens_input"),
+    tokens_output: integer("tokens_output"),
+    tokens_reasoning: integer("tokens_reasoning"),
+    tokens_cache_read: integer("tokens_cache_read"),
+    tokens_cache_write: integer("tokens_cache_write"),
+    // OpenCode's own total when reported. Never displayed — providers disagree
+    // on what it covers; totals shown are summed from the components.
+    tokens_reported_total: integer("tokens_reported_total"),
+    cost: real("cost"),
+    model_id: text("model_id"),
+    provider_id: text("provider_id"),
+    agent: text("agent"),
+    variant: text("variant"),
+    finish: text("finish"),
+    summary: integer("summary", { mode: "boolean" }),
+    // Explicitly null when OpenCode never reported completion. `updated_at`
+    // cannot express that: it falls back to created_at, so an unfinished turn
+    // is indistinguishable from an instant one.
+    completed_at: integer("completed_at", { mode: "timestamp_ms" }),
     // Snapshot of the system prompts sent with this (user) message. Preserved
     // across the delete+reinsert resync by keying on the stable OpenCode id.
     system_prompt_snapshot_json: text("system_prompt_snapshot_json"),
     created_at: integer("created_at", { mode: "timestamp_ms" }).notNull(),
     updated_at: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
   },
-  (table) => [index("messages_conversation_id_idx").on(table.conversation_id)],
+  (table) => [
+    index("messages_conversation_id_idx").on(table.conversation_id),
+    // Paging seeks and orders by (conversation_id, created_at, id). Without
+    // this SQLite filters on conversation_id then builds a temp B-tree to sort
+    // the whole conversation for every page.
+    index("messages_paging_idx").on(table.conversation_id, table.created_at, table.id),
+    // Covering index for usage rollups: SQLite answers the aggregate from the
+    // index alone, so the scan never touches the row bodies and its cost is
+    // independent of how large parts_json is.
+    index("messages_usage_idx").on(
+      table.conversation_id,
+      table.tokens_input,
+      table.tokens_output,
+      table.tokens_reasoning,
+      table.tokens_cache_read,
+      table.tokens_cache_write,
+      table.cost,
+    ),
+  ],
 );

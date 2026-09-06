@@ -25,10 +25,18 @@ const mockUseTaskRunsQuery = vi.fn<() => unknown>();
 const mockUseTaskSubtasksQuery = vi.fn<() => unknown>();
 const mockUseTaskRunQuery = vi.fn<() => unknown>();
 const mockUseTaskRunSessionQuery = vi.fn<() => unknown>();
+const mockUseTaskUsageQuery = vi.fn<() => unknown>();
+const getMessagePartsMock = vi.fn();
+const getOlderMessagesMock = vi.fn();
 const duplicateMutateAsync = vi.fn();
 const updateMutate = vi.fn();
 const triggerMutate = vi.fn();
 const openInChatMutateAsync = vi.fn();
+
+vi.mock("@/lib/api/conversations", () => ({
+  getMessageParts: (...args: unknown[]) => getMessagePartsMock(...args) as unknown,
+  getOlderMessages: (...args: unknown[]) => getOlderMessagesMock(...args) as unknown,
+}));
 
 vi.mock("@/hooks/use-tasks-query", () => ({
   useTaskQuery: () => mockUseTaskQuery(),
@@ -37,6 +45,7 @@ vi.mock("@/hooks/use-tasks-query", () => ({
   useTaskRunQuery: () => mockUseTaskRunQuery(),
   useTaskRunSessionQuery: () => mockUseTaskRunSessionQuery(),
   useArtifactDeliveryUrlsQuery: () => ({ data: undefined }),
+  useTaskUsageQuery: () => mockUseTaskUsageQuery(),
   useTaskMutations: () => ({
     duplicate: { mutateAsync: duplicateMutateAsync },
     update: { mutate: updateMutate, isPending: false },
@@ -141,6 +150,7 @@ beforeEach(() => {
   mockUseTaskSubtasksQuery.mockReturnValue({ data: [], isLoading: false, error: null });
   mockUseTaskRunQuery.mockReturnValue({ data: undefined, isLoading: false, error: null });
   mockUseTaskRunSessionQuery.mockReturnValue({ data: undefined, isLoading: false, error: null });
+  mockUseTaskUsageQuery.mockReturnValue({ data: undefined, isLoading: false, error: null });
 });
 
 afterEach(() => {
@@ -192,6 +202,52 @@ describe("TaskDetailPage overview", () => {
 
     await user.click(screen.getByTestId("task-detail-tab-context"));
     expect(screen.getByText("brief.pdf")).toBeInTheDocument();
+  });
+
+  it("shows per-run token totals in the run history", async () => {
+    mockUseTaskQuery.mockReturnValue({ data: buildTask(), isLoading: false, error: null });
+    mockUseTaskRunsQuery.mockReturnValue({
+      data: [buildRun({ id: "run-1" }), buildRun({ id: "run-2" })],
+      isLoading: false,
+      error: null,
+    });
+    mockUseTaskUsageQuery.mockReturnValue({
+      data: {
+        taskId: "task-1",
+        runCount: 2,
+        total: {
+          totalTokens: 1_500,
+          messageCount: 4,
+          assistantMessageCount: 2,
+          countedMessageCount: 2,
+        },
+        runs: {
+          "run-1": {
+            totalTokens: 1_200,
+            messageCount: 2,
+            assistantMessageCount: 1,
+            countedMessageCount: 1,
+          },
+          // run-2 has a conversation but nothing recorded yet.
+          "run-2": {
+            totalTokens: 0,
+            messageCount: 2,
+            assistantMessageCount: 1,
+            countedMessageCount: 0,
+          },
+        },
+      },
+      isLoading: false,
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(screen.getByTestId("task-detail-tab-runs"));
+
+    expect(screen.getByTestId("task-run-row-run-1")).toHaveTextContent("1.2k tokens");
+    // Unrecorded reads as a dash, never as a confident zero.
+    expect(screen.getByTestId("task-run-row-run-2")).toHaveTextContent("—");
   });
 
   it("duplicates a task and navigates to the copy's editor", async () => {
@@ -293,6 +349,21 @@ describe("TaskDetailPage run mode", () => {
     expect(screen.getByTestId("task-run-loading")).toBeInTheDocument();
   });
 
+  it("shows the full session message count for a paginated run", () => {
+    mockUseTaskQuery.mockReturnValue({ data: buildTask(), isLoading: false, error: null });
+    mockUseTaskRunQuery.mockReturnValue({ data: buildRun(), isLoading: false, error: null });
+    mockUseTaskRunSessionQuery.mockReturnValue({
+      data: {
+        conversation: { id: "paged", messageCount: 125, messages: [], hasMoreMessages: true },
+        diagnostics: [],
+      },
+      isLoading: false,
+      error: null,
+    });
+    renderPage("run");
+    expect(screen.getByText("Messages").parentElement).toHaveTextContent("125");
+  });
+
   it("shows the run error state", () => {
     mockUseTaskQuery.mockReturnValue({ data: buildTask(), isLoading: false, error: null });
     mockUseTaskRunQuery.mockReturnValue({
@@ -369,5 +440,133 @@ describe("TaskDetailPage run mode", () => {
     await waitFor(() => {
       expect(navigateMock).toHaveBeenCalledWith("/chat/planner/conv-9");
     });
+  });
+
+  it("offers the full output when the run log's tool output was trimmed", async () => {
+    // The session log renders projected parts, so long tool output arrives cut
+    // to a preview. Without the notice it would be silently truncated.
+    getMessagePartsMock.mockResolvedValue({
+      messageId: "m1",
+      parts: [
+        {
+          id: "p1",
+          type: "tool",
+          tool: "read",
+          messageID: "m1",
+          state: { status: "completed", input: { path: "a.ts" }, output: "THE COMPLETE OUTPUT" },
+        },
+      ],
+    });
+    mockUseTaskQuery.mockReturnValue({ data: buildTask(), isLoading: false, error: null });
+    mockUseTaskRunQuery.mockReturnValue({ data: buildRun(), isLoading: false, error: null });
+    mockUseTaskRunSessionQuery.mockReturnValue({
+      data: {
+        canOpenInChat: false,
+        conversation: {
+          id: "conv-1",
+          messages: [
+            {
+              id: "m1",
+              role: "assistant",
+              content: "",
+              parts: [
+                {
+                  id: "p1",
+                  type: "tool",
+                  tool: "read",
+                  messageID: "m1",
+                  state: {
+                    status: "completed",
+                    input: { path: "a.ts" },
+                    output: "truncated preview",
+                    outputTruncated: true,
+                    outputLength: 12_345,
+                  },
+                },
+              ],
+              attachments: [],
+              createdAt: "2026-01-01T00:00:00.000Z",
+            },
+          ],
+        },
+        diagnostics: [],
+      },
+      isLoading: false,
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    renderPage("run");
+    await user.click(screen.getByTestId("task-run-session-log"));
+
+    expect(screen.getByText(/12,345 characters/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Show full output" }));
+
+    expect(getMessagePartsMock).toHaveBeenCalledWith("conv-1", "m1");
+    expect(await screen.findByText(/THE COMPLETE OUTPUT/)).toBeInTheDocument();
+  });
+
+  it("shows token and timing figures in the run session log", async () => {
+    mockUseTaskQuery.mockReturnValue({ data: buildTask(), isLoading: false, error: null });
+    mockUseTaskRunQuery.mockReturnValue({ data: buildRun(), isLoading: false, error: null });
+    mockUseTaskRunSessionQuery.mockReturnValue({
+      data: {
+        canOpenInChat: false,
+        conversation: {
+          messages: [
+            {
+              id: "m1",
+              role: "assistant",
+              content: "Working on it",
+              parts: [
+                {
+                  id: "p1",
+                  type: "tool",
+                  tool: "read",
+                  state: {
+                    status: "completed",
+                    input: { path: "a.ts" },
+                    output: "ok",
+                    time: { start: 1_782_898_078_071, end: 1_782_898_078_075 },
+                  },
+                },
+              ],
+              attachments: [],
+              tokens: {
+                input: 46_890,
+                output: 232,
+                reasoning: 0,
+                cacheRead: 0,
+                cacheWrite: 0,
+                total: 47_122,
+              },
+              modelId: "claude-opus-5",
+              providerId: "anthropic",
+              createdAt: "2026-01-01T00:00:00.000Z",
+              updatedAt: "2026-01-01T00:00:12.500Z",
+            },
+          ],
+        },
+        diagnostics: [],
+      },
+      isLoading: false,
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    renderPage("run");
+
+    await user.click(screen.getByTestId("task-run-session-log"));
+
+    // Message-level usage.
+    await user.click(screen.getByRole("button", { name: "Message tokens and timing" }));
+    const messageDialog = await screen.findByRole("dialog");
+    expect(messageDialog).toHaveTextContent("47,122");
+    expect(messageDialog).toHaveTextContent("anthropic/claude-opus-5");
+    await user.click(screen.getByRole("button", { name: "Close" }));
+
+    // Per-tool timing on the same run log.
+    await user.click(screen.getByRole("button", { name: "Timing for read" }));
+    expect(await screen.findByRole("dialog")).toHaveTextContent("4ms");
   });
 });

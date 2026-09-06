@@ -42,6 +42,7 @@ import {
   getTask,
   getTaskTemplate,
   getTaskRun,
+  getTaskUsage,
   inspectTaskRunSession,
   listRunFollowups,
   listConversationArtifacts,
@@ -190,6 +191,15 @@ export function useTaskRunSessionQuery(taskId?: string, runId?: string) {
   });
 }
 
+/** A task's token and cost totals, with the per-run breakdown. */
+export function useTaskUsageQuery(taskId?: string) {
+  return useQuery({
+    queryKey: queryKeys.taskUsage(taskId ?? "missing"),
+    queryFn: () => getTaskUsage(taskId ?? ""),
+    enabled: Boolean(taskId),
+  });
+}
+
 export function useConversationArtifactsQuery(
   conversationId?: string,
   options: { refetchInterval?: number | false } = {},
@@ -228,6 +238,9 @@ export function useTaskMutations() {
       queryClient.invalidateQueries({ queryKey: queryKeys.taskSchedulerState }),
       task ? queryClient.invalidateQueries({ queryKey: queryKeys.task(task.id) }) : undefined,
       task ? queryClient.invalidateQueries({ queryKey: queryKeys.taskRuns(task.id) }) : undefined,
+      // Totals are aggregated from messages, so a run that advances changes
+      // them just as it changes the run rows.
+      task ? queryClient.invalidateQueries({ queryKey: queryKeys.taskUsage(task.id) }) : undefined,
     ]);
   };
   const invalidateRunFollowups = async (taskId: string, runId: string) => {
@@ -238,6 +251,7 @@ export function useTaskMutations() {
       queryClient.invalidateQueries({ queryKey: queryKeys.taskRunFollowups(taskId, runId) }),
       queryClient.invalidateQueries({ queryKey: queryKeys.activeTaskRuns }),
       queryClient.invalidateQueries({ queryKey: queryKeys.taskSubtasks(taskId) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.taskUsage(taskId) }),
       queryClient.invalidateQueries({ queryKey: ["task-subtask-progress"] }),
       queryClient.invalidateQueries({ queryKey: ["tasks"] }),
     ]);

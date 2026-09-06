@@ -1,13 +1,17 @@
 import { Check, ClipboardList, Copy, MoreVertical, ScrollText } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { ConversationMessage, ConversationPart, SessionStatus } from "@cc/shared/schemas";
 
 import { AssistantMessage } from "./AssistantMessage";
 import { InterruptedDivider } from "./InterruptedDivider";
 import { MessageSystemPromptsModal } from "./MessageSystemPromptsModal";
+import { MessageUsageInfoButton } from "./UsageInfoButton";
 import { UserMessage } from "./UserMessage";
 import { isHiddenUserMessage, isInterruptedMessage } from "./message-timeline-utils";
+
+/** Distance from the top that triggers an automatic older-page fetch. */
+const OLDER_MESSAGES_SCROLL_THRESHOLD_PX = 200;
 
 type MessageTimelineProps = {
   messages: ConversationMessage[];
@@ -15,6 +19,10 @@ type MessageTimelineProps = {
   sessionStatus: SessionStatus;
   sendError?: string | null;
   conversationId?: string;
+  hasMoreMessages?: boolean;
+  loadingOlderMessages?: boolean;
+  olderMessagesError?: string | null;
+  onLoadOlderMessages?: () => void;
   onAttachmentClick?: (filename: string) => void;
   onConvertUserMessageToTask?: (message: ConversationMessage, parts: ConversationPart[]) => void;
 };
@@ -25,6 +33,10 @@ export function MessageTimeline({
   sessionStatus,
   sendError,
   conversationId,
+  hasMoreMessages,
+  loadingOlderMessages,
+  olderMessagesError,
+  onLoadOlderMessages,
   onAttachmentClick,
   onConvertUserMessageToTask,
 }: MessageTimelineProps) {
@@ -41,15 +53,58 @@ export function MessageTimeline({
     el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, []);
 
+  // Captured before an older page is prepended so the viewport can be pinned to
+  // the same message afterwards instead of jumping.
+  const prependAnchorRef = useRef<{ scrollHeight: number; scrollTop: number } | null>(null);
+  const oldestMessageId = messages[0]?.id;
+
+  const requestOlderMessages = useCallback(() => {
+    const el = containerRef.current;
+    if (el) {
+      prependAnchorRef.current = { scrollHeight: el.scrollHeight, scrollTop: el.scrollTop };
+    }
+    onLoadOlderMessages?.();
+  }, [onLoadOlderMessages]);
+
   const handleScroll = useCallback(() => {
     const el = containerRef.current;
     if (!el) return;
     const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
     setUserScrolledUp(distanceFromBottom > 40);
-  }, []);
+
+    if (
+      el.scrollTop < OLDER_MESSAGES_SCROLL_THRESHOLD_PX &&
+      hasMoreMessages &&
+      !loadingOlderMessages
+    ) {
+      requestOlderMessages();
+    }
+  }, [hasMoreMessages, loadingOlderMessages, requestOlderMessages]);
+
+  // Restore the scroll position after a prepend: the container just grew above
+  // the viewport, so add the delta to keep the same content under the cursor.
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    const anchor = prependAnchorRef.current;
+    if (!el || !anchor) return;
+
+    prependAnchorRef.current = null;
+    el.scrollTop = anchor.scrollTop + (el.scrollHeight - anchor.scrollHeight);
+  }, [oldestMessageId]);
+
+  // A failed page never prepends, so the effect above never runs and never
+  // clears the anchor. Left set, it would suppress auto-scroll-to-bottom for
+  // the rest of the session once the reader returns to the bottom.
+  useEffect(() => {
+    if (olderMessagesError) {
+      prependAnchorRef.current = null;
+    }
+  }, [olderMessagesError]);
 
   useEffect(() => {
-    if (!userScrolledUp) {
+    // A prepend also changes `messages`; the anchor effect owns the scroll
+    // position in that case, and the user is scrolled up anyway.
+    if (!userScrolledUp && !prependAnchorRef.current) {
       scrollToBottom();
     }
   }, [messages, sessionStatus, sendError, userScrolledUp, scrollToBottom]);
@@ -68,6 +123,23 @@ export function MessageTimeline({
       className="overflow-y-auto flex-1 min-h-0 bg-app-bg px-4 py-4 space-y-4"
       onScroll={handleScroll}
     >
+      {hasMoreMessages ? (
+        <div className="flex justify-center pb-1">
+          <button
+            className="rounded-md border border-border px-3 py-1.5 text-xs text-text-secondary transition hover:border-accent/50 hover:text-text-primary disabled:opacity-60"
+            disabled={loadingOlderMessages}
+            onClick={requestOlderMessages}
+            type="button"
+          >
+            {loadingOlderMessages ? "Loading older messages…" : "Load older messages"}
+          </button>
+        </div>
+      ) : null}
+
+      {olderMessagesError ? (
+        <p className="pb-1 text-center text-xs text-danger">{olderMessagesError}</p>
+      ) : null}
+
       {messages.map((msg) => {
         const msgParts = parts[msg.id] ?? msg.parts;
         const copyText = getMessageCopyText(msg, msgParts);
@@ -113,7 +185,12 @@ export function MessageTimeline({
                       <AssistantMessage message={msg} parts={msgParts} />
                     )}
                   </div>
-                  {msg.role !== "user" ? <MessageCopyButton copyText={copyText} /> : null}
+                  {msg.role !== "user" ? (
+                    <div className="flex gap-1">
+                      <MessageCopyButton copyText={copyText} />
+                      <MessageUsageInfoButton message={msg} parts={msgParts} />
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </div>

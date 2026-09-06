@@ -4,6 +4,7 @@ import type { ConversationMessage, ConversationPart, LiveRequest } from "@cc/sha
 
 import { ChatComposer } from "@/components/chat/ChatComposer";
 import { ChatHeader } from "@/components/chat/ChatHeader";
+import { ContextWindowIndicator } from "@/components/chat/ContextWindowIndicator";
 import { ChatSplitPaneLayout } from "@/components/chat/ChatSplitPaneLayout";
 import { MediaTab } from "@/components/chat/MediaTab";
 import { MessageTimeline } from "@/components/chat/MessageTimeline";
@@ -14,6 +15,7 @@ import { TodoDock } from "@/components/chat/TodoDock";
 import { ToolsTab } from "@/components/chat/ToolsTab";
 import { ChatResultsPanel } from "@/components/chat/ChatResultsPanel";
 import { PendingInteractionProvider } from "@/components/chat/tools/PendingInteractionProvider";
+import { FullPartsProvider } from "@/components/chat/tools/FullPartsProvider";
 import type { PendingToolInteraction } from "@/components/chat/tools/pending-interaction-context";
 import { buildPendingInteractionMap } from "@/components/chat/tools/pending-interaction-map";
 import { ErrorState, LoadingState } from "@/components/common/PageStates";
@@ -31,6 +33,8 @@ import { QuickFileModal } from "@/components/workspace/QuickFileModal";
 import { QuickFilePanel } from "@/components/workspace/QuickFilePanel";
 import { WorkspaceFilesTab } from "@/components/workspace/WorkspaceFilesTab";
 import { useChatInspectionTabs } from "@/hooks/use-chat-inspection-tabs";
+import { useProvidersQuery } from "@/hooks/use-providers-query";
+import { useConversationUsageQuery } from "@/hooks/use-conversation-usage-query";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { useConversation } from "@/hooks/use-conversation";
 import { useSpecialistCatalogQuery } from "@/hooks/use-specialists-query";
@@ -63,6 +67,14 @@ export function WorkspaceChatPage() {
   const { data: catalog } = useSpecialistCatalogQuery();
   const isDesktop = useMediaQuery("(min-width: 1200px)");
   const inspection = useChatInspectionTabs(conv.conversation?.id);
+  // Model context limits live on the provider catalogue, which is cached
+  // globally, so this is a cache read on every chat after the first.
+  const providersQuery = useProvidersQuery();
+  // Optional-chained and defaulting to "not in flight": the status is absent
+  // while the conversation is still loading or errored.
+  const isTurnInFlight =
+    conv.sessionStatus?.type === "busy" || conv.sessionStatus?.type === "retry";
+  const conversationUsageQuery = useConversationUsageQuery(conv.conversation?.id, isTurnInFlight);
   const taskMutations = useTaskMutations();
   const resolveLiveRequest = conv.resolveLiveRequest;
   const replyPermission = conv.replyPermission;
@@ -211,10 +223,17 @@ export function WorkspaceChatPage() {
     resolveLiveRequest,
   ]);
 
-  const handleAttachmentMediaSearch = (filename: string) => {
+  // useCallback-stable so it does not defeat UserMessage's memo: a fresh
+  // identity here would re-render every user message on any page state change.
+  const handleAttachmentMediaSearch = useCallback((filename: string) => {
     setMediaSearchQuery(filename);
     setActiveContextTabId("media");
-  };
+  }, []);
+
+  const { loadOlderMessages } = conv;
+  const handleLoadOlderMessages = useCallback(() => {
+    void loadOlderMessages();
+  }, [loadOlderMessages]);
 
   const navigateToTaskCreation = useCallback(
     (prefill: TaskCreationPrefill) => {
@@ -384,6 +403,15 @@ export function WorkspaceChatPage() {
               quickEditorOpen={inspection.open && inspection.tabs.length > 0}
               onToggleQuickEditor={() => inspection.setOpen(!inspection.open)}
               onToggleTerminal={() => setTerminalOpen((current) => !current)}
+              contextIndicator={
+                <ContextWindowIndicator
+                  messages={conv.conversation.messages}
+                  parts={conv.parts}
+                  providers={providersQuery.data?.map((entry) => entry.provider) ?? []}
+                  fallbackModel={conv.agent?.defaultModel}
+                  conversationUsage={conversationUsageQuery.data}
+                />
+              }
             />
 
             {conv.conversation.taskId && conv.conversation.taskRunId ? (
@@ -407,15 +435,21 @@ export function WorkspaceChatPage() {
                     byCallId={pendingInteractionsByCallId}
                     cancel={cancelPendingInteraction}
                   >
-                    <MessageTimeline
-                      messages={conv.conversation.messages}
-                      parts={conv.parts}
-                      sessionStatus={conv.sessionStatus}
-                      sendError={conv.sendError}
-                      conversationId={conv.conversation.id}
-                      onAttachmentClick={handleAttachmentMediaSearch}
-                      onConvertUserMessageToTask={handleConvertUserMessageToTask}
-                    />
+                    <FullPartsProvider loadFullParts={conv.loadFullMessageParts}>
+                      <MessageTimeline
+                        messages={conv.conversation.messages}
+                        parts={conv.parts}
+                        sessionStatus={conv.sessionStatus}
+                        sendError={conv.sendError}
+                        conversationId={conv.conversation.id}
+                        hasMoreMessages={conv.hasMoreMessages}
+                        loadingOlderMessages={conv.loadingOlderMessages}
+                        olderMessagesError={conv.olderMessagesError}
+                        onLoadOlderMessages={handleLoadOlderMessages}
+                        onAttachmentClick={handleAttachmentMediaSearch}
+                        onConvertUserMessageToTask={handleConvertUserMessageToTask}
+                      />
+                    </FullPartsProvider>
                   </PendingInteractionProvider>
 
                   {conv.pendingPermission ? (

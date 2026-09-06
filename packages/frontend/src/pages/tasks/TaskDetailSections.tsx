@@ -6,7 +6,7 @@ import { formatDate, formatToken } from "@/components/tasks/task-format";
 import { StatusBadge } from "@/components/tasks/task-ui";
 import { useTaskMutations } from "@/hooks/use-tasks-query";
 import { TASK_CONTEXT_ATTACHMENT_EXTENSIONS } from "@cc/shared/lib";
-import type { Specialist, Task, TaskRun, TaskSubtask } from "@cc/shared/schemas";
+import type { Specialist, Task, TaskRun, TaskSubtask, TaskUsage } from "@cc/shared/schemas";
 import { ChevronDown, ChevronRight, Trash2 } from "lucide-react";
 import { type ChangeEvent, useEffect, useState } from "react";
 import { Link } from "react-router";
@@ -144,6 +144,7 @@ export function TaskRunsSection(props: {
   activeRun?: TaskRun;
   isLoading: boolean;
   error: unknown;
+  usage?: TaskUsage;
 }) {
   return (
     <div className="grid gap-4">
@@ -165,6 +166,7 @@ export function TaskRunsSection(props: {
         runs={props.runs}
         isLoading={props.isLoading}
         error={props.error}
+        usage={props.usage}
       />
     </div>
   );
