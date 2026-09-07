@@ -475,6 +475,7 @@ export function createConversationService(options: {
         const loaded = await getConversationAgent(conversationId);
         const watchdog = await prepareInteractiveChatWatchdog(loaded);
         let promptStarted = false;
+        let openCodeAccepted = false;
         let uploadPersistence: ChatUploadPersistence | undefined;
         try {
           await setCurrentConversation(loaded.agent.id, loaded.conversation.id);
@@ -506,16 +507,18 @@ export function createConversationService(options: {
             system,
             signal: openCodeRequestSignal(),
           });
+          openCodeAccepted = true;
           watchdog?.cancel();
           pendingSnapshots.set(loaded.conversation.id, snapshot);
           await syncConversation(loaded.agent, loaded.conversation);
           return getConversationDetail(loaded.conversation.id);
         } catch (error) {
-          if (!promptStarted || error instanceof OpenCodeRequestError) {
-            await rollbackChatUploads(uploadPersistence, loaded.conversation.id);
-          }
-          if (!promptStarted || error instanceof OpenCodeRequestError) {
+          // syncConversation() also raises OpenCodeRequestError, so acceptance is
+          // tracked separately: once OpenCode holds the message, its attachments
+          // must stay discoverable no matter what fails afterwards.
+          if (!openCodeAccepted && (!promptStarted || error instanceof OpenCodeRequestError)) {
             watchdog?.cancel();
+            await rollbackChatUploads(uploadPersistence, loaded.conversation.id);
           }
           throw error;
         }
@@ -530,6 +533,7 @@ export function createConversationService(options: {
       return serializeConversationOperation(conversationId, async () => {
         const loaded = await getConversationAgent(conversationId);
         let commandStarted = false;
+        let openCodeAccepted = false;
         let uploadPersistence: ChatUploadPersistence | undefined;
 
         try {
@@ -549,10 +553,11 @@ export function createConversationService(options: {
             arguments: parsed.arguments,
             attachments: parsed.attachments,
           });
+          openCodeAccepted = true;
           await syncConversation(loaded.agent, loaded.conversation);
           return getConversationDetail(loaded.conversation.id);
         } catch (error) {
-          if (!commandStarted || error instanceof OpenCodeRequestError) {
+          if (!openCodeAccepted && (!commandStarted || error instanceof OpenCodeRequestError)) {
             await rollbackChatUploads(uploadPersistence, loaded.conversation.id);
           }
           throw error;
@@ -604,6 +609,7 @@ export function createConversationService(options: {
         const watchdog = await prepareInteractiveChatWatchdog(loaded);
 
         let promptStarted = false;
+        let openCodeAccepted = false;
         let uploadPersistence: ChatUploadPersistence | undefined;
         try {
           await setCurrentConversation(loaded.agent.id, loaded.conversation.id);
@@ -634,18 +640,19 @@ export function createConversationService(options: {
             system,
             signal: AbortSignal.timeout(options.config.timeouts.opencodeRequestMs),
           });
+          openCodeAccepted = true;
           // Streaming send does not sync here; the snapshot is attached by the next
           // syncConversation once OpenCode echoes the user message back.
           pendingSnapshots.set(loaded.conversation.id, snapshot);
           watchdog?.arm();
         } catch (error) {
-          if (!promptStarted || error instanceof OpenCodeRequestError) {
-            await rollbackChatUploads(uploadPersistence, loaded.conversation.id);
-          }
           if (promptStarted && !(error instanceof OpenCodeRequestError)) {
             watchdog?.arm();
           } else {
             watchdog?.cancel();
+          }
+          if (!openCodeAccepted && (!promptStarted || error instanceof OpenCodeRequestError)) {
+            await rollbackChatUploads(uploadPersistence, loaded.conversation.id);
           }
           throw error;
         }
@@ -975,10 +982,20 @@ export function createConversationService(options: {
           // ignore
         }
 
-        await chatUploadService.removeForConversation({
-          agentId: agent.id,
-          conversationId: conversation.id,
-        });
+        // Best-effort, like the OpenCode and archive cleanups around it: the
+        // archive removal below deletes the same chat directory recursively, so
+        // a transient failure here must not leave the chat undeletable.
+        try {
+          await chatUploadService.removeForConversation({
+            agentId: agent.id,
+            conversationId: conversation.id,
+          });
+        } catch (error) {
+          options.logger?.warn(
+            { err: error, conversationId: conversation.id },
+            "chat upload removal failed",
+          );
+        }
         await removeConversationArchive(agent, conversation);
 
         // Delete dependents before the conversation row. Artifacts (and their
@@ -1117,9 +1134,11 @@ export function createConversationService(options: {
 
     try {
       await persistence.rollback();
-    } catch {
-      options.logger?.error({ conversationId }, "rejected chat upload rollback failed");
-      throw new Error("Rejected uploaded files could not be cleaned up.");
+    } catch (error) {
+      // Cleanup must not replace the rejection the operator needs to see, nor
+      // skip the watchdog handling around it. The orphan is removed with the
+      // chat and swept by the next deletion.
+      options.logger?.error({ err: error, conversationId }, "rejected chat upload rollback failed");
     }
   }
 

@@ -158,7 +158,7 @@ describe("createChatUploadService", () => {
     }
   });
 
-  it("does not delete another chat when an ancestor changes during deletion", async () => {
+  it("restores another chat's uploads when an ancestor changes during deletion", async () => {
     const testDb = await createTestDatabase();
     const service = createChatUploadService({ config: testDb.config });
     const other = { ...OWNER, conversationId: "conversation-2" };
@@ -182,21 +182,31 @@ describe("createChatUploadService", () => {
 
       await expect(service.removeForConversation(OWNER)).rejects.toThrow("changed during deletion");
       const sessionsEntries = await readdir(testDb.config.paths.subdirectories.sessions);
-      const quarantine = sessionsEntries.find((entry) => entry.endsWith(".deleting"));
-      expect(quarantine).toBeDefined();
-      const manifest = JSON.parse(
-        await readFile(
-          resolve(testDb.config.paths.subdirectories.sessions, quarantine!, "manifest.json"),
-          "utf8",
-        ),
-      ) as { uploads: Array<{ storageKey: string }> };
-      const filename = manifest.uploads[0]!.storageKey.split("/").at(-1)!;
-      await expect(
-        readFile(
-          resolve(testDb.config.paths.subdirectories.sessions, quarantine!, filename),
-          "utf8",
-        ),
-      ).resolves.toBe("kept");
+      expect(sessionsEntries.find((entry) => entry.endsWith(".deleting"))).toBeUndefined();
+      await expect(service.list(other)).resolves.toMatchObject([{ filename: "kept.txt" }]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("sweeps a quarantine left behind by an interrupted deletion", async () => {
+    const testDb = await createTestDatabase();
+    const service = createChatUploadService({ config: testDb.config });
+    const other = { ...OWNER, conversationId: "conversation-2" };
+    const stalePath = resolve(
+      testDb.config.paths.subdirectories.sessions,
+      ".chat-upload-11111111-1111-1111-1111-111111111111.deleting",
+    );
+
+    try {
+      await service.persist({ ...other, attachments: [attachment("orphan.txt", "orphan")] });
+      await mkdir(stalePath, { recursive: true });
+      await writeFile(resolve(stalePath, "orphan.txt"), "orphan", { mode: 0o600 });
+
+      await service.removeForConversation(OWNER);
+
+      await expect(access(stalePath)).rejects.toThrow();
+      await expect(service.list(other)).resolves.toMatchObject([{ filename: "orphan.txt" }]);
     } finally {
       await testDb.cleanup();
     }
@@ -303,6 +313,73 @@ describe("createChatUploadService", () => {
       const [listed] = await service.list(OWNER);
       await rm(listed!.absolutePath);
       await expect(service.list(OWNER)).rejects.toThrow("unavailable file");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("keeps the raw bytes of a percent-encoded data URL", async () => {
+    const testDb = await createTestDatabase();
+    const service = createChatUploadService({ config: testDb.config });
+
+    try {
+      await service.persist({
+        ...OWNER,
+        attachments: [
+          {
+            ...attachment("raw.bin", ""),
+            mimeType: "application/octet-stream",
+            dataUrl: "data:application/octet-stream,%FF%00text",
+          },
+        ],
+      });
+      const [listed] = await service.list(OWNER);
+
+      await expect(readFile(listed!.absolutePath)).resolves.toEqual(
+        Buffer.from([0xff, 0x00, ...Buffer.from("text", "utf8")]),
+      );
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("accepts new uploads after a listed file is removed outside CC", async () => {
+    const testDb = await createTestDatabase();
+    const service = createChatUploadService({ config: testDb.config });
+
+    try {
+      await service.persist({ ...OWNER, attachments: [attachment("gone.txt", "gone")] });
+      const [listed] = await service.list(OWNER);
+      await rm(listed!.absolutePath);
+
+      await expect(
+        service.persist({ ...OWNER, attachments: [attachment("next.txt", "next")] }),
+      ).resolves.toBeDefined();
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("starts a fresh manifest when an interrupted persist left a stray file", async () => {
+    const testDb = await createTestDatabase();
+    const service = createChatUploadService({ config: testDb.config });
+    const uploadDirectory = resolve(
+      testDb.config.paths.subdirectories.sessions,
+      "specialists",
+      OWNER.agentId,
+      "chats",
+      OWNER.conversationId,
+      "uploads",
+    );
+
+    try {
+      await mkdir(uploadDirectory, { recursive: true });
+      await writeFile(resolve(uploadDirectory, "01STRAY.txt"), "stray", { mode: 0o600 });
+
+      await expect(
+        service.persist({ ...OWNER, attachments: [attachment("after.txt", "after")] }),
+      ).resolves.toBeDefined();
+      await expect(service.list(OWNER)).resolves.toMatchObject([{ filename: "after.txt" }]);
     } finally {
       await testDb.cleanup();
     }

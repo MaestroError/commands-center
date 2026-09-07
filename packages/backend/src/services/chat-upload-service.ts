@@ -23,6 +23,8 @@ import { BadRequestError } from "../lib/api-error.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
 
 const MANIFEST_FILENAME = "manifest.json";
+const QUARANTINE_PREFIX = ".chat-upload-";
+const QUARANTINE_SUFFIX = ".deleting";
 
 const chatUploadMetadataSchema = z
   .object({
@@ -53,6 +55,9 @@ export type ChatUploadService = ReturnType<typeof createChatUploadService>;
 
 export function createChatUploadService(options: { config: RuntimeConfig; logger?: Logger }) {
   const mutationTails = new Map<string, Promise<unknown>>();
+  // Quarantine directories currently being deleted by this service, so the
+  // opportunistic sweep never removes one out from under a live deletion.
+  const activeQuarantines = new Set<string>();
 
   return {
     async persist(input: {
@@ -106,6 +111,7 @@ export function createChatUploadService(options: { config: RuntimeConfig; logger
     async removeForConversation(input: { agentId: string; conversationId: string }): Promise<void> {
       const key = `${input.agentId}/${input.conversationId}`;
       await serializeMutation(key, async () => {
+        await sweepStaleQuarantines();
         const uploadDirectory = resolveUploadDirectory(
           options.config,
           input.agentId,
@@ -117,11 +123,26 @@ export function createChatUploadService(options: { config: RuntimeConfig; logger
           false,
         );
         if (!secureDirectory) return;
-        const directory = await lstat(secureDirectory);
-        const realRoot = await realpath(options.config.paths.subdirectories.sessions);
-        const quarantinePath = resolve(realRoot, `.chat-upload-${randomUUID()}.deleting`);
-        await rename(secureDirectory, quarantinePath);
+        const directory = await lstat(secureDirectory).catch(() => {
+          throw new Error("Chat upload directory could not be inspected.");
+        });
+        const realRoot = await realpath(options.config.paths.subdirectories.sessions).catch(() => {
+          throw new Error("Chat upload directory could not be inspected.");
+        });
+        const quarantinePath = resolve(
+          realRoot,
+          `${QUARANTINE_PREFIX}${randomUUID()}${QUARANTINE_SUFFIX}`,
+        );
+        activeQuarantines.add(quarantinePath);
+
         try {
+          await rename(secureDirectory, quarantinePath).catch((error: unknown) => {
+            options.logger?.warn(
+              { err: error, agentId: input.agentId, conversationId: input.conversationId },
+              "chat upload directory could not be quarantined",
+            );
+            throw new Error("Chat uploads could not be removed.");
+          });
           const quarantined = await lstat(quarantinePath);
           const realQuarantinePath = await realpath(quarantinePath);
 
@@ -132,6 +153,15 @@ export function createChatUploadService(options: { config: RuntimeConfig; logger
             quarantined.ino !== directory.ino ||
             realQuarantinePath !== quarantinePath
           ) {
+            // The rename resolved through an ancestor that changed underneath us,
+            // so the quarantined directory belongs to somebody else — put it back
+            // where it came from before failing rather than deleting it.
+            await rename(quarantinePath, secureDirectory).catch((error: unknown) => {
+              options.logger?.error(
+                { err: error, agentId: input.agentId, conversationId: input.conversationId },
+                "quarantined chat upload directory could not be restored",
+              );
+            });
             throw new Error("Chat upload directory changed during deletion.");
           }
 
@@ -141,14 +171,40 @@ export function createChatUploadService(options: { config: RuntimeConfig; logger
           });
         } catch (error) {
           options.logger?.warn(
-            { agentId: input.agentId, conversationId: input.conversationId },
+            { err: error, agentId: input.agentId, conversationId: input.conversationId },
             "chat upload deletion quarantine could not be removed",
           );
-          throw error;
+          throw error instanceof Error && isSafeMessage(error)
+            ? error
+            : new Error("Chat uploads could not be removed.");
+        } finally {
+          activeQuarantines.delete(quarantinePath);
         }
       });
     },
   };
+
+  // An interrupted deletion leaves a quarantined directory at the sessions root.
+  // Reclaim them opportunistically so uploaded bytes never outlive their chat.
+  async function sweepStaleQuarantines(): Promise<void> {
+    const sessionsRoot = options.config.paths.subdirectories.sessions;
+    const entries = await readdir(sessionsRoot).catch(() => [] as string[]);
+
+    await Promise.all(
+      entries
+        .filter((entry) => entry.startsWith(QUARANTINE_PREFIX) && entry.endsWith(QUARANTINE_SUFFIX))
+        .map((entry) => resolve(sessionsRoot, entry))
+        .filter((path) => !activeQuarantines.has(path))
+        .map((path) =>
+          rm(path, { force: true, recursive: true }).catch((error: unknown) => {
+            options.logger?.warn(
+              { err: error },
+              "stale chat upload quarantine could not be removed",
+            );
+          }),
+        ),
+    );
+  }
 
   async function persistUploads(input: {
     agentId: string;
@@ -161,13 +217,14 @@ export function createChatUploadService(options: { config: RuntimeConfig; logger
       input.conversationId,
     );
     const created: ChatUploadMetadata[] = [];
+    const writtenPaths: string[] = [];
 
     try {
       await createSecureUploadDirectory(
         uploadDirectory,
         options.config.paths.subdirectories.sessions,
       );
-      const current = await readValidatedManifest(options.config, input, uploadDirectory);
+      const current = await readManifestForWrite(options.config, input, uploadDirectory);
 
       for (const attachment of input.attachments) {
         const id = createId();
@@ -186,6 +243,10 @@ export function createChatUploadService(options: { config: RuntimeConfig; logger
         ].join("/");
         const absolutePath = resolve(uploadDirectory, storedFilename);
         ensureDescendant(absolutePath, uploadDirectory);
+        // Recorded before the write: `wx` creates the file before the bytes land,
+        // so a half-written file still has to be cleaned up — an unlisted leftover
+        // would otherwise sit in the directory forever.
+        writtenPaths.push(absolutePath);
         await writeFile(absolutePath, content, { flag: "wx", mode: 0o600 });
         const upload = {
           id,
@@ -205,15 +266,22 @@ export function createChatUploadService(options: { config: RuntimeConfig; logger
       });
       return created;
     } catch (error) {
+      // Cleanup must never throw over the original failure: a raw filesystem
+      // error would both mask it and leak an absolute host path to the operator.
       await Promise.all(
-        created.map((upload) =>
-          rm(resolveStoragePath(options.config, input, upload), { force: true }),
+        writtenPaths.map((path) =>
+          rm(path, { force: true }).catch((cleanupError: unknown) => {
+            options.logger?.warn(
+              { err: cleanupError, conversationId: input.conversationId },
+              "chat upload cleanup failed",
+            );
+          }),
         ),
       );
 
       if (error instanceof BadRequestError) throw error;
       options.logger?.warn(
-        { conversationId: input.conversationId },
+        { err: error, conversationId: input.conversationId },
         "chat upload persistence failed",
       );
       throw new Error("Uploaded files could not be saved.");
@@ -236,7 +304,7 @@ export function createChatUploadService(options: { config: RuntimeConfig; logger
       true,
     );
     if (!secureDirectory) throw new Error("Chat upload directory is unavailable.");
-    const manifest = await readValidatedManifest(options.config, input, secureDirectory);
+    const manifest = await readManifestForWrite(options.config, input, secureDirectory);
     const rollbackIds = new Set(uploads.map((upload) => upload.id));
     const retained = manifest.uploads.filter((upload) => !rollbackIds.has(upload.id));
 
@@ -271,7 +339,7 @@ export function createChatUploadService(options: { config: RuntimeConfig; logger
   }
 }
 
-async function readManifest(uploadDirectory: string) {
+async function readManifest(uploadDirectory: string, read?: { tolerateMissing?: boolean }) {
   const manifestPath = resolve(uploadDirectory, MANIFEST_FILENAME);
   let manifestFile: Awaited<ReturnType<typeof lstat>>;
 
@@ -283,7 +351,11 @@ async function readManifest(uploadDirectory: string) {
         if (isFilesystemError(directoryError, "ENOENT")) return [];
         throw new Error("Uploaded file metadata could not be read.");
       });
-      if (entries.length === 0) return { version: 1 as const, uploads: [] };
+      // Reads refuse to hide files they cannot describe. Writes instead start a
+      // fresh manifest, so leftovers from an interrupted persist cannot block
+      // every later upload in the chat.
+      if (entries.length === 0 || read?.tolerateMissing)
+        return { version: 1 as const, uploads: [] };
       throw new Error("Uploaded file metadata is missing.");
     }
     throw new Error("Uploaded file metadata could not be read.");
@@ -301,6 +373,24 @@ async function readManifest(uploadDirectory: string) {
   } catch {
     throw new Error("Uploaded file metadata is invalid.");
   }
+}
+
+// The write paths only need a structurally sound manifest. Ownership of every
+// storage key is still enforced so a tampered entry can never be carried
+// forward, but a file the specialist edited or removed must not block new
+// uploads or a rollback — presence and size are validated on read instead.
+async function readManifestForWrite(
+  config: RuntimeConfig,
+  owner: { agentId: string; conversationId: string },
+  uploadDirectory: string,
+) {
+  const manifest = await readManifest(uploadDirectory, { tolerateMissing: true });
+
+  for (const upload of manifest.uploads) {
+    resolveStoragePath(config, owner, upload);
+  }
+
+  return manifest;
 }
 
 async function readValidatedManifest(
@@ -363,10 +453,28 @@ function decodeDataUrl(dataUrl: string): Buffer {
       return Buffer.from(encoded, "base64");
     }
 
-    return Buffer.from(decodeURIComponent(encoded), "utf8");
+    return decodePercentEncodedBytes(encoded);
   } catch {
     throw new BadRequestError("Attachment data URL is invalid.");
   }
+}
+
+// Percent escapes in a non-base64 data URL are raw octets, not UTF-8 text.
+// decodeURIComponent() would reject payloads the chat pipeline accepts today
+// (`data:application/octet-stream,%FF`), so decode escape by escape instead.
+function decodePercentEncodedBytes(value: string): Buffer {
+  const escapePattern = /%[0-9A-Fa-f]{2}/g;
+  const segments: Buffer[] = [];
+  let index = 0;
+
+  for (let match = escapePattern.exec(value); match; match = escapePattern.exec(value)) {
+    segments.push(Buffer.from(value.slice(index, match.index), "utf8"));
+    segments.push(Buffer.from(match[0].slice(1), "hex"));
+    index = match.index + match[0].length;
+  }
+
+  segments.push(Buffer.from(value.slice(index), "utf8"));
+  return Buffer.concat(segments);
 }
 
 function isCanonicalBase64(value: string): boolean {
@@ -484,7 +592,11 @@ async function ensureSecureUploadDirectory(
   const [realRoot, realDirectory] = await Promise.all([
     realpath(sessionsRoot),
     realpath(uploadDirectory),
-  ]);
+  ]).catch(() => {
+    // Native errors carry the absolute sessions path, and this message is
+    // returned verbatim by the MCP tool.
+    throw new Error("Chat upload directory could not be inspected.");
+  });
   ensureDescendant(realDirectory, realRoot);
   const expectedDirectory = resolve(realRoot, relative(sessionsRoot, uploadDirectory));
   if (realDirectory !== expectedDirectory) {
@@ -520,6 +632,20 @@ async function createSecureUploadDirectory(
       throw new Error("Chat upload directory is invalid.");
     }
   }
+}
+
+// Messages this service raises itself are safe to return to a caller; native
+// filesystem errors are not, because they embed absolute host paths.
+const SAFE_MESSAGES = new Set([
+  "Chat upload directory changed during deletion.",
+  "Chat upload directory could not be inspected.",
+  "Chat upload directory is invalid.",
+  "Chat upload directory is unavailable.",
+  "Chat uploads could not be removed.",
+]);
+
+function isSafeMessage(error: Error): boolean {
+  return SAFE_MESSAGES.has(error.message);
 }
 
 function isFilesystemError(error: unknown, code: string): boolean {

@@ -165,13 +165,24 @@ describe("list_uploaded_files", () => {
     expect(result.structuredContent).toEqual({ files: [] });
   });
 
-  it("rejects arguments and unknown specialists", async () => {
-    const { tools } = await setup();
+  it("rejects a caller-provided conversation id", async () => {
+    const { testDb, tools } = await setup();
+    const agentId = await insertAgent(testDb.client.db, "reviewer");
+    await insertCurrentChat(testDb.client.db, agentId);
 
-    const invalid = await tools[1]!.execute({ conversationId: "other" }, { agentSlug: "ghost" });
+    const invalid = await tools[1]!.execute({ conversationId: "other" }, { agentSlug: "reviewer" });
 
     expect(invalid.isError).toBe(true);
     expect(invalid.content[0]?.text).not.toContain("other");
+  });
+
+  it("rejects an unknown specialist", async () => {
+    const { tools } = await setup();
+
+    const unknown = await tools[1]!.execute({}, { agentSlug: "ghost" });
+
+    expect(unknown.isError).toBe(true);
+    expect(unknown.content[0]?.text).toContain("'ghost' not found");
   });
 });
 
