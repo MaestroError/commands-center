@@ -552,6 +552,9 @@ export function createConversationService(options: {
             command: parsed.command,
             arguments: parsed.arguments,
             attachments: parsed.attachments,
+            // The command now holds the per-conversation queue, so an unbounded
+            // request would block every later prompt, abort and deletion.
+            signal: openCodeRequestSignal(),
           });
           openCodeAccepted = true;
           await syncConversation(loaded.agent, loaded.conversation);

@@ -158,7 +158,7 @@ describe("createChatUploadService", () => {
     }
   });
 
-  it("restores another chat's uploads when an ancestor changes during deletion", async () => {
+  it("retains another chat's uploads when an ancestor changes during deletion", async () => {
     const testDb = await createTestDatabase();
     const service = createChatUploadService({ config: testDb.config });
     const other = { ...OWNER, conversationId: "conversation-2" };
@@ -181,9 +181,54 @@ describe("createChatUploadService", () => {
       });
 
       await expect(service.removeForConversation(OWNER)).rejects.toThrow("changed during deletion");
+
+      // The unverifiable directory is neither deleted nor pushed back through the
+      // symlinked path: it waits under `.pending`, which the sweep never reaps.
       const sessionsEntries = await readdir(testDb.config.paths.subdirectories.sessions);
       expect(sessionsEntries.find((entry) => entry.endsWith(".deleting"))).toBeUndefined();
-      await expect(service.list(other)).resolves.toMatchObject([{ filename: "kept.txt" }]);
+      const pending = sessionsEntries.find((entry) => entry.endsWith(".pending"));
+      expect(pending).toBeDefined();
+      const pendingPath = resolve(testDb.config.paths.subdirectories.sessions, pending!);
+      const manifest = JSON.parse(
+        await readFile(resolve(pendingPath, "manifest.json"), "utf8"),
+      ) as { uploads: Array<{ storageKey: string }> };
+      const filename = manifest.uploads[0]!.storageKey.split("/").at(-1)!;
+      await expect(readFile(resolve(pendingPath, filename), "utf8")).resolves.toBe("kept");
+
+      await rm(ownerDirectory);
+      await service.removeForConversation(OWNER);
+      await expect(access(pendingPath)).resolves.toBeUndefined();
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("restores a mismatched quarantine when its former location is still canonical", async () => {
+    const testDb = await createTestDatabase();
+    const service = createChatUploadService({ config: testDb.config });
+    const uploadDirectory = resolve(
+      testDb.config.paths.subdirectories.sessions,
+      "specialists",
+      OWNER.agentId,
+      "chats",
+      OWNER.conversationId,
+      "uploads",
+    );
+
+    try {
+      await service.persist({ ...OWNER, attachments: [attachment("kept.txt", "kept")] });
+      // Quarantine a directory whose inode is not the one that was verified,
+      // while the original location stays a plain, canonical path.
+      fsMocks.rename.mockImplementationOnce(async (oldPath, newPath) => {
+        await fsMocks.actualRename!(oldPath, `${oldPath as string}-decoy`);
+        await mkdir(newPath as string, { recursive: true });
+      });
+
+      await expect(service.removeForConversation(OWNER)).rejects.toThrow("changed during deletion");
+
+      const sessionsEntries = await readdir(testDb.config.paths.subdirectories.sessions);
+      expect(sessionsEntries.filter((entry) => entry.startsWith(".chat-upload-"))).toEqual([]);
+      await expect(access(uploadDirectory)).resolves.toBeUndefined();
     } finally {
       await testDb.cleanup();
     }
@@ -385,6 +430,63 @@ describe("createChatUploadService", () => {
     }
   });
 
+  it("keeps metadata readable when a send is interrupted after a file write", async () => {
+    const testDb = await createTestDatabase();
+    const service = createChatUploadService({ config: testDb.config });
+    const uploadDirectory = resolve(
+      testDb.config.paths.subdirectories.sessions,
+      "specialists",
+      OWNER.agentId,
+      "chats",
+      OWNER.conversationId,
+      "uploads",
+    );
+
+    try {
+      // Let the seeded manifest commit, then fail the commit that follows the
+      // payload write — the boundary a process exit would land on.
+      fsMocks.rename.mockImplementationOnce((oldPath, newPath) =>
+        fsMocks.actualRename!(oldPath, newPath),
+      );
+      fsMocks.rename.mockImplementationOnce(() => Promise.reject(new Error("interrupted")));
+      await expect(
+        service.persist({ ...OWNER, attachments: [attachment("first.txt", "first")] }),
+      ).rejects.toThrow("could not be saved");
+
+      await expect(readdir(uploadDirectory)).resolves.toContain("manifest.json");
+      await expect(service.list(OWNER)).resolves.toEqual([]);
+      await expect(
+        service.persist({ ...OWNER, attachments: [attachment("second.txt", "second")] }),
+      ).resolves.toBeDefined();
+      await expect(service.list(OWNER)).resolves.toMatchObject([{ filename: "second.txt" }]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("keeps metadata readable when a rollback is interrupted before its files", async () => {
+    const testDb = await createTestDatabase();
+    const service = createChatUploadService({ config: testDb.config });
+
+    try {
+      const rejected = await service.persist({
+        ...OWNER,
+        attachments: [attachment("rejected.txt", "rejected")],
+      });
+      await rejected.rollback();
+
+      // The pruned manifest is committed before the files are unlinked, so an
+      // exit in between still leaves listable, writable metadata behind.
+      await expect(service.list(OWNER)).resolves.toEqual([]);
+      await expect(
+        service.persist({ ...OWNER, attachments: [attachment("next.txt", "next")] }),
+      ).resolves.toBeDefined();
+      await expect(service.list(OWNER)).resolves.toMatchObject([{ filename: "next.txt" }]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("fails safely when a manifest storage key escapes the owning chat", async () => {
     const testDb = await createTestDatabase();
     const service = createChatUploadService({ config: testDb.config });
@@ -474,8 +576,10 @@ describe("createChatUploadService", () => {
   it("has no fallible permission update after the manifest rename commits", async () => {
     const testDb = await createTestDatabase();
     const service = createChatUploadService({ config: testDb.config });
+    // Seed manifest, upload file, committed manifest — every permission update
+    // happens before its atomic rename, so a fourth call would be post-commit.
     fsMocks.chmod.mockImplementation(async (...args) => {
-      if (fsMocks.chmod.mock.calls.length === 3) throw new Error("post-commit chmod failed");
+      if (fsMocks.chmod.mock.calls.length === 4) throw new Error("post-commit chmod failed");
       await fsMocks.actualChmod!(...args);
     });
 
@@ -484,7 +588,7 @@ describe("createChatUploadService", () => {
         service.persist({ ...OWNER, attachments: [attachment("saved.txt", "saved")] }),
       ).resolves.toBeDefined();
       await expect(service.list(OWNER)).resolves.toMatchObject([{ filename: "saved.txt" }]);
-      expect(fsMocks.chmod).toHaveBeenCalledTimes(2);
+      expect(fsMocks.chmod).toHaveBeenCalledTimes(3);
     } finally {
       await testDb.cleanup();
     }

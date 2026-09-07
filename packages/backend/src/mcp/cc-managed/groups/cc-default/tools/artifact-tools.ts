@@ -142,8 +142,11 @@ async function resolveCurrentChatOwner(
   db: AppDb,
   agentSlug: string,
 ): Promise<{ agentId: string; conversationId: string }> {
+  // Archiving moves the workspace but leaves the managed-MCP token valid, so the
+  // ownership lookup requires an active specialist rather than trusting the slug.
   const agent = await db.query.agents.findFirst({
-    where: (table, operators) => operators.eq(table.slug, agentSlug),
+    where: (table, operators) =>
+      operators.and(operators.eq(table.slug, agentSlug), operators.eq(table.status, "active")),
     columns: { id: true },
   });
 

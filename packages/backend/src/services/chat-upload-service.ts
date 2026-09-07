@@ -8,10 +8,9 @@ import {
   realpath,
   rename,
   rm,
-  rmdir,
   writeFile,
 } from "node:fs/promises";
-import { extname, relative, resolve, sep } from "node:path";
+import { dirname, extname, relative, resolve, sep } from "node:path";
 
 import { resolvePromptAttachmentMimeType } from "@cc/shared/lib";
 import type { SendConversationAttachmentInput } from "@cc/shared/schemas";
@@ -24,7 +23,11 @@ import type { RuntimeConfig } from "../lib/runtime-config.js";
 
 const MANIFEST_FILENAME = "manifest.json";
 const QUARANTINE_PREFIX = ".chat-upload-";
-const QUARANTINE_SUFFIX = ".deleting";
+// A directory is renamed under `.pending` first and only promoted to `.deleting`
+// once its inode is confirmed to be the one that was verified. The sweep reclaims
+// `.deleting` alone, so uploads that could not be confirmed are never reaped.
+const PENDING_SUFFIX = ".pending";
+const DELETING_SUFFIX = ".deleting";
 
 const chatUploadMetadataSchema = z
   .object({
@@ -129,11 +132,16 @@ export function createChatUploadService(options: { config: RuntimeConfig; logger
         const realRoot = await realpath(options.config.paths.subdirectories.sessions).catch(() => {
           throw new Error("Chat upload directory could not be inspected.");
         });
+        const quarantineId = randomUUID();
         const quarantinePath = resolve(
           realRoot,
-          `${QUARANTINE_PREFIX}${randomUUID()}${QUARANTINE_SUFFIX}`,
+          `${QUARANTINE_PREFIX}${quarantineId}${PENDING_SUFFIX}`,
         );
-        activeQuarantines.add(quarantinePath);
+        const deletingPath = resolve(
+          realRoot,
+          `${QUARANTINE_PREFIX}${quarantineId}${DELETING_SUFFIX}`,
+        );
+        activeQuarantines.add(deletingPath);
 
         try {
           await rename(secureDirectory, quarantinePath).catch((error: unknown) => {
@@ -153,19 +161,18 @@ export function createChatUploadService(options: { config: RuntimeConfig; logger
             quarantined.ino !== directory.ino ||
             realQuarantinePath !== quarantinePath
           ) {
-            // The rename resolved through an ancestor that changed underneath us,
-            // so the quarantined directory belongs to somebody else — put it back
-            // where it came from before failing rather than deleting it.
-            await rename(quarantinePath, secureDirectory).catch((error: unknown) => {
-              options.logger?.error(
-                { err: error, agentId: input.agentId, conversationId: input.conversationId },
-                "quarantined chat upload directory could not be restored",
-              );
-            });
+            // The rename resolved through an ancestor that changed underneath
+            // us, so this directory belongs to somebody else. Hand it back when
+            // its former location is still canonical; otherwise keep it under
+            // `.pending`, which the sweep never touches, rather than restoring
+            // it through a path we can no longer trust.
+            await restoreQuarantine(quarantinePath, secureDirectory, input);
             throw new Error("Chat upload directory changed during deletion.");
           }
 
-          await rm(realQuarantinePath, {
+          // Confirmed ours: only now does it carry the name the sweep reclaims.
+          await rename(quarantinePath, deletingPath);
+          await rm(deletingPath, {
             force: true,
             recursive: true,
           });
@@ -178,11 +185,35 @@ export function createChatUploadService(options: { config: RuntimeConfig; logger
             ? error
             : new Error("Chat uploads could not be removed.");
         } finally {
-          activeQuarantines.delete(quarantinePath);
+          activeQuarantines.delete(deletingPath);
         }
       });
     },
   };
+
+  async function restoreQuarantine(
+    quarantinePath: string,
+    originalPath: string,
+    owner: { agentId: string; conversationId: string },
+  ): Promise<void> {
+    const parent = dirname(originalPath);
+    const canonicalParent = await realpath(parent).catch(() => undefined);
+
+    if (canonicalParent !== parent) {
+      options.logger?.error(
+        { agentId: owner.agentId, conversationId: owner.conversationId },
+        "chat upload directory retained: its former location is no longer canonical",
+      );
+      return;
+    }
+
+    await rename(quarantinePath, originalPath).catch((error: unknown) => {
+      options.logger?.error(
+        { err: error, agentId: owner.agentId, conversationId: owner.conversationId },
+        "quarantined chat upload directory could not be restored",
+      );
+    });
+  }
 
   // An interrupted deletion leaves a quarantined directory at the sessions root.
   // Reclaim them opportunistically so uploaded bytes never outlive their chat.
@@ -192,7 +223,7 @@ export function createChatUploadService(options: { config: RuntimeConfig; logger
 
     await Promise.all(
       entries
-        .filter((entry) => entry.startsWith(QUARANTINE_PREFIX) && entry.endsWith(QUARANTINE_SUFFIX))
+        .filter((entry) => entry.startsWith(QUARANTINE_PREFIX) && entry.endsWith(DELETING_SUFFIX))
         .map((entry) => resolve(sessionsRoot, entry))
         .filter((path) => !activeQuarantines.has(path))
         .map((path) =>
@@ -224,7 +255,15 @@ export function createChatUploadService(options: { config: RuntimeConfig; logger
         uploadDirectory,
         options.config.paths.subdirectories.sessions,
       );
-      const current = await readManifestForWrite(options.config, input, uploadDirectory);
+      const { manifest: current, committed } = await readManifestForWrite(
+        options.config,
+        input,
+        uploadDirectory,
+      );
+      // Seed the manifest before writing any payload so an interrupted send can
+      // never leave a non-empty directory without metadata — that state would
+      // otherwise fail every later read and write for the chat.
+      if (!committed) await writeManifest(uploadDirectory, current);
 
       for (const attachment of input.attachments) {
         const id = createId();
@@ -304,26 +343,20 @@ export function createChatUploadService(options: { config: RuntimeConfig; logger
       true,
     );
     if (!secureDirectory) throw new Error("Chat upload directory is unavailable.");
-    const manifest = await readManifestForWrite(options.config, input, secureDirectory);
+    const { manifest } = await readManifestForWrite(options.config, input, secureDirectory);
     const rollbackIds = new Set(uploads.map((upload) => upload.id));
     const retained = manifest.uploads.filter((upload) => !rollbackIds.has(upload.id));
 
-    if (retained.length === 0) {
-      await rm(resolve(secureDirectory, MANIFEST_FILENAME), { force: true });
-    } else {
-      await writeManifest(secureDirectory, { version: 1, uploads: retained });
-    }
+    // The manifest is pruned first and kept even when it empties: dropping it
+    // would leave the rejected files behind with no metadata if the process
+    // exited here, which fails every later read and write for the chat.
+    await writeManifest(secureDirectory, { version: 1, uploads: retained });
 
     await Promise.all(
       uploads.map((upload) =>
         rm(resolveStoragePath(options.config, input, upload), { force: true }),
       ),
     );
-    await rmdir(secureDirectory).catch((error: unknown) => {
-      if (!isFilesystemError(error, "ENOENT") && !isFilesystemError(error, "ENOTEMPTY")) {
-        throw error;
-      }
-    });
   }
 
   function serializeMutation<T>(key: string, operation: () => Promise<T>): Promise<T> {
@@ -390,7 +423,11 @@ async function readManifestForWrite(
     resolveStoragePath(config, owner, upload);
   }
 
-  return manifest;
+  const committed = await lstat(resolve(uploadDirectory, MANIFEST_FILENAME))
+    .then(() => true)
+    .catch(() => false);
+
+  return { manifest, committed };
 }
 
 async function readValidatedManifest(

@@ -176,6 +176,26 @@ describe("list_uploaded_files", () => {
     expect(invalid.content[0]?.text).not.toContain("other");
   });
 
+  it("rejects an archived specialist", async () => {
+    const { testDb, tools } = await setup();
+    const agentId = await insertAgent(testDb.client.db, "reviewer");
+    const conversationId = await insertCurrentChat(testDb.client.db, agentId);
+    await createChatUploadService({ config: testDb.config }).persist({
+      agentId,
+      conversationId,
+      attachments: [attachment("archived.txt", "archived")],
+    });
+    await testDb.client.db
+      .update(agents)
+      .set({ status: "archived", archived_at: new Date() })
+      .where(eq(agents.id, agentId));
+
+    const result = await tools[1]!.execute({}, { agentSlug: "reviewer" });
+
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toBeUndefined();
+  });
+
   it("rejects an unknown specialist", async () => {
     const { tools } = await setup();
 

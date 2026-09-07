@@ -932,6 +932,24 @@ describe("opencode-service", () => {
       expect((hangingFetch.mock.calls[0]?.[1] as RequestInit).signal).toBe(controller.signal);
     });
 
+    it("forwards the caller's abort signal on a command request", async () => {
+      fetchMock.mockResolvedValue(jsonResponse(204));
+      const service = makeService();
+      const controller = new AbortController();
+
+      await service.commandSession({
+        directory: "/work/a",
+        sessionID: "s",
+        agent: "build",
+        model: "openai/gpt-4.1",
+        command: "test",
+        arguments: "--all",
+        signal: controller.signal,
+      });
+
+      expect(fetchMock.mock.calls[0]?.[1]?.signal).toBe(controller.signal);
+    });
+
     it("issues command, summarize, shell, and abort/delete requests", async () => {
       fetchMock.mockResolvedValue(jsonResponse(204));
       const service = makeService();

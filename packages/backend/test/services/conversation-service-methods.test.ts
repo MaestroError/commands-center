@@ -1369,6 +1369,25 @@ describe("conversation-service delegating methods", () => {
     ).rejects.toThrow("Conversation not found.");
   });
 
+  it("releases the conversation queue when an OpenCode command stalls", async () => {
+    const { service, opencodeService, agent } = await setup({ opencodeRequestMs: 10 });
+    const snapshot = await service.resolveCurrent(agent.id);
+    opencodeService.commandSession = vi.fn((input: { signal?: AbortSignal }) =>
+      neverSettlesUntilAborted(input.signal),
+    );
+
+    await expect(
+      service.sendCommand(snapshot.current.id, {
+        command: "stall",
+        arguments: "",
+        attachments: [],
+      }),
+    ).rejects.toThrow();
+    await expect(
+      service.deleteConversation(agent.id, snapshot.current.id),
+    ).resolves.toBeUndefined();
+  });
+
   it("deletes a conversation that owns artifacts and share links", async () => {
     const { testDb, service, agent } = await setup();
     const snapshot = await service.resolveCurrent(agent.id);
