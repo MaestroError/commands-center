@@ -525,6 +525,7 @@ export function createOpenCodeService(options: {
       command: string;
       arguments: string;
       attachments?: SendConversationAttachmentInput[];
+      signal?: AbortSignal;
     }): Promise<void> {
       await requestSessionJson({
         config: options.config,
@@ -538,6 +539,7 @@ export function createOpenCodeService(options: {
           arguments: input.arguments,
           parts: buildAttachmentParts(input.attachments ?? []),
         },
+        signal: input.signal,
       });
     },
 
