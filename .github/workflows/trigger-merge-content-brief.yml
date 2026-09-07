@@ -1,9 +1,10 @@
-name: Trigger Content Brief on Main Merge
+name: Trigger Content Brief on Merge
 
 on:
   pull_request_target:
     branches:
       - main
+      - staging
     types:
       - closed
 
