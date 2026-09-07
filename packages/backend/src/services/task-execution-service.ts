@@ -34,6 +34,7 @@ import {
   createTaskRunTransport,
   DEFAULT_TRANSPORT_RETRY_CONFIG,
   formatTaskRunErrorMessage,
+  isLatestTurnComplete,
   mergeOpencodeMonitorMetadata,
   readLatestAssistantMessage,
   readOptionalOpencodeMonitorMetadata,
@@ -169,6 +170,7 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
       queueFallbackRun,
       finalizeBlockedInteraction,
       finalizeStalledRun,
+      finalizeInterruptedRun,
       finalizeUsageLimitRun,
       finalizeModelNotFoundRun,
     },
@@ -754,9 +756,10 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
 
     if (evidence) {
       const monitorMetadata = readOptionalOpencodeMonitorMetadata(run);
-      const latestAssistant = readLatestAssistantMessage(
-        evidence.conversation.messages.slice(monitorMetadata?.baselineMessageCount ?? 0),
+      const scopedMessages = evidence.conversation.messages.slice(
+        monitorMetadata?.baselineMessageCount ?? 0,
       );
+      const latestAssistant = readLatestAssistantMessage(scopedMessages);
       let statusType = evidence.statusType;
 
       if (statusType === undefined) {
@@ -775,11 +778,20 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
         }
       }
 
-      if (statusType === "unknown" && !latestAssistant?.completedAt) {
-        await finalizeInterruptedRun(run, {
-          lastAssistantMessageId: latestAssistant?.id,
-        });
-        return;
+      if (statusType === "unknown" && !isLatestTurnComplete(scopedMessages)) {
+        // The conversation snapshot above was read before the status request, so
+        // a turn that finished in between still looks unfinished here. Confirm
+        // against a fresh sync before cancelling; on a failed read, resume the
+        // monitor rather than risk cancelling (and requeueing) a run that
+        // actually completed.
+        const confirmed = await confirmInterruptedTurn(run, monitorMetadata?.baselineMessageCount);
+
+        if (confirmed.interrupted) {
+          await finalizeInterruptedRun(run, {
+            lastAssistantMessageId: confirmed.lastAssistantMessageId ?? latestAssistant?.id,
+          });
+          return;
+        }
       }
 
       await resumeAcceptedPromptRun(run, evidence);
@@ -787,6 +799,32 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
     }
 
     monitorService.start(run.id);
+  }
+
+  async function confirmInterruptedTurn(
+    run: TaskRun,
+    baselineMessageCount: number | undefined,
+  ): Promise<{ interrupted: boolean; lastAssistantMessageId?: string }> {
+    try {
+      const conversation = await transport.syncConversation(run);
+      const scopedMessages = conversation.messages.slice(baselineMessageCount ?? 0);
+
+      return {
+        interrupted: !isLatestTurnComplete(scopedMessages),
+        lastAssistantMessageId: readLatestAssistantMessage(scopedMessages)?.id,
+      };
+    } catch (error) {
+      options.logger?.warn(
+        {
+          err: error,
+          taskId: run.taskId,
+          taskRunId: run.id,
+          opencodeSessionId: run.opencodeSessionId,
+        },
+        "task run startup recovery could not confirm an incomplete turn; resuming monitor",
+      );
+      return { interrupted: false };
+    }
   }
 
   async function abortOpenCodeTaskRun(run: TaskRun): Promise<void> {

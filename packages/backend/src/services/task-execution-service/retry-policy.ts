@@ -277,8 +277,8 @@ export function createTaskRetryPolicy(ctx: TaskRetryPolicyContext) {
     const willRequeue = requeue.enabled && nextRequeueCount <= requeue.limit;
     const limitReached = requeue.enabled && !willRequeue;
     const cancellationReason =
-      "Automatically cancelled: OpenCode no longer reported the session after restart while " +
-      "the latest assistant turn was incomplete." +
+      "Automatically cancelled: OpenCode no longer reported the session while the latest " +
+      "assistant turn was incomplete (engine interruption)." +
       `${latest.opencodeSessionId ? ` Session ${latest.opencodeSessionId}.` : ""}` +
       `${limitReached ? ` Requeue limit (${String(requeue.limit)}) reached; not requeued.` : ""}`;
     const cancelled = await options.taskService.setRunStatus(latest.id, "cancelled", {
@@ -320,6 +320,20 @@ export function createTaskRetryPolicy(ctx: TaskRetryPolicyContext) {
           "failed to requeue interrupted task run; leaving it cancelled",
         );
       }
+    } else {
+      options.logger?.warn(
+        {
+          taskId: cancelled.taskId,
+          taskRunId: cancelled.id,
+          opencodeSessionId: cancelled.opencodeSessionId,
+          lastAssistantMessageId: details.lastAssistantMessageId,
+          requeueLimitReached: limitReached,
+          requeueLimit: limitReached ? requeue.limit : undefined,
+        },
+        limitReached
+          ? "interrupted task run cancelled; requeue limit reached"
+          : "interrupted task run cancelled",
+      );
     }
 
     scheduleAgentDrain(cancelled.agentId);

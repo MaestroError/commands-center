@@ -2134,6 +2134,124 @@ describe("createTaskExecutionService", () => {
     }
   });
 
+  it("keeps a run that completed while startup recovery was reading the status", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const opencodeService = createMockOpenCodeService({
+      incompleteAsyncPrompt: true,
+      missingSessionStatus: true,
+    });
+    // Recovery reads the conversation before it reads the session status. Model a
+    // turn that finishes in that window: the status map no longer reports the
+    // session, while the snapshot recovery already took still looks unfinished.
+    const listSessionMessages = opencodeService.listSessionMessages;
+    const getSessionStatus = opencodeService.getSessionStatus;
+    let recovering = false;
+    let finishedDuringStatusRead = false;
+    opencodeService.getSessionStatus = (...args: Parameters<typeof getSessionStatus>) => {
+      if (recovering) {
+        finishedDuringStatusRead = true;
+      }
+      return getSessionStatus(...args);
+    };
+    opencodeService.listSessionMessages = async (
+      ...args: Parameters<typeof listSessionMessages>
+    ) => {
+      const messages = await listSessionMessages(...args);
+      return finishedDuringStatusRead
+        ? messages.map((message) =>
+            message.info.role === "assistant"
+              ? {
+                  info: {
+                    ...message.info,
+                    time: { ...message.info.time, completed: message.info.time.created + 1 },
+                  },
+                  parts: [
+                    { id: `part-${message.info.id}`, type: "text", text: "Task finished: done" },
+                  ],
+                }
+              : message,
+          )
+        : messages;
+    };
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitor: { autoStart: false },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Completed during read" });
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, run.id, "running");
+      await expect
+        .poll(
+          async () => (await taskService.getRunById(run.id))?.triggerMetadata?.["opencodeMonitor"],
+        )
+        .toBeDefined();
+      recovering = true;
+      await executionService.resumeRunningTaskRuns();
+
+      const recovered = await taskService.getRunById(run.id);
+      expect(recovered?.status).not.toBe("cancelled");
+      expect(opencodeService.abortSession).not.toHaveBeenCalled();
+      await expect(taskService.listRuns(task.id)).resolves.toHaveLength(1);
+    } finally {
+      executionService.dispose();
+      await testDb.cleanup();
+    }
+  });
+
+  it("cancels a monitored run as interrupted when its session stops being reported", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const opencodeService = createMockOpenCodeService({
+      incompleteAsyncPrompt: true,
+      missingSessionStatus: true,
+    });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitor: {
+        initialPollMs: 1,
+        maxPollMs: 1,
+        idlePolls: 1,
+        retryFailFastMs: 15,
+        noProgressMs: 30,
+        maxLifetimeMs: 5 * 60 * 1_000,
+      },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Engine went away" });
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, run.id, "cancelled");
+      const cancelled = await taskService.getRunById(run.id);
+      expect(cancelled?.cancellationReason).toContain("engine interruption");
+      expect(cancelled?.errorDetails).toMatchObject({
+        errorName: "TaskRunEngineInterrupted",
+        stage: "task_session_interrupted",
+      });
+    } finally {
+      executionService.dispose();
+      await testDb.cleanup();
+    }
+  });
+
   it("requeues a recovered engine interruption within the configured bound", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
