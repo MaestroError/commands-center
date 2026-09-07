@@ -121,7 +121,7 @@
 
 - Modify: `.github/workflows/ci.yml:3-5`
 - Modify: `.github/workflows/e2e.yml:3-5`
-- Preserve: `.github/workflows/trigger-merge-content-brief.yml:3-8`
+- Modify: `.github/workflows/trigger-merge-content-brief.yml:1-9`
 - Modify: `CONTRIBUTING.md:127-143`
 - Include: `plans/commands-center-automated-maintenance-pipeline.md`
 
@@ -229,7 +229,7 @@
   git rev-parse origin/staging
   ```
 
-  Expected immediately after creation: identical SHAs. Re-read `.github/workflows/ci.yml`, `.github/workflows/e2e.yml`, and `.github/workflows/trigger-merge-content-brief.yml` from `origin/staging` to confirm CI/E2E include `staging` while content intake remains `main`-only.
+  Expected immediately after creation: identical SHAs. Re-read `.github/workflows/ci.yml`, `.github/workflows/e2e.yml`, and `.github/workflows/trigger-merge-content-brief.yml` from `origin/staging` to confirm CI, E2E, and content intake include `staging`, with content intake also retaining `main`.
 
 ### Task 4: Create the `AI-ready` Label and Persist Specialist Policy
 
@@ -327,7 +327,7 @@
   Worker contract:
   - require active account `tonnyp22`, an open draft PR targeting `staging`, exact supplied head SHA, and a branch beginning `cc/commands-center/` owned by Tonny;
   - accept actionable feedback only from `MaestroError`, `tonnyp22`, or `copilot-pull-request-reviewer`;
-  - use the `github-review-comments` skill for supplied review feedback and explicitly disposition every supplied trusted thread;
+  - use the `address-github-comments` skill for supplied review feedback and explicitly disposition every supplied trusted thread;
   - inspect failed required checks, reproduce focused failures when feasible, and modify code only when evidence ties the failure to this PR;
   - report flaky, infrastructure, inaccessible, or unrelated failures without speculative code changes or workflow reruns;
   - implement only correct, safe, in-scope fixes; reply to or resolve threads only as permitted by the skill and verified evidence;
