@@ -84,7 +84,11 @@ export type ConversationState = {
 export type Action =
   | { type: "HYDRATE"; snapshot: { current: ConversationDetail; previous: ConversationSummary[] } }
   | { type: "HYDRATE_DETAIL"; detail: ConversationDetail; previous?: ConversationSummary[] }
-  | { type: "MERGE_RECONNECT_DETAIL"; detail: ConversationDetail }
+  | {
+      type: "MERGE_RECONNECT_DETAIL";
+      detail: ConversationDetail;
+      removedMessageIds: readonly string[];
+    }
   | { type: "OPTIMISTIC_USER_MESSAGE"; message: ConversationMessage }
   | { type: "SEND_FAILED"; message: string }
   | { type: "CLEAR_SEND_ERROR" }
@@ -207,13 +211,20 @@ export function conversationReducer(state: ConversationState, action: Action): C
         return state;
       }
 
+      // A message the live stream deleted is absent from live state, which would
+      // otherwise read as "missed during the gap" and resurrect it from a
+      // snapshot taken before the deletion. Live deletions win like live updates.
+      const removedIds = new Set(action.removedMessageIds);
+      const snapshotMessages = action.detail.messages.filter(
+        (message) => !removedIds.has(message.id),
+      );
       const liveById = new Map(live.messages.map((message) => [message.id, message]));
-      const snapshotIds = new Set(action.detail.messages.map((message) => message.id));
-      const restored = action.detail.messages.filter((message) => !liveById.has(message.id));
+      const snapshotIds = new Set(snapshotMessages.map((message) => message.id));
+      const restored = snapshotMessages.filter((message) => !liveById.has(message.id));
       // Snapshot order first (it is the persisted one), then anything the live
       // stream added after the snapshot was taken.
       const messages = [
-        ...action.detail.messages.map((message) => liveById.get(message.id) ?? message),
+        ...snapshotMessages.map((message) => liveById.get(message.id) ?? message),
         ...live.messages.filter((message) => !snapshotIds.has(message.id)),
       ];
 
@@ -655,6 +666,7 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
     sseAbortRef.current = controller;
     let interactionSequence = 0;
     let detailHydrationGeneration = 0;
+    const removedMessageIds = new Set<string>();
     const terminalPermissions = new Map<string, number>();
     const terminalQuestions = new Map<string, number>();
     const terminalLiveRequests = new Map<string, number>();
@@ -824,13 +836,21 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
                     // Only a newer snapshot supersedes this one; live events no
                     // longer do, because the merge cannot clobber them.
                     if (detailRequestGeneration !== detailHydrationGeneration) return;
-                    dispatch({ type: "MERGE_RECONNECT_DETAIL", detail });
+                    dispatch({
+                      type: "MERGE_RECONNECT_DETAIL",
+                      detail,
+                      removedMessageIds: [...removedMessageIds],
+                    });
                   })
                   .catch(() => {});
                 requestPendingInteractions(true);
               }
 
               continue;
+            }
+
+            if (event.type === "message.removed") {
+              removedMessageIds.add(event.properties.messageID);
             }
 
             const eventSequence = recordInteraction(event);

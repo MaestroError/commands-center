@@ -584,6 +584,69 @@ describe("useConversation", () => {
     expect(result.current.conversation?.messageCount).toBe(2);
   });
 
+  it("does not resurrect a message deleted while the reconnect snapshot was in flight", async () => {
+    const reconnect = createDeferred<void>();
+    const detail = createDeferred<ConversationDetail>();
+    vi.mocked(getConversation).mockReturnValue(detail.promise);
+    vi.mocked(connectConversationEvents).mockImplementation(
+      async function* (_conversationId, signal): AsyncGenerator<ChatEvent> {
+        yield { type: "connected", properties: {} };
+        yield {
+          type: "message.updated",
+          properties: {
+            sessionID: "sess-1",
+            message: {
+              id: "assistant-deleted",
+              conversationId: "conv-1",
+              role: "assistant",
+              content: "Reverted",
+              parts: [],
+              attachments: [],
+              createdAt: "2026-01-01T00:02:00.000Z",
+              updatedAt: "2026-01-01T00:02:00.000Z",
+            },
+          },
+        };
+        await reconnect.promise;
+        yield { type: "connected", properties: { reconnected: true } };
+        yield {
+          type: "message.removed",
+          properties: { sessionID: "sess-1", messageID: "assistant-deleted" },
+        };
+        await waitForAbort(signal);
+      },
+    );
+    const queryClient = createQueryClient();
+    const { result } = renderHook(() => useConversation("writer"), {
+      wrapper: createWrapper(queryClient),
+    });
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+
+    reconnect.resolve();
+    await waitFor(() => expect(result.current.conversation?.messages).toEqual([]));
+    // The snapshot predates the deletion and still carries the message.
+    detail.resolve(
+      makeConversation({
+        messages: [
+          {
+            id: "assistant-deleted",
+            conversationId: "conv-1",
+            role: "assistant",
+            content: "Reverted",
+            parts: [{ id: "part-deleted", type: "text", text: "Reverted" }],
+            attachments: [],
+            createdAt: "2026-01-01T00:02:00.000Z",
+            updatedAt: "2026-01-01T00:02:00.000Z",
+          },
+        ],
+      }),
+    );
+    await act(async () => Promise.resolve());
+
+    expect(result.current.conversation?.messages).toEqual([]);
+    expect(result.current.parts["assistant-deleted"]).toBeUndefined();
+  });
+
   it("leaves the conversation untouched when a reconnect snapshot adds nothing", async () => {
     const reconnect = createDeferred<void>();
     const detail = createDeferred<ConversationDetail>();

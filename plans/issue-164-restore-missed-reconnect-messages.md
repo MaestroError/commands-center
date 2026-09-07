@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- Live state wins for anything the stream has already delivered: message content, parts, session status, send errors, pending interactions and todos are never overwritten by a snapshot.
+- Live state wins for anything the stream has already delivered: message content, parts, session status, send errors, pending interactions and todos are never overwritten by a snapshot, and a message the stream deleted is never restored by one.
 - Only a newer snapshot supersedes an in-flight one; live events no longer discard it.
 - The upstream reconnect signal, the browser SSE reconnect path, backoff, and pending-interaction hydration stay exactly as they are.
 - No backend, schema, transport or persistence changes.
@@ -19,7 +19,8 @@
 
 - [x] Add a `MERGE_RECONNECT_DETAIL` action that unions snapshot and live messages by id, keeps the live copy of every shared id, orders snapshot messages first and live-only additions after, and merges parts only for restored messages.
 - [x] Dispatch it from the reconnect branch and drop the event-sequence bail-out, keeping the hydration-generation guard.
-- [x] Cover restoration alongside a racing live event, a snapshot that adds nothing, and the existing no-clobber guarantees.
+- [x] Exclude messages removed by live `message.removed` events for the lifetime of the conversation's stream.
+- [x] Cover restoration alongside a racing live event, a racing deletion, a snapshot that adds nothing, and the existing no-clobber guarantees.
 
 ## Verification
 
