@@ -34,6 +34,10 @@ export function mapRemoteMessage(
       parts,
       attachments,
       error: sanitizeMessageError(message.info["error"]),
+      completedAt:
+        message.info.time.completed !== undefined
+          ? new Date(message.info.time.completed).toISOString()
+          : undefined,
       createdAt: new Date(createdAtMs).toISOString(),
       updatedAt: new Date(updatedAtMs).toISOString(),
     }),

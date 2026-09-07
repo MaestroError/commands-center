@@ -51,6 +51,7 @@ export const messages = sqliteTable(
     system_prompt_snapshot_json: text("system_prompt_snapshot_json"),
     created_at: integer("created_at", { mode: "timestamp_ms" }).notNull(),
     updated_at: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+    completed_at: integer("completed_at", { mode: "timestamp_ms" }),
   },
   (table) => [index("messages_conversation_id_idx").on(table.conversation_id)],
 );
