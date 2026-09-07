@@ -808,9 +808,10 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
     try {
       const conversation = await transport.syncConversation(run);
       const scopedMessages = conversation.messages.slice(baselineMessageCount ?? 0);
+      const status = await transport.getSessionStatus(run);
 
       return {
-        interrupted: !isLatestTurnComplete(scopedMessages),
+        interrupted: status.type === "unknown" && !isLatestTurnComplete(scopedMessages),
         lastAssistantMessageId: readLatestAssistantMessage(scopedMessages)?.id,
       };
     } catch (error) {

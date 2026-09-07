@@ -1484,6 +1484,33 @@ describe("conversation-service delegating methods", () => {
     expect(after.current.id).not.toBe(conversationId);
   });
 
+  it("retains the conversation when upload cleanup fails", async () => {
+    const chatUploadService = mockChatUploadService(vi.fn(() => Promise.resolve()));
+    vi.mocked(chatUploadService.removeForConversation).mockRejectedValueOnce(
+      new Error("cleanup failed"),
+    );
+    const { service, agent } = await setup({ chatUploadService });
+    const snapshot = await service.resolveCurrent(agent.id);
+    await expect(service.deleteConversation(agent.id, snapshot.current.id)).rejects.toThrow(
+      "cleanup failed",
+    );
+    expect((await service.resolveCurrent(agent.id)).current.id).toBe(snapshot.current.id);
+  });
+
+  it("allows chat deletion to be retried after upload cleanup recovers", async () => {
+    const chatUploadService = mockChatUploadService(vi.fn(() => Promise.resolve()));
+    vi.mocked(chatUploadService.removeForConversation).mockRejectedValueOnce(
+      new Error("cleanup failed"),
+    );
+    const { service, agent } = await setup({ chatUploadService });
+    const snapshot = await service.resolveCurrent(agent.id);
+    await expect(service.deleteConversation(agent.id, snapshot.current.id)).rejects.toThrow(
+      "cleanup failed",
+    );
+    await service.deleteConversation(agent.id, snapshot.current.id);
+    expect((await service.resolveCurrent(agent.id)).current.id).not.toBe(snapshot.current.id);
+  });
+
   it("rejects a send queued behind conversation deletion", async () => {
     const deleting = createDeferred<void>();
     const { service, opencodeService, agent } = await setup();

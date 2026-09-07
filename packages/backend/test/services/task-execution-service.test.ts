@@ -2134,6 +2134,56 @@ describe("createTaskExecutionService", () => {
     }
   });
 
+  it.each(["busy", "unavailable"] as const)(
+    "preserves a recovered run when its confirmation status is %s",
+    async (status) => {
+      const testDb = await createTestDatabase();
+      const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+      const opencodeService = createMockOpenCodeService({
+        incompleteAsyncPrompt: true,
+        missingSessionStatus: true,
+      });
+      const conversationService = createConversationService({
+        db: testDb.client.db,
+        config: testDb.config,
+        opencodeService,
+      });
+      const executionService = createTaskExecutionService({
+        taskService,
+        conversationService,
+        monitor: { autoStart: false },
+      });
+      try {
+        const agent = await insertAgent(testDb.client.db);
+        const task = await taskService.create({
+          agentId: agent.id,
+          title: "Transient status absence",
+        });
+        const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+        await expectRunStatus(taskService, run.id, "running");
+        await expect
+          .poll(
+            async () =>
+              (await taskService.getRunById(run.id))?.triggerMetadata?.["opencodeMonitor"],
+          )
+          .toBeDefined();
+        opencodeService.getSessionStatus = vi
+          .fn<typeof opencodeService.getSessionStatus>()
+          .mockResolvedValueOnce({ type: "unknown" })
+          .mockImplementation(() => {
+            if (status === "unavailable") return Promise.reject(new Error("status unavailable"));
+            return Promise.resolve({ type: "busy" });
+          });
+        await executionService.resumeRunningTaskRuns();
+        expect((await taskService.getRunById(run.id))?.status).toBe("running");
+        expect(opencodeService.abortSession).not.toHaveBeenCalled();
+      } finally {
+        executionService.dispose();
+        await testDb.cleanup();
+      }
+    },
+  );
+
   it("keeps a run that completed while startup recovery was reading the status", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });

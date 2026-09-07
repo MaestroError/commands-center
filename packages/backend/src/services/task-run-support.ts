@@ -320,19 +320,6 @@ export function readLatestAssistantMessage(
 const INTERRUPTED_STEP_FINISH_REASONS = new Set(["interrupted", "aborted", "error"]);
 
 /**
- * Affirmative evidence that an assistant turn finished normally, which is what
- * a successful task completion requires.
- *
- * `time.completed` is the primary marker: an interrupted engine never records
- * it. It is not sufficient on its own, though — OpenCode also timestamps a turn
- * it ended as interrupted/aborted/errored, and those must not settle as a
- * success. The closing `step-finish` reason is therefore used to reject them.
- *
- * Deliberately not used the other way round: every step of a multi-step turn
- * emits its own `step-finish`, so treating one as completion evidence in the
- * absence of `time.completed` would settle a turn that is still running.
- */
-/**
  * Completion evidence that answers the newest prompt in scope.
  *
  * A reply reactivates the run before its prompt is delivered, so the previous
@@ -354,6 +341,19 @@ export function isLatestTurnComplete(messages: ConversationMessage[]): boolean {
   return isAssistantTurnComplete(messages[latestAssistantIndex]!);
 }
 
+/**
+ * Affirmative evidence that an assistant turn finished normally, which is what
+ * a successful task completion requires.
+ *
+ * `time.completed` is the primary marker: an interrupted engine never records
+ * it. It is not sufficient on its own, though — OpenCode also timestamps a turn
+ * it ended as interrupted/aborted/errored, and those must not settle as a
+ * success. The closing `step-finish` reason is therefore used to reject them.
+ *
+ * Deliberately not used the other way round: every step of a multi-step turn
+ * emits its own `step-finish`, so treating one as completion evidence in the
+ * absence of `time.completed` would settle a turn that is still running.
+ */
 export function isAssistantTurnComplete(message: ConversationMessage): boolean {
   if (!message.completedAt) {
     return false;

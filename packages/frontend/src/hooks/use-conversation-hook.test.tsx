@@ -508,6 +508,98 @@ describe("useConversation", () => {
     expect(connectConversationEvents).toHaveBeenCalledTimes(2);
   });
 
+  it.each(["none", "updated", "delta", "removed"] as const)(
+    "refreshes pre-outage parts unless a %s part event arrives during reconnect",
+    async (change) => {
+      const reconnect = createDeferred<void>();
+      const detail = createDeferred<ConversationDetail>();
+      const message = {
+        id: "assistant-gap",
+        conversationId: "conv-1",
+        role: "assistant" as const,
+        content: "Partial",
+        attachments: [],
+        parts: [{ id: "part-gap", type: "text", text: "Partial" }],
+        createdAt: "2026-01-01T00:01:00.000Z",
+        updatedAt: "2026-01-01T00:01:00.000Z",
+      };
+      vi.mocked(getConversation).mockReturnValue(detail.promise);
+      vi.mocked(connectConversationEvents).mockImplementation(
+        async function* (_conversationId, signal): AsyncGenerator<ChatEvent> {
+          yield { type: "connected", properties: {} };
+          yield { type: "message.updated", properties: { sessionID: "sess-1", message } };
+          yield {
+            type: "message.part.updated",
+            properties: { sessionID: "sess-1", messageID: message.id, part: message.parts[0]! },
+          };
+          await reconnect.promise;
+          yield { type: "connected", properties: { reconnected: true } };
+          if (change === "updated") {
+            yield {
+              type: "message.part.updated",
+              properties: {
+                sessionID: "sess-1",
+                messageID: message.id,
+                part: { id: "part-gap", type: "text", text: "Live" },
+              },
+            };
+          } else if (change === "delta") {
+            yield {
+              type: "message.part.delta",
+              properties: {
+                sessionID: "sess-1",
+                messageID: message.id,
+                partID: "part-gap",
+                field: "text",
+                delta: " live",
+              },
+            };
+          } else if (change === "removed") {
+            yield {
+              type: "message.part.removed",
+              properties: { sessionID: "sess-1", messageID: message.id, partID: "part-gap" },
+            };
+          }
+          await waitForAbort(signal);
+        },
+      );
+      const queryClient = createQueryClient();
+      const { result } = renderHook(() => useConversation("writer"), {
+        wrapper: createWrapper(queryClient),
+      });
+      await waitFor(() =>
+        expect(result.current.parts[message.id]?.[0]).toMatchObject({ text: "Partial" }),
+      );
+      reconnect.resolve();
+      await waitFor(() => expect(getConversation).toHaveBeenCalledOnce());
+      const expected =
+        change === "none" ? "Complete" : change === "updated" ? "Live" : "Partial live";
+      if (change !== "none") {
+        await waitFor(() =>
+          expect(result.current.parts[message.id]).toEqual(
+            change === "removed" ? [] : [{ id: "part-gap", type: "text", text: expected }],
+          ),
+        );
+      }
+      detail.resolve(
+        makeConversation({
+          messages: [
+            {
+              ...message,
+              content: "Complete",
+              completedAt: "2026-01-01T00:02:00.000Z",
+              parts: [{ id: "part-gap", type: "text", text: "Complete" }],
+            },
+          ],
+        }),
+      );
+      await act(async () => Promise.resolve());
+      expect(result.current.parts[message.id]).toEqual(
+        change === "removed" ? [] : [{ id: "part-gap", type: "text", text: expected }],
+      );
+    },
+  );
+
   it("does not let a reconnect snapshot clobber live message, part, and status events", async () => {
     const reconnect = createDeferred<void>();
     const detail = createDeferred<ConversationDetail>();

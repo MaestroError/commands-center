@@ -83,6 +83,61 @@ describe("paginated reconnect restoration", () => {
   const recent = makeMessage({ id: "msg-recent", createdAt: "2026-01-01T00:02:00.000Z" });
   const missed = makeMessage({ id: "msg-missed", createdAt: "2026-01-01T00:03:00.000Z" });
 
+  it("refreshes an existing message that completed during the outage", () => {
+    const partial = makeMessage({
+      id: "assistant",
+      role: "assistant",
+      content: "Partial",
+      parts: [makePart({ text: "Partial" })],
+    });
+    const completed = {
+      ...partial,
+      content: "Complete",
+      completedAt: "2026-01-01T00:03:00.000Z",
+      parts: [makePart({ text: "Complete" })],
+    };
+    const next = conversationReducer(
+      {
+        ...initialState,
+        conversation: makeConversation({ messages: [partial] }),
+        parts: { [partial.id]: partial.parts },
+      },
+      {
+        type: "MERGE_RECONNECT_DETAIL",
+        detail: makeConversation({ messages: [completed] }),
+        removedMessageIds: [],
+        updatedMessageIds: [],
+      },
+    );
+    expect(next.conversation?.messages[0]).toEqual(completed);
+    expect(next.parts[partial.id]).toEqual(completed.parts);
+  });
+
+  it("preserves a message updated after the reconnect request began", () => {
+    const live = makeMessage({
+      id: "assistant",
+      role: "assistant",
+      content: "Live",
+      parts: [makePart({ text: "Live" })],
+    });
+    const stale = { ...live, content: "Stale", parts: [makePart({ text: "Stale" })] };
+    const next = conversationReducer(
+      {
+        ...initialState,
+        conversation: makeConversation({ messages: [live] }),
+        parts: { [live.id]: live.parts },
+      },
+      {
+        type: "MERGE_RECONNECT_DETAIL",
+        detail: makeConversation({ messages: [stale] }),
+        removedMessageIds: [],
+        updatedMessageIds: [live.id],
+      },
+    );
+    expect(next.conversation?.messages[0]).toEqual(live);
+    expect(next.parts[live.id]).toEqual(live.parts);
+  });
+
   it("keeps loaded older messages before the reconnect page", () => {
     const next = conversationReducer(
       { ...initialState, conversation: makeConversation({ messages: [older, recent] }) },
@@ -90,6 +145,7 @@ describe("paginated reconnect restoration", () => {
         type: "MERGE_RECONNECT_DETAIL",
         detail: makeConversation({ messages: [recent, missed], hasMoreMessages: true }),
         removedMessageIds: [],
+        updatedMessageIds: [],
       },
     );
     expect(next.conversation?.messages.map((message) => message.id)).toEqual([
@@ -108,6 +164,7 @@ describe("paginated reconnect restoration", () => {
         type: "MERGE_RECONNECT_DETAIL",
         detail: makeConversation({ messages: [last] }),
         removedMessageIds: [],
+        updatedMessageIds: [],
       },
     );
     expect(next.conversation?.messages.map((message) => message.id)).toEqual([first.id, last.id]);
@@ -124,6 +181,7 @@ describe("paginated reconnect restoration", () => {
           hasMoreMessages: true,
         }),
         removedMessageIds: [],
+        updatedMessageIds: [],
       },
     );
     expect(next.conversation?.messageCount).toBe(120);
@@ -139,6 +197,7 @@ describe("paginated reconnect restoration", () => {
         type: "MERGE_RECONNECT_DETAIL",
         detail: makeConversation({ messages: [recent, missed], hasMoreMessages: true }),
         removedMessageIds: [],
+        updatedMessageIds: [],
       },
     );
     expect(next.conversation?.hasMoreMessages).toBe(false);
@@ -154,6 +213,7 @@ describe("paginated reconnect restoration", () => {
         type: "MERGE_RECONNECT_DETAIL",
         detail: makeConversation({ messages: [recent, missed], hasMoreMessages: true }),
         removedMessageIds: [],
+        updatedMessageIds: [],
       },
     );
     expect(next.conversation?.hasMoreMessages).toBe(true);

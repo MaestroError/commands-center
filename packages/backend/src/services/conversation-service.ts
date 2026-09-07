@@ -1026,6 +1026,11 @@ export function createConversationService(options: {
           );
         }
 
+        await chatUploadService.removeForConversation({
+          agentId: agent.id,
+          conversationId: conversation.id,
+        });
+
         // Best-effort: delete from OpenCode (session may already be gone)
         try {
           await options.opencodeService.deleteSession(
@@ -1037,20 +1042,6 @@ export function createConversationService(options: {
           // ignore
         }
 
-        // Best-effort, like the OpenCode and archive cleanups around it: the
-        // archive removal below deletes the same chat directory recursively, so
-        // a transient failure here must not leave the chat undeletable.
-        try {
-          await chatUploadService.removeForConversation({
-            agentId: agent.id,
-            conversationId: conversation.id,
-          });
-        } catch (error) {
-          options.logger?.warn(
-            { err: error, conversationId: conversation.id },
-            "chat upload removal failed",
-          );
-        }
         await removeConversationArchive(agent, conversation);
 
         // Delete dependents before the conversation row. Artifacts (and their

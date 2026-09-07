@@ -94,6 +94,7 @@ export type Action =
       type: "MERGE_RECONNECT_DETAIL";
       detail: ConversationDetail;
       removedMessageIds: readonly string[];
+      updatedMessageIds: readonly string[];
     }
   | { type: "OPTIMISTIC_USER_MESSAGE"; message: ConversationMessage }
   | { type: "SEND_FAILED"; message: string }
@@ -229,13 +230,6 @@ export function conversationReducer(state: ConversationState, action: Action): C
         sendError: null,
       };
 
-    // A reconnect snapshot restores what the client missed while the upstream
-    // event stream was down, without overwriting anything the live stream has
-    // already delivered: live wins for every message it knows about, and parts,
-    // session status, errors and interactions are left alone. That is what makes
-    // the snapshot safe to apply even when events arrived while it was in
-    // flight — the moment a message persisted during the gap would otherwise be
-    // dropped along with the snapshot.
     case "MERGE_RECONNECT_DETAIL": {
       const live = state.conversation;
 
@@ -252,9 +246,12 @@ export function conversationReducer(state: ConversationState, action: Action): C
       );
       const liveById = new Map(live.messages.map((message) => [message.id, message]));
       const snapshotIds = new Set(snapshotMessages.map((message) => message.id));
-      const restored = snapshotMessages.filter((message) => !liveById.has(message.id));
+      const updatedIds = new Set(action.updatedMessageIds);
+      const refreshed = snapshotMessages.filter((message) => !updatedIds.has(message.id));
       const messages = [
-        ...snapshotMessages.map((message) => liveById.get(message.id) ?? message),
+        ...snapshotMessages.map((message) =>
+          updatedIds.has(message.id) ? (liveById.get(message.id) ?? message) : message,
+        ),
         ...live.messages.filter((message) => !snapshotIds.has(message.id)),
       ].sort((left, right) => {
         const timeDifference = Date.parse(left.createdAt) - Date.parse(right.createdAt);
@@ -274,7 +271,8 @@ export function conversationReducer(state: ConversationState, action: Action): C
             action.detail.hasMoreMessages &&
             (live.messages.length === 0 || live.hasMoreMessages !== false),
         },
-        parts: restored.length === 0 ? state.parts : { ...buildPartsMap(restored), ...state.parts },
+        parts:
+          refreshed.length === 0 ? state.parts : { ...state.parts, ...buildPartsMap(refreshed) },
       };
     }
 
@@ -762,6 +760,7 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
     let interactionSequence = 0;
     let detailHydrationGeneration = 0;
     const removedMessageIds = new Set<string>();
+    let reconnectUpdatedMessageIds = new Set<string>();
     const terminalPermissions = new Map<string, number>();
     const terminalQuestions = new Map<string, number>();
     const terminalLiveRequests = new Map<string, number>();
@@ -925,6 +924,8 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
                 requestPendingInteractions(false);
               } else {
                 const detailRequestGeneration = ++detailHydrationGeneration;
+                const updatedMessageIds = new Set<string>();
+                reconnectUpdatedMessageIds = updatedMessageIds;
                 void getConversation(activeAgentId, activeConversationId)
                   .then((detail) => {
                     if (controller.signal.aborted) return;
@@ -935,6 +936,7 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
                       type: "MERGE_RECONNECT_DETAIL",
                       detail,
                       removedMessageIds: [...removedMessageIds],
+                      updatedMessageIds: [...updatedMessageIds],
                     });
                   })
                   .catch(() => {});
@@ -946,6 +948,16 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
 
             if (event.type === "message.removed") {
               removedMessageIds.add(event.properties.messageID);
+            }
+
+            if (event.type === "message.updated") {
+              reconnectUpdatedMessageIds.add(event.properties.message.id);
+            } else if (
+              event.type === "message.part.updated" ||
+              event.type === "message.part.delta" ||
+              event.type === "message.part.removed"
+            ) {
+              reconnectUpdatedMessageIds.add(event.properties.messageID);
             }
 
             const eventSequence = recordInteraction(event);

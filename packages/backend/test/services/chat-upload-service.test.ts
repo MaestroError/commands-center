@@ -4,6 +4,10 @@ import { resolve } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const fsMocks = vi.hoisted(() => ({
+  actualRm: null as typeof fsPromises.rm | null,
+  rm: vi.fn<typeof fsPromises.rm>(),
+  actualOpen: null as typeof fsPromises.open | null,
+  open: vi.fn<typeof fsPromises.open>(),
   actualChmod: null as typeof fsPromises.chmod | null,
   actualRename: null as typeof fsPromises.rename | null,
   chmod: vi.fn<typeof fsPromises.chmod>(),
@@ -12,11 +16,21 @@ const fsMocks = vi.hoisted(() => ({
 
 vi.mock("node:fs/promises", async (importOriginal) => {
   const actual = await importOriginal<typeof fsPromises>();
+  fsMocks.actualRm = actual.rm;
+  fsMocks.rm.mockImplementation(actual.rm);
+  fsMocks.actualOpen = actual.open;
+  fsMocks.open.mockImplementation(actual.open);
   fsMocks.actualChmod = actual.chmod;
   fsMocks.actualRename = actual.rename;
   fsMocks.chmod.mockImplementation(actual.chmod);
   fsMocks.rename.mockImplementation(actual.rename);
-  return { ...actual, chmod: fsMocks.chmod, rename: fsMocks.rename };
+  return {
+    ...actual,
+    rm: fsMocks.rm,
+    open: fsMocks.open,
+    chmod: fsMocks.chmod,
+    rename: fsMocks.rename,
+  };
 });
 
 import { createChatUploadService } from "../../src/services/chat-upload-service";
@@ -27,8 +41,91 @@ const { access, mkdir, readFile, readdir, rm, stat, symlink, writeFile } = fsPro
 
 describe("createChatUploadService", () => {
   beforeEach(() => {
+    fsMocks.rm.mockReset().mockImplementation(fsMocks.actualRm!);
+    fsMocks.open.mockReset().mockImplementation(fsMocks.actualOpen!);
     fsMocks.chmod.mockReset().mockImplementation(fsMocks.actualChmod!);
     fsMocks.rename.mockReset().mockImplementation(fsMocks.actualRename!);
+  });
+
+  it("keeps rejecting deletion while quarantined upload removal fails", async () => {
+    const testDb = await createTestDatabase();
+    const service = createChatUploadService({ config: testDb.config });
+    try {
+      await service.persist({ ...OWNER, attachments: [attachment("private.txt", "private")] });
+      fsMocks.rm.mockImplementation(async (path, options) => {
+        if (String(path).endsWith(".deleting")) throw new Error("removal failed");
+        await fsMocks.actualRm!(path, options);
+      });
+      await expect(service.removeForConversation(OWNER)).rejects.toThrow("could not be removed");
+      await expect(service.removeForConversation(OWNER)).rejects.toThrow("could not be removed");
+      fsMocks.rm.mockImplementation(fsMocks.actualRm!);
+      await expect(service.removeForConversation(OWNER)).resolves.toBeUndefined();
+    } finally {
+      fsMocks.rm.mockImplementation(fsMocks.actualRm!);
+      await testDb.cleanup();
+    }
+  });
+
+  it("preserves a file that collides with an exclusive upload create", async () => {
+    const testDb = await createTestDatabase();
+    const service = createChatUploadService({ config: testDb.config });
+    let collidedPath = "";
+    fsMocks.open.mockImplementationOnce(async (path, flags, mode) => {
+      collidedPath = String(path);
+      await writeFile(path, "existing bytes");
+      return fsMocks.actualOpen!(path, flags, mode);
+    });
+    try {
+      await expect(
+        service.persist({ ...OWNER, attachments: [attachment("new.txt", "new")] }),
+      ).rejects.toThrow("could not be saved");
+      await expect(readFile(collidedPath, "utf8")).resolves.toBe("existing bytes");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("removes a partial payload after an owned file write fails", async () => {
+    const testDb = await createTestDatabase();
+    const service = createChatUploadService({ config: testDb.config });
+    let partialPath = "";
+    fsMocks.open.mockImplementationOnce(async (path, flags, mode) => {
+      partialPath = String(path);
+      const file = await fsMocks.actualOpen!(path, flags, mode);
+      vi.spyOn(file, "writeFile").mockImplementationOnce(async () => {
+        await file.write(Buffer.from("partial"));
+        throw new Error("disk write failed");
+      });
+      return file;
+    });
+    try {
+      await expect(
+        service.persist({ ...OWNER, attachments: [attachment("new.txt", "new")] }),
+      ).rejects.toThrow("could not be saved");
+      await expect(access(partialPath)).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("accepts whitespace-wrapped canonical base64", async () => {
+    const testDb = await createTestDatabase();
+    const service = createChatUploadService({ config: testDb.config });
+    try {
+      await service.persist({
+        ...OWNER,
+        attachments: [
+          {
+            ...attachment("wrapped.txt", "hello"),
+            dataUrl: "data:text/plain;base64, aGVs\r\nbG8=\t ",
+          },
+        ],
+      });
+      const [upload] = await service.list(OWNER);
+      await expect(readFile(upload!.absolutePath, "utf8")).resolves.toBe("hello");
+    } finally {
+      await testDb.cleanup();
+    }
   });
 
   it("stores distinct private files with the accepted bytes", async () => {

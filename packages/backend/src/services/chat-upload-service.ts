@@ -3,6 +3,7 @@ import {
   chmod,
   lstat,
   mkdir,
+  open,
   readFile,
   readdir,
   realpath,
@@ -219,7 +220,10 @@ export function createChatUploadService(options: { config: RuntimeConfig; logger
   // Reclaim them opportunistically so uploaded bytes never outlive their chat.
   async function sweepStaleQuarantines(): Promise<void> {
     const sessionsRoot = options.config.paths.subdirectories.sessions;
-    const entries = await readdir(sessionsRoot).catch(() => [] as string[]);
+    const entries = await readdir(sessionsRoot).catch((error: unknown) => {
+      if (isFilesystemError(error, "ENOENT")) return [] as string[];
+      throw new Error("Chat uploads could not be inspected for removal.");
+    });
 
     await Promise.all(
       entries
@@ -232,6 +236,7 @@ export function createChatUploadService(options: { config: RuntimeConfig; logger
               { err: error },
               "stale chat upload quarantine could not be removed",
             );
+            throw new Error("Chat uploads could not be removed.");
           }),
         ),
     );
@@ -282,11 +287,13 @@ export function createChatUploadService(options: { config: RuntimeConfig; logger
         ].join("/");
         const absolutePath = resolve(uploadDirectory, storedFilename);
         ensureDescendant(absolutePath, uploadDirectory);
-        // Recorded before the write: `wx` creates the file before the bytes land,
-        // so a half-written file still has to be cleaned up — an unlisted leftover
-        // would otherwise sit in the directory forever.
+        const file = await open(absolutePath, "wx", 0o600);
         writtenPaths.push(absolutePath);
-        await writeFile(absolutePath, content, { flag: "wx", mode: 0o600 });
+        try {
+          await file.writeFile(content);
+        } finally {
+          await file.close();
+        }
         const upload = {
           id,
           filename,
@@ -484,10 +491,11 @@ function decodeDataUrl(dataUrl: string): Buffer {
 
   try {
     if (metadata.split(";").includes("base64")) {
-      if (!isCanonicalBase64(encoded)) {
+      const normalized = encoded.replace(/\s+/g, "");
+      if (!isCanonicalBase64(normalized)) {
         throw new Error("invalid base64");
       }
-      return Buffer.from(encoded, "base64");
+      return Buffer.from(normalized, "base64");
     }
 
     return decodePercentEncodedBytes(encoded);
