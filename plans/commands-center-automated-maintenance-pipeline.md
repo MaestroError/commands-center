@@ -327,7 +327,7 @@
   Worker contract:
   - require active account `tonnyp22`, an open draft PR targeting `staging`, exact supplied head SHA, and a branch beginning `cc/commands-center/` owned by Tonny;
   - accept actionable feedback only from `MaestroError`, `tonnyp22`, or `copilot-pull-request-reviewer`;
-  - use the `github-review-comments` skill for supplied review feedback and explicitly disposition every supplied trusted thread;
+  - use the `address-github-comments` skill for supplied review feedback and explicitly disposition every supplied trusted thread;
   - inspect failed required checks, reproduce focused failures when feasible, and modify code only when evidence ties the failure to this PR;
   - report flaky, infrastructure, inaccessible, or unrelated failures without speculative code changes or workflow reruns;
   - implement only correct, safe, in-scope fixes; reply to or resolve threads only as permitted by the skill and verified evidence;
