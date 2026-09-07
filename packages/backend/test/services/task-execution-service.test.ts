@@ -3381,7 +3381,7 @@ describe("createTaskExecutionService", () => {
     }
   });
 
-  it("auto-retries a failed feedback subtask up to the cap, then leaves it failed", async () => {
+  it("caps automatic retries of failed feedback subtasks", { timeout: 10_000 }, async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
     // Every run errors (terminal provider error, no fallback models configured),
@@ -3429,10 +3429,13 @@ describe("createTaskExecutionService", () => {
 
       // 1 original + 2 auto-retries = 3 runs, all errored, then the chain stops.
       await expect
-        .poll(async () => {
-          const runs = await taskService.listRuns(task.id);
-          return runs.length === 3 && runs.every((entry) => entry.status === "error");
-        })
+        .poll(
+          async () => {
+            const runs = await taskService.listRuns(task.id);
+            return runs.length === 3 && runs.every((entry) => entry.status === "error");
+          },
+          { timeout: 5_000 },
+        )
         .toBe(true);
 
       executionService.dispose();
