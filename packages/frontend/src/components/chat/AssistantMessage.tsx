@@ -1,3 +1,5 @@
+import { memo } from "react";
+
 import type { ConversationMessage, ConversationPart } from "@cc/shared/schemas";
 
 import { Markdown } from "./Markdown";
@@ -77,7 +79,7 @@ function renderGroupedEntry(entry: GroupedEntry, index: number) {
   return <div key={entry.part.id}>{rendered}</div>;
 }
 
-export function AssistantMessage({ message, parts }: AssistantMessageProps) {
+function AssistantMessageImpl({ message, parts }: AssistantMessageProps) {
   const hasParts = parts.length > 0;
   const messageError = message.error?.message;
 
@@ -113,3 +115,13 @@ export function AssistantMessage({ message, parts }: AssistantMessageProps) {
 
   return <div className="space-y-3">{renderedEntries}</div>;
 }
+
+/**
+ * Memoized because the timeline re-renders every message on any state change,
+ * and each assistant message runs a full react-markdown pipeline plus its tool
+ * cards. During a streaming turn that fires on every `message.part.updated`
+ * event, so an untouched 300-message history was re-rendering in full many
+ * times a second. `message` and the per-message `parts` array both keep their
+ * identity across unrelated updates, so this holds.
+ */
+export const AssistantMessage = memo(AssistantMessageImpl);

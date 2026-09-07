@@ -3,10 +3,21 @@
 import { PageHeader } from "@/components/common/PageHeader";
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
 import { TabBar } from "@/components/common/TabBar";
+import {
+  MessageUsageInfoButton,
+  ToolUsageInfoButton,
+  UsageInfoButton,
+} from "@/components/chat/UsageInfoButton";
+import { buildUsageTotalRows, formatUsageTotal } from "@/components/chat/usage-totals";
 import { RunReplyPanel } from "@/components/tasks/task-feedback-section";
 import { formatDate, formatToken, readAgentName } from "@/components/tasks/task-format";
 import { StatusBadge } from "@/components/tasks/task-ui";
-import { useTaskMutations, useTaskRunQuery, useTaskRunSessionQuery } from "@/hooks/use-tasks-query";
+import {
+  useTaskMutations,
+  useTaskRunQuery,
+  useTaskRunSessionQuery,
+  useTaskUsageQuery,
+} from "@/hooks/use-tasks-query";
 import type {
   ConversationMessage,
   ConversationPart,
@@ -15,8 +26,12 @@ import type {
   TaskPermissionProfile,
   TaskRun,
   TaskSubtask,
+  TaskUsage,
 } from "@cc/shared/schemas";
-import { Fragment, type ReactNode, useState } from "react";
+import { Fragment, type ReactNode, useCallback, useState } from "react";
+import { getMessageParts, getOlderMessages } from "@/lib/api/conversations";
+import { FullPartsProvider } from "@/components/chat/tools/FullPartsProvider";
+import { TruncatedNotice } from "@/components/chat/tools/TruncatedNotice";
 import { Link, useLocation, useNavigate } from "react-router";
 import {
   formatRunDuration,
@@ -39,6 +54,8 @@ export function RunHistory(props: {
   subtasks?: TaskSubtask[];
   isLoading: boolean;
   error: unknown;
+  /** Per-run token totals, keyed by run id. */
+  usage?: TaskUsage;
 }) {
   const [openReplyRunId, setOpenReplyRunId] = useState<string>();
 
@@ -74,6 +91,7 @@ export function RunHistory(props: {
                 <th className="py-3 pr-3">Target</th>
                 <th className="py-3 pr-3">Started</th>
                 <th className="py-3 pr-3">Duration</th>
+                <th className="py-3 pr-3">Tokens</th>
                 <th className="py-3 pr-3">Artifacts</th>
                 <th className="py-3 pr-3">Session</th>
                 <th className="py-3 pr-3">Summary</th>
@@ -101,6 +119,11 @@ export function RunHistory(props: {
                     </td>
                     <td className="py-3 pr-3 text-text-secondary">{formatDate(run.startedAt)}</td>
                     <td className="py-3 pr-3 text-text-secondary">{formatRunDuration(run)}</td>
+                    <td className="py-3 pr-3 tabular-nums text-text-secondary">
+                      {props.usage?.runs[run.id]
+                        ? formatUsageTotal(props.usage.runs[run.id]!)
+                        : "—"}
+                    </td>
                     <td className="py-3 pr-3 text-text-secondary">{run.artifacts.length}</td>
                     <td className="py-3 pr-3 text-text-secondary">
                       {run.opencodeSessionId ? "Recorded" : "Unavailable"}
@@ -169,9 +192,13 @@ export function TaskRunDetail(props: {
   const location = useLocation();
   const runQuery = useTaskRunQuery(props.taskId, props.runId);
   const sessionQuery = useTaskRunSessionQuery(props.taskId, props.runId);
+  // Aggregated server-side: the session log is paged, so summing what is loaded
+  // would under-report a long run.
+  const usageQuery = useTaskUsageQuery(props.taskId);
   const mutations = useTaskMutations();
   const [activeTabId, setActiveTabId] = useState<"session" | "details">("session");
   const run = runQuery.data;
+  const runUsage = props.runId ? usageQuery.data?.runs[props.runId] : undefined;
   const agentSlug = props.agents?.find(
     (entry) => entry.id === (run?.agentId ?? props.task?.agentId),
   )?.slug;
@@ -247,6 +274,16 @@ export function TaskRunDetail(props: {
                 {formatToken(run.triggerSource)}
               </span>
             </div>
+            {runUsage ? (
+              <div className="flex items-center justify-between gap-2">
+                <Metric label="Tokens" value={formatUsageTotal(runUsage)} />
+                <UsageInfoButton
+                  label="Run token and cost totals"
+                  rows={buildUsageTotalRows(runUsage)}
+                  title="Run usage"
+                />
+              </div>
+            ) : null}
             <Metric label="Started" value={formatDate(run.startedAt)} />
             <Metric label="Completed" value={formatDate(run.completedAt)} />
             <Metric label="Session" value={run.opencodeSessionId ?? "No session"} />
@@ -278,13 +315,18 @@ export function TaskRunDetail(props: {
 
 function TaskRunSessionTab(props: {
   run: TaskRun;
-  conversation?: { messages: ConversationMessage[] };
+  conversation?: {
+    id: string;
+    messages: ConversationMessage[];
+    messageCount: number;
+    hasMoreMessages?: boolean;
+  };
   diagnostics: Array<{ code: string; message: string }>;
   isLoading: boolean;
 }) {
   const [logOpen, setLogOpen] = useState(false);
   const messageCount =
-    props.conversation?.messages.length ?? readResultMessageCount(props.run.result) ?? 0;
+    props.conversation?.messageCount ?? readResultMessageCount(props.run.result) ?? 0;
 
   return (
     <div className="grid gap-5">
@@ -404,7 +446,7 @@ function CollapsibleRunContextBlock(props: {
 }
 
 function renderSessionLogContent(props: {
-  conversation?: { messages: ConversationMessage[] };
+  conversation?: { id: string; messages: ConversationMessage[]; hasMoreMessages?: boolean };
   diagnostics: Array<{ code: string; message: string }>;
   isLoading: boolean;
 }) {
@@ -413,13 +455,10 @@ function renderSessionLogContent(props: {
   }
 
   if (props.conversation?.messages.length) {
-    return (
-      <div className="grid gap-3">
-        {props.conversation.messages.map((message) => (
-          <SessionLogEntry key={message.id} message={message} />
-        ))}
-      </div>
-    );
+    // Keyed by conversation: SessionLog holds per-run paging and expanded-parts
+    // state, and React would otherwise reuse the instance across runs and mix
+    // the previous run's messages into the next.
+    return <SessionLog conversation={props.conversation} key={props.conversation.id} />;
   }
 
   if (!props.conversation?.messages.length && props.diagnostics.length === 0) {
@@ -439,6 +478,79 @@ function renderSessionLogContent(props: {
   );
 }
 
+/**
+ * The run's messages, newest page first. A long run is paginated the same way
+ * chat is, so the log has to offer the rest rather than silently ending at the
+ * page boundary.
+ */
+function SessionLog(props: {
+  conversation: { id: string; messages: ConversationMessage[]; hasMoreMessages?: boolean };
+}) {
+  const [older, setOlder] = useState<ConversationMessage[]>([]);
+  const [hasMore, setHasMore] = useState(props.conversation.hasMoreMessages === true);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  // Tool output arrives trimmed to a preview; expanding a card swaps in the
+  // message's full parts, keyed by message id.
+  const [fullParts, setFullParts] = useState<Record<string, ConversationPart[]>>({});
+
+  const conversationId = props.conversation.id;
+  const loadFullParts = useCallback(
+    async (messageId: string) => {
+      const full = await getMessageParts(conversationId, messageId);
+      setFullParts((current) => ({ ...current, [messageId]: full.parts }));
+    },
+    [conversationId],
+  );
+
+  const messages = [...older, ...props.conversation.messages];
+
+  const loadOlder = () => {
+    const oldest = messages[0];
+    if (!oldest || loading) return;
+
+    setLoading(true);
+    setError(null);
+    getOlderMessages(props.conversation.id, oldest.id)
+      .then((page) => {
+        setOlder((current) => [...page.messages, ...current]);
+        setHasMore(page.hasMore);
+      })
+      .catch((cause: unknown) => {
+        setError(cause instanceof Error ? cause.message : "Could not load older messages.");
+      })
+      .finally(() => setLoading(false));
+  };
+
+  return (
+    <div className="grid gap-3">
+      {hasMore ? (
+        <div className="flex justify-center">
+          <button
+            className="rounded-md border border-border px-3 py-1.5 text-xs text-text-secondary transition hover:border-accent/50 hover:text-text-primary disabled:opacity-60"
+            disabled={loading}
+            onClick={loadOlder}
+            type="button"
+          >
+            {loading ? "Loading older messages…" : "Load older messages"}
+          </button>
+        </div>
+      ) : null}
+      {error ? <p className="text-center text-xs text-danger">{error}</p> : null}
+      <FullPartsProvider loadFullParts={loadFullParts}>
+        {messages.map((message) => (
+          <SessionLogEntry
+            key={message.id}
+            message={
+              fullParts[message.id] ? { ...message, parts: fullParts[message.id]! } : message
+            }
+          />
+        ))}
+      </FullPartsProvider>
+    </div>
+  );
+}
+
 function SessionLogEntry(props: { message: ConversationMessage }) {
   const toolParts = props.message.parts.filter(isToolPart);
   const hasTextContent = props.message.content.trim().length > 0;
@@ -449,7 +561,10 @@ function SessionLogEntry(props: { message: ConversationMessage }) {
         <span className="rounded-full border border-border bg-panel px-3 py-1 text-xs uppercase tracking-wide text-text-secondary">
           {props.message.role}
         </span>
-        <span className="text-xs text-text-secondary">{formatDate(props.message.createdAt)}</span>
+        <div className="flex items-center gap-1">
+          <span className="text-xs text-text-secondary">{formatDate(props.message.createdAt)}</span>
+          <MessageUsageInfoButton message={props.message} parts={props.message.parts} />
+        </div>
       </div>
       {hasTextContent ? (
         <pre className="mt-3 overflow-auto text-sm leading-6 text-text-primary whitespace-pre-wrap">
@@ -501,11 +616,22 @@ function ToolLogBlock(props: { part: ConversationPart }) {
         <span className="rounded-full border border-border px-2 py-1">Tool call</span>
         <span className="font-medium text-text-primary normal-case">{toolName}</span>
         {status ? <span className="normal-case text-text-secondary">{status}</span> : null}
+        <ToolUsageInfoButton part={props.part} toolName={toolName} />
       </div>
 
       {input !== undefined ? <ToolLogField label="Input" value={input} /> : null}
-      {output !== undefined ? <ToolLogField label="Output" value={output} /> : null}
-      {error !== undefined ? <ToolLogField label="Error" value={error} /> : null}
+      {output !== undefined ? (
+        <>
+          <ToolLogField label="Output" value={output} />
+          <TruncatedNotice field="output" part={props.part} />
+        </>
+      ) : null}
+      {error !== undefined ? (
+        <>
+          <ToolLogField label="Error" value={error} />
+          <TruncatedNotice field="error" part={props.part} />
+        </>
+      ) : null}
 
       {input === undefined && output === undefined && error === undefined ? (
         <p className="mt-3 text-sm text-text-secondary">No tool details recorded.</p>

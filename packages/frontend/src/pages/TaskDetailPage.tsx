@@ -13,6 +13,7 @@ import {
   useTaskQuery,
   useTaskRunsQuery,
   useTaskSubtasksQuery,
+  useTaskUsageQuery,
 } from "@/hooks/use-tasks-query";
 import type { Specialist, Task, TaskRun, TaskSubtask } from "@cc/shared/schemas";
 import { Check, X } from "lucide-react";
@@ -408,6 +409,7 @@ function TaskDetailSectionContent(props: {
   isRunsLoading: boolean;
   runsError: unknown;
 }) {
+  const usageQuery = useTaskUsageQuery(props.taskId);
   const subtasksQuery = useTaskSubtasksQuery(props.taskId);
   const isSubtasksSection = props.sectionId === "subtasks";
 
@@ -462,6 +464,7 @@ function TaskDetailSectionContent(props: {
           subtasks={subtasksQuery.data ?? []}
           isLoading={props.isRunsLoading}
           error={props.runsError}
+          usage={usageQuery.data}
         />
       </div>
     );

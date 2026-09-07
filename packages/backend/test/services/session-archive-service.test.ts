@@ -1,8 +1,8 @@
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { ConversationMessage } from "@cc/shared/schemas";
+import { conversationMessageSchema, type ConversationMessage } from "@cc/shared/schemas";
 import { describe, expect, it } from "vitest";
 
 import { loadRuntimeConfig } from "../../src/lib/runtime-config";
@@ -297,6 +297,51 @@ describe("createSessionArchiveService", () => {
         service.appendMessages({ archivePath, messages: [message({ id: "m1" })] }),
       ).resolves.toBeUndefined();
       expect(await exists(join(archivePath, "messages.jsonl"))).toBe(false);
+    });
+  });
+});
+
+describe("archive compatibility", () => {
+  it("still reads an archive written before per-message metrics existed", async () => {
+    await withService(async (service) => {
+      await service.ensureChatArchive({
+        specialist: SPECIALIST,
+        conversationId: "conv-legacy",
+        opencodeSessionId: "ses-legacy",
+        title: "Legacy chat",
+      });
+      const archivePath = service.resolveChatArchivePath({
+        agentId: SPECIALIST.id,
+        conversationId: "conv-legacy",
+      });
+
+      // Exactly the shape the archiver wrote before tokens, cost, model, agent
+      // and completedAt existed. Writing it by hand rather than through the
+      // current types is the point: the new fields must stay optional.
+      const legacy = {
+        id: "m-legacy",
+        conversationId: "conv-legacy",
+        role: "assistant",
+        content: "answered before we measured anything",
+        parts: [{ id: "p1", type: "text", text: "answered before we measured anything" }],
+        attachments: [],
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:05.000Z",
+      };
+      await writeFile(join(archivePath, "messages.jsonl"), `${JSON.stringify(legacy)}\n`, "utf8");
+
+      const metadata = await service.materialize({ archivePath, force: true });
+      expect(metadata).toBeDefined();
+
+      const transcript = await readFile(join(archivePath, "transcript.md"), "utf8");
+      expect(transcript).toContain("answered before we measured anything");
+
+      // And the schema itself accepts it, which is what would break if any of
+      // the new fields were required.
+      const parsed = conversationMessageSchema.parse(legacy);
+      expect(parsed.tokens).toBeUndefined();
+      expect(parsed.completedAt).toBeUndefined();
+      expect(parsed.modelId).toBeUndefined();
     });
   });
 });

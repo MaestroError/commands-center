@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { TASK_CONTEXT_ATTACHMENT_EXTENSIONS_LABEL } from "@cc/shared/lib";
 import {
   uploadTaskContextAttachmentInputSchema,
   type ApiTokenRecord,
@@ -91,7 +92,9 @@ function buildTemplateTools(
           files: z
             .array(uploadTaskContextAttachmentInputSchema)
             .optional()
-            .describe(config.filesFieldDescription || "Files to attach to this run."),
+            .describe(
+              `${config.filesFieldDescription || "Files to attach to this run."} Allowed extensions: ${TASK_CONTEXT_ATTACHMENT_EXTENSIONS_LABEL}. The media type is taken from the filename extension and the payload is verified against it.`,
+            ),
         })
         .strict()
     : z.object({ text: textField }).strict();

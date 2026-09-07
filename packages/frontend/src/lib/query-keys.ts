@@ -47,6 +47,8 @@ export const queryKeys = {
     ["conversation-artifacts", conversationId] as const,
   artifactDeliveryUrls: (artifactId: string) => ["artifact-delivery-urls", artifactId] as const,
   taskRunSession: (taskId: string, runId: string) => ["task-run-session", taskId, runId] as const,
+  taskUsage: (taskId: string) => ["task-usage", taskId] as const,
+  conversationUsage: (conversationId: string) => ["conversation-usage", conversationId] as const,
   activeTaskRuns: ["active-task-runs"] as const,
   taskSchedulerState: ["task-scheduler-state"] as const,
 };

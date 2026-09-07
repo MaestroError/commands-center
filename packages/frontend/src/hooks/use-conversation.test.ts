@@ -15,6 +15,151 @@ import type { ChatEvent, TodoItem } from "@cc/shared/schemas";
 // Fixtures
 // ---------------------------------------------------------------------------
 
+describe("paging conversation isolation", () => {
+  it.each(["HYDRATE", "HYDRATE_DETAIL"] as const)(
+    "clears paging state when %s switches conversations",
+    (type) => {
+      const state = {
+        ...initialState,
+        conversation: makeConversation(),
+        loadingOlderMessages: true,
+        olderMessagesError: "old error",
+      };
+      const detail = makeConversation({ id: "conv-2" });
+      const next = conversationReducer(
+        state,
+        type === "HYDRATE"
+          ? { type, snapshot: { current: detail, previous: [] } }
+          : { type, detail },
+      );
+      expect({ loading: next.loadingOlderMessages, error: next.olderMessagesError }).toEqual({
+        loading: false,
+        error: null,
+      });
+    },
+  );
+
+  it("ignores a failed page from another conversation", () => {
+    const state = {
+      ...initialState,
+      conversation: makeConversation({ id: "conv-2" }),
+      loadingOlderMessages: true,
+    };
+    expect(
+      conversationReducer(state, {
+        type: "OLDER_MESSAGES_FAILED",
+        conversationId: "conv-1",
+        message: "old error",
+      }),
+    ).toBe(state);
+  });
+
+  it("ignores a pending page from another conversation", () => {
+    const state = { ...initialState, conversation: makeConversation({ id: "conv-2" }) };
+    expect(
+      conversationReducer(state, { type: "OLDER_MESSAGES_PENDING", conversationId: "conv-1" }),
+    ).toBe(state);
+  });
+
+  it("ignores a successful page from another conversation", () => {
+    const state = {
+      ...initialState,
+      conversation: makeConversation({ id: "conv-2" }),
+      loadingOlderMessages: true,
+    };
+    expect(
+      conversationReducer(state, {
+        type: "PREPEND_MESSAGES",
+        conversationId: "conv-1",
+        messages: [makeMessage()],
+        hasMore: false,
+      }),
+    ).toBe(state);
+  });
+});
+
+describe("paginated reconnect restoration", () => {
+  const older = makeMessage({ id: "msg-older", createdAt: "2026-01-01T00:01:00.000Z" });
+  const recent = makeMessage({ id: "msg-recent", createdAt: "2026-01-01T00:02:00.000Z" });
+  const missed = makeMessage({ id: "msg-missed", createdAt: "2026-01-01T00:03:00.000Z" });
+
+  it("keeps loaded older messages before the reconnect page", () => {
+    const next = conversationReducer(
+      { ...initialState, conversation: makeConversation({ messages: [older, recent] }) },
+      {
+        type: "MERGE_RECONNECT_DETAIL",
+        detail: makeConversation({ messages: [recent, missed], hasMoreMessages: true }),
+        removedMessageIds: [],
+      },
+    );
+    expect(next.conversation?.messages.map((message) => message.id)).toEqual([
+      older.id,
+      recent.id,
+      missed.id,
+    ]);
+  });
+
+  it("uses database ID ordering for messages with identical timestamps", () => {
+    const first = makeMessage({ id: "msg-a", createdAt: recent.createdAt });
+    const last = makeMessage({ id: "msg-z", createdAt: recent.createdAt });
+    const next = conversationReducer(
+      { ...initialState, conversation: makeConversation({ messages: [first] }) },
+      {
+        type: "MERGE_RECONNECT_DETAIL",
+        detail: makeConversation({ messages: [last] }),
+        removedMessageIds: [],
+      },
+    );
+    expect(next.conversation?.messages.map((message) => message.id)).toEqual([first.id, last.id]);
+  });
+
+  it("preserves the server total when only part of the history is loaded", () => {
+    const next = conversationReducer(
+      { ...initialState, conversation: makeConversation({ messages: [recent] }) },
+      {
+        type: "MERGE_RECONNECT_DETAIL",
+        detail: makeConversation({
+          messages: [recent, missed],
+          messageCount: 120,
+          hasMoreMessages: true,
+        }),
+        removedMessageIds: [],
+      },
+    );
+    expect(next.conversation?.messageCount).toBe(120);
+  });
+
+  it("keeps an exhausted history exhausted after receiving a partial reconnect page", () => {
+    const next = conversationReducer(
+      {
+        ...initialState,
+        conversation: makeConversation({ messages: [older, recent], hasMoreMessages: false }),
+      },
+      {
+        type: "MERGE_RECONNECT_DETAIL",
+        detail: makeConversation({ messages: [recent, missed], hasMoreMessages: true }),
+        removedMessageIds: [],
+      },
+    );
+    expect(next.conversation?.hasMoreMessages).toBe(false);
+  });
+
+  it("keeps older history available when the loaded history was incomplete", () => {
+    const next = conversationReducer(
+      {
+        ...initialState,
+        conversation: makeConversation({ messages: [older, recent], hasMoreMessages: true }),
+      },
+      {
+        type: "MERGE_RECONNECT_DETAIL",
+        detail: makeConversation({ messages: [recent, missed], hasMoreMessages: true }),
+        removedMessageIds: [],
+      },
+    );
+    expect(next.conversation?.hasMoreMessages).toBe(true);
+  });
+});
+
 function makeMessage(overrides: Partial<ConversationMessage> = {}): ConversationMessage {
   return {
     id: "msg-1",

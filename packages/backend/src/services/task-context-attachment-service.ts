@@ -1,6 +1,11 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { basename, extname, join, relative, resolve, sep } from "node:path";
+import { extname, join, relative, resolve, sep } from "node:path";
 
+import {
+  isTextualPayload,
+  TASK_CONTEXT_ATTACHMENT_EXTENSIONS_LABEL,
+  type TaskContextAttachmentExtension,
+} from "@cc/shared/lib";
 import {
   taskContextSchema,
   uploadTaskContextAttachmentInputSchema,
@@ -18,19 +23,51 @@ import type { RuntimeConfig } from "../lib/runtime-config.js";
 import type { TaskService } from "./task-service.js";
 
 const MAX_CONTEXT_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024;
+const MAX_ATTACHMENT_FILENAME_LENGTH = 255;
 
-const SAFE_ATTACHMENT_TYPES = {
-  ".csv": "text/csv",
-  ".gif": "image/gif",
-  ".jpeg": "image/jpeg",
-  ".jpg": "image/jpeg",
-  ".json": "application/json",
-  ".md": "text/markdown",
-  ".pdf": "application/pdf",
-  ".png": "image/png",
-  ".txt": "text/plain",
-  ".webp": "image/webp",
-} as const;
+type AttachmentFormat = { mimeType: string; verify: (bytes: Buffer) => boolean };
+
+/**
+ * Every format that may be written to the workspace through the task context
+ * API/MCP surface, keyed by extension. The extension decides the format — a
+ * caller-supplied mime is never trusted, because browsers and external MCP
+ * clients mislabel routinely (`.md` arrives as `text/plain`, `""`, or
+ * `text/x-markdown`) and an attacker would simply lie about it.
+ *
+ * `verify` re-checks the decoded bytes against the format so the extension
+ * cannot be used as a disguise: no ELF or archive lands on disk as `logo.png`,
+ * and text formats must really decode as UTF-8. Typed by the shared extension
+ * list so the advertised formats and the enforced ones cannot drift apart.
+ */
+const ATTACHMENT_FORMATS: Record<TaskContextAttachmentExtension, AttachmentFormat> = {
+  ".csv": { mimeType: "text/csv", verify: isTextualPayload },
+  ".gif": {
+    mimeType: "image/gif",
+    verify: (bytes) => hasAsciiAt(bytes, 0, "GIF87a") || hasAsciiAt(bytes, 0, "GIF89a"),
+  },
+  ".jpeg": { mimeType: "image/jpeg", verify: (bytes) => hasBytesAt(bytes, 0, [0xff, 0xd8, 0xff]) },
+  ".jpg": { mimeType: "image/jpeg", verify: (bytes) => hasBytesAt(bytes, 0, [0xff, 0xd8, 0xff]) },
+  ".json": { mimeType: "application/json", verify: isTextualPayload },
+  ".log": { mimeType: "text/plain", verify: isTextualPayload },
+  ".markdown": { mimeType: "text/markdown", verify: isTextualPayload },
+  ".md": { mimeType: "text/markdown", verify: isTextualPayload },
+  ".mdx": { mimeType: "text/markdown", verify: isTextualPayload },
+  ".pdf": { mimeType: "application/pdf", verify: (bytes) => hasAsciiAt(bytes, 0, "%PDF-") },
+  ".png": {
+    mimeType: "image/png",
+    verify: (bytes) => hasBytesAt(bytes, 0, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+  },
+  ".rst": { mimeType: "text/plain", verify: isTextualPayload },
+  ".tsv": { mimeType: "text/tab-separated-values", verify: isTextualPayload },
+  ".txt": { mimeType: "text/plain", verify: isTextualPayload },
+  ".webp": {
+    mimeType: "image/webp",
+    verify: (bytes) => hasAsciiAt(bytes, 0, "RIFF") && hasAsciiAt(bytes, 8, "WEBP"),
+  },
+  ".xml": { mimeType: "application/xml", verify: isTextualPayload },
+  ".yaml": { mimeType: "application/yaml", verify: isTextualPayload },
+  ".yml": { mimeType: "application/yaml", verify: isTextualPayload },
+};
 
 export type TaskContextAttachmentService = ReturnType<typeof createTaskContextAttachmentService>;
 
@@ -119,15 +156,24 @@ async function storeAttachment(
   input: UploadTaskContextAttachmentInput,
 ): Promise<TaskContextAttachment> {
   const filename = validateFilename(input.filename);
-  const mimeType = validateMime(filename, input.mimeType);
-  const buffer = decodeDataUrl(input.dataUrl, mimeType);
+  const format = resolveFormat(filename);
+  const buffer = decodeDataUrl(input.dataUrl);
 
-  if (buffer.byteLength !== input.sizeBytes) {
-    throw new BadRequestError("Attachment size does not match uploaded content.");
+  if (buffer.byteLength === 0) {
+    throw new BadRequestError("Attachment is empty.");
   }
 
+  // `sizeBytes` is advisory: the decoded payload is what gets written, so it is
+  // what the cap applies to. External callers routinely send a character count
+  // or a stale size, and rejecting those bought nothing.
   if (buffer.byteLength > MAX_CONTEXT_ATTACHMENT_SIZE_BYTES) {
     throw new BadRequestError("Attachment exceeds the 10 MB task context limit.");
+  }
+
+  if (!format.verify(buffer)) {
+    throw new BadRequestError(
+      `Attachment content does not match its "${extname(filename).toLowerCase()}" extension.`,
+    );
   }
 
   const id = createId();
@@ -140,7 +186,7 @@ async function storeAttachment(
   return {
     id,
     filename,
-    mimeType,
+    mimeType: format.mimeType,
     sizeBytes: buffer.byteLength,
     storageKey,
     createdAt: new Date().toISOString(),
@@ -148,34 +194,67 @@ async function storeAttachment(
 }
 
 function validateFilename(input: string): string {
-  const filename = basename(input.trim());
+  const trimmed = input.trim();
+  const filename = trimmed;
 
-  if (filename.length === 0 || filename !== input.trim() || filename === "." || filename === "..") {
+  if (
+    filename.length === 0 ||
+    /[\\/]/.test(filename) ||
+    filename === "." ||
+    filename === ".." ||
+    filename.length > MAX_ATTACHMENT_FILENAME_LENGTH ||
+    // Control characters (NUL included) never belong in a filename and are a
+    // classic way to smuggle a second extension past a display surface.
+    // eslint-disable-next-line no-control-regex
+    /[\u0000-\u001f\u007f]/.test(filename)
+  ) {
     throw new BadRequestError("Attachment filename is invalid.");
   }
 
   return filename;
 }
 
-function validateMime(filename: string, mimeType: string): string {
-  const ext = extname(filename).toLowerCase() as keyof typeof SAFE_ATTACHMENT_TYPES;
-  const expectedMime = SAFE_ATTACHMENT_TYPES[ext];
+function resolveFormat(filename: string): AttachmentFormat {
+  const format =
+    ATTACHMENT_FORMATS[extname(filename).toLowerCase() as TaskContextAttachmentExtension];
 
-  if (!expectedMime || expectedMime !== mimeType) {
-    throw new BadRequestError("Attachment format is not allowed for task context.");
+  if (!format) {
+    throw new BadRequestError(
+      `Attachment format is not allowed for task context. Allowed extensions: ${TASK_CONTEXT_ATTACHMENT_EXTENSIONS_LABEL}.`,
+    );
   }
 
-  return expectedMime;
+  return format;
 }
 
-function decodeDataUrl(dataUrl: string, mimeType: string): Buffer {
-  const prefix = `data:${mimeType};base64,`;
+/**
+ * Accepts any base64 data URL regardless of the media type the caller declared
+ * — the extension already decided the format, and the payload is verified
+ * against it — but the base64 itself must be well formed, since `Buffer.from`
+ * silently discards anything it cannot parse.
+ */
+function decodeDataUrl(dataUrl: string): Buffer {
+  const match = /^data:[^,]*;base64,(.*)$/s.exec(dataUrl);
+  // Some clients wrap base64 at 76 columns; the padding rules still apply.
+  const payload = match?.[1]?.replace(/\s+/g, "");
 
-  if (!dataUrl.startsWith(prefix)) {
+  if (
+    payload === undefined ||
+    payload.length % 4 !== 0 ||
+    !/^[A-Za-z0-9+/]*={0,2}$/.test(payload)
+  ) {
     throw new BadRequestError("Attachment data URL is invalid.");
   }
 
-  return Buffer.from(dataUrl.slice(prefix.length), "base64");
+  return Buffer.from(payload, "base64");
+}
+
+function hasBytesAt(bytes: Buffer, offset: number, expected: readonly number[]): boolean {
+  return expected.every((byte, index) => bytes[offset + index] === byte);
+}
+
+function hasAsciiAt(bytes: Buffer, offset: number, expected: string): boolean {
+  return bytes.subarray(offset, offset + expected.length).toString("latin1") === expected;
 }
 
 function resolveTaskAttachmentDirectory(

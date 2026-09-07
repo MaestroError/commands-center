@@ -1,8 +1,8 @@
 {
+  "id": "5780bfb5-0152-43e3-a915-885fd0c1c9d0",
+  "prevId": "0f992030-acdf-42d9-a6c8-b3a13d1a9075",
   "version": "6",
   "dialect": "sqlite",
-  "id": "5cc85162-bdce-4326-ae2d-aabe04d2441f",
-  "prevId": "0f992030-acdf-42d9-a6c8-b3a13d1a9075",
   "tables": {
     "activities": {
       "name": "activities",
@@ -483,11 +483,11 @@
         "artifact_share_links_artifact_id_artifacts_id_fk": {
           "name": "artifact_share_links_artifact_id_artifacts_id_fk",
           "tableFrom": "artifact_share_links",
-          "tableTo": "artifacts",
           "columnsFrom": ["artifact_id"],
+          "tableTo": "artifacts",
           "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -578,11 +578,11 @@
         "artifacts_conversation_id_conversations_id_fk": {
           "name": "artifacts_conversation_id_conversations_id_fk",
           "tableFrom": "artifacts",
-          "tableTo": "conversations",
           "columnsFrom": ["conversation_id"],
+          "tableTo": "conversations",
           "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -722,29 +722,29 @@
         "conversations_agent_id_agents_id_fk": {
           "name": "conversations_agent_id_agents_id_fk",
           "tableFrom": "conversations",
-          "tableTo": "agents",
           "columnsFrom": ["agent_id"],
+          "tableTo": "agents",
           "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "conversations_task_id_tasks_id_fk": {
           "name": "conversations_task_id_tasks_id_fk",
           "tableFrom": "conversations",
-          "tableTo": "tasks",
           "columnsFrom": ["task_id"],
+          "tableTo": "tasks",
           "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "conversations_task_run_id_task_runs_id_fk": {
           "name": "conversations_task_run_id_task_runs_id_fk",
           "tableFrom": "conversations",
-          "tableTo": "task_runs",
           "columnsFrom": ["task_run_id"],
+          "tableTo": "task_runs",
           "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -921,14 +921,14 @@
         "documents_global_relative_path_unique": {
           "name": "documents_global_relative_path_unique",
           "columns": ["relative_path"],
-          "isUnique": true,
-          "where": "\"documents\".\"scope\" = 'global' and \"documents\".\"owner_slug\" is null and \"documents\".\"owner_specialist_id\" is null"
+          "where": "\"documents\".\"scope\" = 'global' and \"documents\".\"owner_slug\" is null and \"documents\".\"owner_specialist_id\" is null",
+          "isUnique": true
         },
         "documents_private_owner_path_unique": {
           "name": "documents_private_owner_path_unique",
           "columns": ["owner_specialist_id", "relative_path"],
-          "isUnique": true,
-          "where": "\"documents\".\"scope\" = 'private' and \"documents\".\"owner_specialist_id\" is not null"
+          "where": "\"documents\".\"scope\" = 'private' and \"documents\".\"owner_specialist_id\" is not null",
+          "isUnique": true
         }
       },
       "foreignKeys": {},
@@ -1073,13 +1073,6 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
-        },
-        "completed_at": {
-          "name": "completed_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
         }
       },
       "indexes": {
@@ -1093,11 +1086,11 @@
         "messages_conversation_id_conversations_id_fk": {
           "name": "messages_conversation_id_conversations_id_fk",
           "tableFrom": "messages",
-          "tableTo": "conversations",
           "columnsFrom": ["conversation_id"],
+          "tableTo": "conversations",
           "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1439,11 +1432,11 @@
         "task_feedback_task_id_tasks_id_fk": {
           "name": "task_feedback_task_id_tasks_id_fk",
           "tableFrom": "task_feedback",
-          "tableTo": "tasks",
           "columnsFrom": ["task_id"],
+          "tableTo": "tasks",
           "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1557,20 +1550,20 @@
         "task_run_followups_task_id_tasks_id_fk": {
           "name": "task_run_followups_task_id_tasks_id_fk",
           "tableFrom": "task_run_followups",
-          "tableTo": "tasks",
           "columnsFrom": ["task_id"],
+          "tableTo": "tasks",
           "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "task_run_followups_run_id_task_runs_id_fk": {
           "name": "task_run_followups_run_id_task_runs_id_fk",
           "tableFrom": "task_run_followups",
-          "tableTo": "task_runs",
           "columnsFrom": ["run_id"],
+          "tableTo": "task_runs",
           "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1831,8 +1824,8 @@
         "task_runs_agent_running_unique_idx": {
           "name": "task_runs_agent_running_unique_idx",
           "columns": ["agent_id"],
-          "isUnique": true,
-          "where": "\"task_runs\".\"status\" = 'running'"
+          "where": "\"task_runs\".\"status\" = 'running'",
+          "isUnique": true
         },
         "task_runs_outcome_idx": {
           "name": "task_runs_outcome_idx",
@@ -1849,38 +1842,38 @@
         "task_runs_task_id_tasks_id_fk": {
           "name": "task_runs_task_id_tasks_id_fk",
           "tableFrom": "task_runs",
-          "tableTo": "tasks",
           "columnsFrom": ["task_id"],
+          "tableTo": "tasks",
           "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "task_runs_subtask_id_task_subtasks_id_fk": {
           "name": "task_runs_subtask_id_task_subtasks_id_fk",
           "tableFrom": "task_runs",
-          "tableTo": "task_subtasks",
           "columnsFrom": ["subtask_id"],
+          "tableTo": "task_subtasks",
           "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "task_runs_agent_id_agents_id_fk": {
           "name": "task_runs_agent_id_agents_id_fk",
           "tableFrom": "task_runs",
-          "tableTo": "agents",
           "columnsFrom": ["agent_id"],
+          "tableTo": "agents",
           "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "task_runs_retry_of_run_id_task_runs_id_fk": {
           "name": "task_runs_retry_of_run_id_task_runs_id_fk",
           "tableFrom": "task_runs",
-          "tableTo": "task_runs",
           "columnsFrom": ["retry_of_run_id"],
+          "tableTo": "task_runs",
           "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -2031,29 +2024,29 @@
         "task_subtasks_task_id_tasks_id_fk": {
           "name": "task_subtasks_task_id_tasks_id_fk",
           "tableFrom": "task_subtasks",
-          "tableTo": "tasks",
           "columnsFrom": ["task_id"],
+          "tableTo": "tasks",
           "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "task_subtasks_feedback_id_task_feedback_id_fk": {
           "name": "task_subtasks_feedback_id_task_feedback_id_fk",
           "tableFrom": "task_subtasks",
-          "tableTo": "task_feedback",
           "columnsFrom": ["feedback_id"],
+          "tableTo": "task_feedback",
           "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "task_subtasks_agent_id_agents_id_fk": {
           "name": "task_subtasks_agent_id_agents_id_fk",
           "tableFrom": "task_subtasks",
-          "tableTo": "agents",
           "columnsFrom": ["agent_id"],
+          "tableTo": "agents",
           "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -2255,20 +2248,20 @@
         "task_templates_agent_id_agents_id_fk": {
           "name": "task_templates_agent_id_agents_id_fk",
           "tableFrom": "task_templates",
-          "tableTo": "agents",
           "columnsFrom": ["agent_id"],
+          "tableTo": "agents",
           "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "task_templates_default_agent_id_agents_id_fk": {
           "name": "task_templates_default_agent_id_agents_id_fk",
           "tableFrom": "task_templates",
-          "tableTo": "agents",
           "columnsFrom": ["default_agent_id"],
+          "tableTo": "agents",
           "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -2544,47 +2537,47 @@
         "tasks_template_id_task_templates_id_fk": {
           "name": "tasks_template_id_task_templates_id_fk",
           "tableFrom": "tasks",
-          "tableTo": "task_templates",
           "columnsFrom": ["template_id"],
+          "tableTo": "task_templates",
           "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "tasks_agent_id_agents_id_fk": {
           "name": "tasks_agent_id_agents_id_fk",
           "tableFrom": "tasks",
-          "tableTo": "agents",
           "columnsFrom": ["agent_id"],
+          "tableTo": "agents",
           "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "tasks_default_agent_id_agents_id_fk": {
           "name": "tasks_default_agent_id_agents_id_fk",
           "tableFrom": "tasks",
-          "tableTo": "agents",
           "columnsFrom": ["default_agent_id"],
+          "tableTo": "agents",
           "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "tasks_source_template_id_task_templates_id_fk": {
           "name": "tasks_source_template_id_task_templates_id_fk",
           "tableFrom": "tasks",
-          "tableTo": "task_templates",
           "columnsFrom": ["source_template_id"],
+          "tableTo": "task_templates",
           "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "tasks_generated_by_agent_id_agents_id_fk": {
           "name": "tasks_generated_by_agent_id_agents_id_fk",
           "tableFrom": "tasks",
-          "tableTo": "agents",
           "columnsFrom": ["generated_by_agent_id"],
+          "tableTo": "agents",
           "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -2595,9 +2588,9 @@
   "views": {},
   "enums": {},
   "_meta": {
+    "columns": {},
     "schemas": {},
-    "tables": {},
-    "columns": {}
+    "tables": {}
   },
   "internal": {
     "indexes": {}

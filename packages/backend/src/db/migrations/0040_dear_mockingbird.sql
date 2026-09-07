@@ -1,1 +1,0 @@
-ALTER TABLE `messages` ADD `completed_at` integer;

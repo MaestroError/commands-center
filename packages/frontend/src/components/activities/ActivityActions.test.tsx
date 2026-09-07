@@ -60,19 +60,23 @@ function LocationProbe() {
   );
 }
 
-function renderActions(value: Activity, onArchive = vi.fn()) {
+function renderActions(value: Activity, onArchive = vi.fn(), onArchiveImmediately = vi.fn()) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={["/"]}>
-        <ActivityActions activity={value} onArchive={onArchive} />
+        <ActivityActions
+          activity={value}
+          onArchive={onArchive}
+          onArchiveImmediately={onArchiveImmediately}
+        />
         <LocationProbe />
       </MemoryRouter>
     </QueryClientProvider>,
   );
-  return { onArchive };
+  return { onArchive, onArchiveImmediately };
 }
 
 beforeEach(() => {
@@ -96,6 +100,43 @@ describe("ActivityActions", () => {
     expect(onArchive).toHaveBeenCalledWith(`activity-${kind}`);
   });
 
+  it("keeps activity actions at least 44px tall on mobile", () => {
+    renderActions(activity({ id: "a1", kind: "specialist_info" }));
+
+    expect(screen.getByRole("button", { name: "Mark read" })).toHaveClass("min-h-11");
+  });
+
+  it("expands a lone primary action across the mobile footer", () => {
+    renderActions(activity({ id: "a1", kind: "specialist_info" }));
+
+    expect(screen.getByRole("button", { name: "Mark read" })).toHaveClass("flex-1");
+  });
+
+  it("keeps a multi-action mobile footer on one row", () => {
+    renderActions(activity({ id: "a1", kind: "task_completed", payload: { taskId: "t1" } }));
+
+    expect(screen.getByRole("button", { name: "Accept" }).parentElement).toHaveClass("flex-nowrap");
+  });
+
+  it("keeps secondary mobile actions at intrinsic width", () => {
+    renderActions(activity({ id: "a1", kind: "task_completed", payload: { taskId: "t1" } }));
+
+    expect(screen.getByRole("button", { name: "Open task" })).toHaveClass("shrink-0");
+    expect(screen.getByRole("button", { name: "Mark read" })).toHaveClass("shrink-0");
+  });
+
+  it("uses the compact intrinsic button height on desktop", () => {
+    renderActions(activity({ id: "a1", kind: "specialist_info" }));
+
+    expect(screen.getByRole("button", { name: "Mark read" })).toHaveClass("md:min-h-0");
+  });
+
+  it("restores intrinsic primary action width on desktop", () => {
+    renderActions(activity({ id: "a1", kind: "specialist_info" }));
+
+    expect(screen.getByRole("button", { name: "Mark read" })).toHaveClass("md:flex-none");
+  });
+
   it("secret_request: fills the secret value through the form", async () => {
     vi.mocked(api.fillSecret).mockResolvedValue(
       activity({ id: "a1", kind: "secret_request", status: "archived" }),
@@ -113,7 +154,12 @@ describe("ActivityActions", () => {
 
   it("task_completed: accepts the task then archives the card", () => {
     const { onArchive } = renderActions(
-      activity({ id: "a1", kind: "task_completed", payload: { taskId: "t1" } }),
+      activity({
+        id: "a1",
+        kind: "task_completed",
+        level: "info",
+        payload: { taskId: "t1" },
+      }),
     );
 
     fireEvent.click(screen.getByText("Accept"));
@@ -141,6 +187,26 @@ describe("ActivityActions", () => {
     expect(screen.getByLabelText("Review reply")).toHaveValue("Publish");
   });
 
+  it("uses responsive sizing for suggested replies", () => {
+    renderActions(
+      activity({
+        id: "a1",
+        kind: "task_needs_review",
+        payload: {
+          taskId: "t1",
+          taskRunId: "r1",
+          question: "Publish it?",
+          suggestedReplies: ["Publish"],
+        },
+      }),
+    );
+
+    expect(screen.getByRole("button", { name: "Use suggested reply: Publish" })).toHaveClass(
+      "min-h-11",
+      "md:min-h-0",
+    );
+  });
+
   it("task_needs_review: replies and archives the card in one action", async () => {
     const { onArchive } = renderActions(
       activity({
@@ -166,6 +232,41 @@ describe("ActivityActions", () => {
       });
     });
     expect(onArchive).toHaveBeenCalledWith("a1");
+  });
+
+  it("task_needs_review: announces reply failures", async () => {
+    createRunFollowupMutateAsync.mockRejectedValueOnce(new Error("Reply failed"));
+    renderActions(
+      activity({
+        id: "a1",
+        kind: "task_needs_review",
+        payload: { taskId: "t1", taskRunId: "r1", question: "Publish it?" },
+      }),
+    );
+
+    fireEvent.change(screen.getByLabelText("Review reply"), { target: { value: "Revise" } });
+    fireEvent.click(screen.getByRole("button", { name: "Reply" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not send the reply.");
+    expect(screen.getByRole("alert")).toHaveAttribute("aria-live", "assertive");
+  });
+
+  it("run_template_proposal: announces action failures", () => {
+    runTemplateNowMutate.mockImplementationOnce(
+      (_input: unknown, options?: { onError?: () => void }) => options?.onError?.(),
+    );
+    renderActions(
+      activity({
+        id: "a1",
+        kind: "run_template_proposal",
+        payload: { templateId: "template-1", reason: "Run it" },
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Run template" }));
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Could not run the template.");
+    expect(screen.getByRole("alert")).toHaveAttribute("aria-live", "assertive");
   });
 
   it("subtask_needs_review: replies and archives the card", async () => {
@@ -202,5 +303,55 @@ describe("ActivityActions", () => {
 
     fireEvent.click(screen.getByText("Mark read"));
     expect(onArchive).toHaveBeenCalledWith("a1");
+  });
+
+  it.each([
+    [
+      "task proposal",
+      activity({
+        id: "task-proposal",
+        kind: "task_proposal",
+        payload: { title: "Draft report", reason: "Review the proposal" },
+      }),
+      "Review & create",
+      "/tasks/new",
+    ],
+    [
+      "task template proposal",
+      activity({
+        id: "template-proposal",
+        kind: "task_template_proposal",
+        payload: { title: "Weekly report", reason: "Review the template" },
+      }),
+      "Review & create",
+      "/tasks/templates/new",
+    ],
+  ])("archives a %s before navigating", (_label, proposal, buttonName, path) => {
+    const onArchiveImmediately = vi.fn();
+    renderActions(proposal, vi.fn(), onArchiveImmediately);
+
+    fireEvent.click(screen.getByRole("button", { name: buttonName }));
+
+    expect(onArchiveImmediately).toHaveBeenCalledWith(proposal.id);
+    expect(screen.getByTestId("location")).toHaveTextContent(path);
+  });
+
+  it("archives a command proposal before navigating to the terminal", () => {
+    const onArchiveImmediately = vi.fn();
+    renderActions(
+      activity({
+        id: "command-proposal",
+        kind: "run_command_proposal",
+        payload: { command: "pnpm test", reason: "Verify the change" },
+      }),
+      vi.fn(),
+      onArchiveImmediately,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Run command" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open terminal" }));
+
+    expect(onArchiveImmediately).toHaveBeenCalledWith("command-proposal");
+    expect(screen.getByTestId("location")).toHaveTextContent("/terminal");
   });
 });

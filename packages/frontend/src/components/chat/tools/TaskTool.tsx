@@ -20,6 +20,7 @@ export function TaskTool({ part }: ToolRendererProps) {
       subtitle={description}
       status={status}
       callId={getToolCallId(part)}
+      part={part}
       hideDetails
     />
   );

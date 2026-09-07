@@ -12,12 +12,16 @@ import {
   sendConversationCommandInputSchema,
   sendConversationPromptInputSchema,
   sendConversationShellInputSchema,
+  CONVERSATION_MESSAGE_PAGE_MAX,
+  CONVERSATION_MESSAGE_PAGE_SIZE,
+  usageTotalsSchema,
 } from "@cc/shared/schemas";
 
 import type { AppServer } from "../lib/fastify-zod.js";
 import type { RuntimeContext } from "../lib/start-server-runtime.js";
 import { createArtifactService } from "../services/artifact-service.js";
 import { createConversationService } from "../services/conversation-service.js";
+import { createUsageService } from "../services/usage-service.js";
 
 const agentIdParamsSchema = z.object({
   id: z.string().min(1),
@@ -38,6 +42,7 @@ const agentConversationParamsSchema = agentIdParamsSchema.extend({
 
 export function registerConversationRoutes(server: AppServer, context: RuntimeContext): void {
   const app = server.withTypeProvider<ZodTypeProvider>();
+  const usageService = createUsageService({ db: context.database.db });
   const service = createConversationService({
     db: context.database.db,
     config: context.config,
@@ -191,6 +196,65 @@ export function registerConversationRoutes(server: AppServer, context: RuntimeCo
         request.params.id,
         request.body.enabled,
       ),
+  );
+
+  // Older messages, oldest-first, for scrolling back through a long conversation.
+  app.get(
+    "/api/conversations/:conversationId/messages",
+    {
+      schema: {
+        params: conversationParamsSchema,
+        querystring: z.object({
+          before: z.string().min(1),
+          limit: z.coerce.number().int().min(1).max(CONVERSATION_MESSAGE_PAGE_MAX).optional(),
+        }),
+      },
+    },
+    async (request) =>
+      service.listOlderMessages(
+        request.params.conversationId,
+        request.query.before,
+        request.query.limit ?? CONVERSATION_MESSAGE_PAGE_SIZE,
+      ),
+  );
+
+  // Full, untrimmed parts for one message — the conversation payload ships tool
+  // output truncated, and expanding a card asks for the rest here.
+  app.get(
+    "/api/conversations/:conversationId/messages/:messageId/parts",
+    {
+      schema: {
+        params: conversationParamsSchema.extend({ messageId: z.string().min(1) }),
+      },
+    },
+    async (request) =>
+      service.getMessageParts(request.params.conversationId, request.params.messageId),
+  );
+
+  // Token and cost totals for the whole conversation. Aggregated server-side
+  // because the client only holds the newest page of messages.
+  app.get(
+    "/api/conversations/:conversationId/usage",
+    {
+      schema: {
+        params: conversationParamsSchema,
+        querystring: z.object({
+          // Sync the OpenCode session into SQLite first. Needed after a
+          // streaming turn, which persists nothing on its own.
+          sync: z.enum(["true", "false"]).optional(),
+        }),
+        response: {
+          200: usageTotalsSchema,
+        },
+      },
+    },
+    async (request) => {
+      if (request.query.sync === "true") {
+        await service.syncConversationMessages(request.params.conversationId);
+      }
+
+      return usageService.getConversationUsage(request.params.conversationId);
+    },
   );
 
   app.get(

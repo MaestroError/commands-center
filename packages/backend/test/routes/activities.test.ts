@@ -107,12 +107,52 @@ describe("activity routes", () => {
     }
   });
 
+  it("unarchives a resolved activity", async () => {
+    const { testDb, server, activityService } = await setup();
+    try {
+      const activity = await activityService.emit({
+        kind: "task_completed",
+        level: "action_required",
+        title: "Done",
+      });
+      await activityService.archive(activity.id);
+
+      const response = await server.inject({
+        method: "POST",
+        url: `/api/activities/${activity.id}/unarchive`,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        activity: { status: "pending", archivedAt: null },
+        archivedActivityIds: [],
+      });
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
   it("404s when archiving an unknown activity", async () => {
     const { testDb, server } = await setup();
     try {
       const response = await server.inject({
         method: "POST",
         url: "/api/activities/nope/archive",
+      });
+      expect(response.statusCode).toBe(404);
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("404s when unarchiving an unknown activity", async () => {
+    const { testDb, server } = await setup();
+    try {
+      const response = await server.inject({
+        method: "POST",
+        url: "/api/activities/nope/unarchive",
       });
       expect(response.statusCode).toBe(404);
     } finally {

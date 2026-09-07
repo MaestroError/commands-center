@@ -4,7 +4,10 @@ import {
   chatEventSchema,
   conversationDetailSchema,
   conversationListSchema,
+  conversationMessagePageSchema,
+  conversationMessagePartsSchema,
   conversationSnapshotSchema,
+  usageTotalsSchema,
   pendingInteractionsSchema,
   resolvedSystemPromptSchema,
   sessionMediaListSchema,
@@ -12,7 +15,10 @@ import {
   workspaceWatchEventSchema,
   type ChatEvent,
   type ConversationDetail,
+  type ConversationMessagePage,
+  type ConversationMessageParts,
   type ConversationSnapshot,
+  type UsageTotals,
   type ConversationSummary,
   type PendingInteractions,
   type ResolvedSystemPrompt,
@@ -54,6 +60,48 @@ export async function getConversation(
   return requestJson<ConversationDetail>(
     `/api/specialists/${encodeURIComponent(agentId)}/conversations/${encodeURIComponent(conversationId)}`,
     conversationDetailSchema,
+  );
+}
+
+/** One page of older messages, oldest-first. */
+export async function getOlderMessages(
+  conversationId: string,
+  beforeMessageId: string,
+  limit?: number,
+): Promise<ConversationMessagePage> {
+  const query = new URLSearchParams({ before: beforeMessageId });
+  if (limit !== undefined) query.set("limit", String(limit));
+
+  return requestJson<ConversationMessagePage>(
+    `/api/conversations/${encodeURIComponent(conversationId)}/messages?${query.toString()}`,
+    conversationMessagePageSchema,
+  );
+}
+
+/** Token and cost totals for the whole conversation, not just the loaded page. */
+export async function getConversationUsage(
+  conversationId: string,
+  options: { sync?: boolean } = {},
+): Promise<UsageTotals> {
+  // `sync` persists the session before aggregating. A streaming turn writes
+  // nothing to the database on its own, so a plain read after one would return
+  // the pre-turn total.
+  const query = options.sync ? "?sync=true" : "";
+
+  return requestJson<UsageTotals>(
+    `/api/conversations/${encodeURIComponent(conversationId)}/usage${query}`,
+    usageTotalsSchema,
+  );
+}
+
+/** Full parts for one message, replacing the truncated ones from the list payload. */
+export async function getMessageParts(
+  conversationId: string,
+  messageId: string,
+): Promise<ConversationMessageParts> {
+  return requestJson<ConversationMessageParts>(
+    `/api/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/parts`,
+    conversationMessagePartsSchema,
   );
 }
 

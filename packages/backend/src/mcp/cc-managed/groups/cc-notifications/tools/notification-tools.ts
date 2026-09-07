@@ -189,6 +189,7 @@ export function createNotificationToolDefinitions(options: {
             title: parsed.title,
             body: parsed.markdown,
             payload: {
+              sourceSpecialistSlug: context.agentSlug,
               proposedBySlug: context.agentSlug,
               taskRunId: parsed.taskRunId,
             },
@@ -212,6 +213,7 @@ export function createNotificationToolDefinitions(options: {
             title: parsed.title,
             body: parsed.markdown,
             payload: {
+              sourceSpecialistSlug: context.agentSlug,
               proposedBySlug: context.agentSlug,
               taskRunId: parsed.taskRunId,
             },
@@ -240,6 +242,7 @@ export function createNotificationToolDefinitions(options: {
               reason: parsed.reason,
               assigneeSlug,
               taskDescription: parsed.taskDescription,
+              sourceSpecialistSlug: context.agentSlug,
               proposedBySlug: context.agentSlug,
             },
           });
@@ -268,6 +271,7 @@ export function createNotificationToolDefinitions(options: {
               assigneeSlug,
               taskDescription: parsed.taskDescription,
               recurrence: parsed.recurrence ?? undefined,
+              sourceSpecialistSlug: context.agentSlug,
               proposedBySlug: context.agentSlug,
             },
           });
@@ -304,6 +308,7 @@ export function createNotificationToolDefinitions(options: {
               templateId: template.id,
               templateTitle: template.title,
               reason: parsed.reason,
+              sourceSpecialistSlug: context.agentSlug,
               proposedBySlug: context.agentSlug,
             },
           });
@@ -329,6 +334,7 @@ export function createNotificationToolDefinitions(options: {
               command: parsed.command,
               reason: parsed.reason,
               cwd: parsed.cwd,
+              sourceSpecialistSlug: context.agentSlug,
               proposedBySlug: context.agentSlug,
             },
           });

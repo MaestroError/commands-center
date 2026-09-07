@@ -1,5 +1,6 @@
 import { useState, type ChangeEvent } from "react";
 
+import { TASK_CONTEXT_ATTACHMENT_EXTENSIONS } from "@cc/shared/lib";
 import type { TaskTemplateRunNowInput, UploadTaskContextAttachmentInput } from "@cc/shared/schemas";
 
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
@@ -78,7 +79,7 @@ export function RunTaskContextDialog(props: Props) {
           >
             Add attachments
             <input
-              accept=".txt,.md,.csv,.json,.pdf,.png,.jpg,.jpeg,.webp,.gif"
+              accept={TASK_CONTEXT_ATTACHMENT_EXTENSIONS.join(",")}
               className="sr-only"
               multiple
               onChange={(event) => void handleUpload(event)}
@@ -92,7 +93,7 @@ export function RunTaskContextDialog(props: Props) {
                   className="rounded-lg border border-border bg-surface p-2 text-xs text-text-secondary"
                   key={`${attachment.filename}:${String(attachment.sizeBytes)}`}
                 >
-                  {attachment.filename} · {formatBytes(attachment.sizeBytes)}
+                  {attachment.filename} · {formatBytes(attachment.sizeBytes ?? 0)}
                 </li>
               ))}
             </ul>

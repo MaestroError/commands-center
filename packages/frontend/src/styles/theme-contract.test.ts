@@ -68,6 +68,8 @@ const REQUIRED_COLOR_TOKENS = [
 ] as const;
 
 const REQUIRED_SHARED_TOKENS = [
+  "shadow-fixed-footer",
+  "shadow-fixed-header",
   "shadow-surface",
   "radius-surface",
   "radius-control",
