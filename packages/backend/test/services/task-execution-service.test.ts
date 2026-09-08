@@ -3252,7 +3252,7 @@ describe("createTaskExecutionService", () => {
     const executionService = createTaskExecutionService({
       taskService,
       conversationService,
-      monitor: { initialPollMs: 1, maxPollMs: 1, idlePolls: 1, noProgressMs: 5 },
+      monitor: { initialPollMs: 1, maxPollMs: 1, idlePolls: 1, noProgressMs: 0 },
     });
 
     try {
@@ -3263,6 +3263,7 @@ describe("createTaskExecutionService", () => {
 
       await expectRunStatus(taskService, run.id, "completed");
     } finally {
+      executionService.dispose();
       await testDb.cleanup();
     }
   });
