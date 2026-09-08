@@ -117,6 +117,7 @@ describe("system prompt service", () => {
       expect(system).toContain("Global Workspace directory: /ws");
       expect(system).toContain("Your Workspace directory: /ws/specialists/ada");
       expect(system).toContain("with a human operator");
+      expect(system).toContain("cc_default_list_uploaded_files");
       expect(system.match(/2026-06-23/g)).toHaveLength(1);
       expect(prompts.find((prompt) => prompt.id === "global-chat")?.renderedBody).not.toContain(
         "Workspace directory:",

@@ -133,6 +133,7 @@ const MAX_SESSION_TREE_SIZE = 1_000;
 export type OpenCodeSession = z.infer<typeof openCodeSessionSchema>;
 export type OpenCodeSessionMessage = z.infer<typeof openCodeMessageSchema>;
 export type OpenCodeSessionStatus = z.infer<typeof openCodeSessionStatusSchema>;
+export type OpenCodeTaskSessionStatus = OpenCodeSessionStatus | { type: "unknown" };
 export type OpenCodeSessionStatusMap = z.infer<typeof openCodeSessionStatusMapSchema>;
 export type OpenCodePendingPermission = z.infer<typeof openCodePendingPermissionSchema>;
 export type OpenCodePendingQuestion = z.infer<typeof openCodePendingQuestionSchema>;
@@ -484,7 +485,7 @@ export function createOpenCodeService(options: {
       directory: string,
       sessionID: string,
       signal?: AbortSignal,
-    ): Promise<OpenCodeSessionStatus> {
+    ): Promise<OpenCodeTaskSessionStatus> {
       const result = await requestSessionJson({
         config: options.config,
         directory,
@@ -493,7 +494,7 @@ export function createOpenCodeService(options: {
         signal,
       });
       const statuses = openCodeSessionStatusMapSchema.parse(result);
-      return statuses[sessionID] ?? { type: "idle" };
+      return statuses[sessionID] ?? { type: "unknown" };
     },
 
     async promptSession(input: {
@@ -537,6 +538,7 @@ export function createOpenCodeService(options: {
       command: string;
       arguments: string;
       attachments?: SendConversationAttachmentInput[];
+      signal?: AbortSignal;
     }): Promise<void> {
       await requestSessionJson({
         config: options.config,
@@ -550,6 +552,7 @@ export function createOpenCodeService(options: {
           arguments: input.arguments,
           parts: buildAttachmentParts(input.attachments ?? []),
         },
+        signal: input.signal,
       });
     },
 

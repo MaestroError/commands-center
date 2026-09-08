@@ -658,7 +658,7 @@ describe("opencode-service", () => {
       expect(init.method).toBe("GET");
     });
 
-    it("treats a missing session status entry as idle", async () => {
+    it("treats a missing session status entry as unknown", async () => {
       fetchMock.mockResolvedValue(jsonResponse(200, { "other-session": { type: "busy" } }));
       const service = createOpenCodeService({
         client: FAKE_CLIENT,
@@ -667,7 +667,7 @@ describe("opencode-service", () => {
       });
 
       await expect(service.getSessionStatus("/work/agent-a", "sess-idle")).resolves.toEqual({
-        type: "idle",
+        type: "unknown",
       });
     });
 
@@ -1249,6 +1249,24 @@ describe("opencode-service", () => {
 
       await expect(request).rejects.toThrow();
       expect((hangingFetch.mock.calls[0]?.[1] as RequestInit).signal).toBe(controller.signal);
+    });
+
+    it("forwards the caller's abort signal on a command request", async () => {
+      fetchMock.mockResolvedValue(jsonResponse(204));
+      const service = makeService();
+      const controller = new AbortController();
+
+      await service.commandSession({
+        directory: "/work/a",
+        sessionID: "s",
+        agent: "build",
+        model: "openai/gpt-4.1",
+        command: "test",
+        arguments: "--all",
+        signal: controller.signal,
+      });
+
+      expect(fetchMock.mock.calls[0]?.[1]?.signal).toBe(controller.signal);
     });
 
     it("issues command, summarize, shell, and abort/delete requests", async () => {

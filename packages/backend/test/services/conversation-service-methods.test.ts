@@ -17,6 +17,7 @@ import { NotFoundError } from "../../src/lib/api-error";
 import { createConversationService } from "../../src/services/conversation-service";
 import { createSpecialistService } from "../../src/services/specialist-service";
 import { createTaskService } from "../../src/services/task-service";
+import type { ChatUploadService } from "../../src/services/chat-upload-service";
 import {
   OpenCodeRequestError,
   type OpenCodeService,
@@ -96,6 +97,7 @@ async function setup(
     watchdogRecoveryRetryDelaysMs?: readonly number[];
     opencodeRequestMs?: number;
     watchdogRecoveryListActiveChats?: () => Promise<(typeof conversations.$inferSelect)[]>;
+    chatUploadService?: ChatUploadService;
   } = {},
 ) {
   const testDb = await createTestDatabase();
@@ -118,6 +120,7 @@ async function setup(
     interactiveChatWatchdogService: options.watchdog ?? options.createWatchdog?.(opencodeService),
     watchdogRecoveryRetryDelaysMs: options.watchdogRecoveryRetryDelaysMs,
     watchdogRecoveryListActiveChats: options.watchdogRecoveryListActiveChats,
+    chatUploadService: options.chatUploadService,
   });
   const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
   const agent = await agentService.create({
@@ -642,6 +645,216 @@ describe("conversation-service delegating methods", () => {
     expect(firstCancel).not.toHaveBeenCalled();
     expect(secondArm).not.toHaveBeenCalled();
     expect(secondCancel).toHaveBeenCalledOnce();
+  });
+
+  it("persists async prompt attachments before OpenCode accepts them", async () => {
+    const rollback = vi.fn(() => Promise.resolve());
+    const chatUploadService = mockChatUploadService(rollback);
+    const { service, opencodeService, agent } = await setup({ chatUploadService });
+    const snapshot = await service.resolveCurrent(agent.id);
+    const uploaded = attachment("async.txt");
+
+    await service.sendPromptAsync(snapshot.current.id, {
+      text: "inspect",
+      attachments: [uploaded],
+    });
+
+    expect(chatUploadService.persist).toHaveBeenCalledWith({
+      agentId: agent.id,
+      conversationId: snapshot.current.id,
+      attachments: [uploaded],
+    });
+    expect(opencodeService.promptSessionAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ attachments: [uploaded] }),
+    );
+    expect(rollback).not.toHaveBeenCalled();
+  });
+
+  it("rolls back synchronous prompt uploads when OpenCode rejects the send", async () => {
+    const rollback = vi.fn(() => Promise.resolve());
+    const chatUploadService = mockChatUploadService(rollback);
+    const { service, opencodeService, agent } = await setup({ chatUploadService });
+    const snapshot = await service.resolveCurrent(agent.id);
+    opencodeService.promptSession = vi.fn(() =>
+      Promise.reject(new OpenCodeRequestError("prompt rejected", 400)),
+    );
+
+    await expect(
+      service.sendPrompt(snapshot.current.id, {
+        text: "inspect",
+        attachments: [attachment("sync.txt")],
+      }),
+    ).rejects.toThrow("prompt rejected");
+
+    expect(rollback).toHaveBeenCalledOnce();
+  });
+
+  it("keeps synchronous prompt uploads when acceptance fails ambiguously", async () => {
+    const rollback = vi.fn(() => Promise.resolve());
+    const chatUploadService = mockChatUploadService(rollback);
+    const { service, opencodeService, agent } = await setup({ chatUploadService });
+    const snapshot = await service.resolveCurrent(agent.id);
+    opencodeService.promptSession = vi.fn(() => Promise.reject(new TypeError("network lost")));
+
+    await expect(
+      service.sendPrompt(snapshot.current.id, {
+        text: "inspect",
+        attachments: [attachment("sync.txt")],
+      }),
+    ).rejects.toThrow("network lost");
+
+    expect(rollback).not.toHaveBeenCalled();
+  });
+
+  it("keeps streaming prompt uploads when acceptance fails ambiguously", async () => {
+    const rollback = vi.fn(() => Promise.resolve());
+    const chatUploadService = mockChatUploadService(rollback);
+    const { service, opencodeService, agent } = await setup({ chatUploadService });
+    const snapshot = await service.resolveCurrent(agent.id);
+    opencodeService.promptSessionAsync = vi.fn(() => Promise.reject(new TypeError("network lost")));
+
+    await expect(
+      service.sendPromptAsync(snapshot.current.id, {
+        text: "inspect",
+        attachments: [attachment("async.txt")],
+      }),
+    ).rejects.toThrow("network lost");
+
+    expect(rollback).not.toHaveBeenCalled();
+  });
+
+  it("rolls back command uploads when OpenCode rejects the command", async () => {
+    const rollback = vi.fn(() => Promise.resolve());
+    const chatUploadService = mockChatUploadService(rollback);
+    const { service, opencodeService, agent } = await setup({ chatUploadService });
+    const snapshot = await service.resolveCurrent(agent.id);
+    opencodeService.commandSession = vi.fn(() =>
+      Promise.reject(new OpenCodeRequestError("command rejected", 400)),
+    );
+
+    await expect(
+      service.sendCommand(snapshot.current.id, {
+        command: "inspect",
+        arguments: "",
+        attachments: [attachment("command.txt")],
+      }),
+    ).rejects.toThrow("command rejected");
+
+    expect(rollback).toHaveBeenCalledOnce();
+  });
+
+  it("keeps command uploads when acceptance fails ambiguously", async () => {
+    const rollback = vi.fn(() => Promise.resolve());
+    const chatUploadService = mockChatUploadService(rollback);
+    const { service, opencodeService, agent } = await setup({ chatUploadService });
+    const snapshot = await service.resolveCurrent(agent.id);
+    opencodeService.commandSession = vi.fn(() => Promise.reject(new TypeError("network lost")));
+
+    await expect(
+      service.sendCommand(snapshot.current.id, {
+        command: "inspect",
+        arguments: "",
+        attachments: [attachment("command.txt")],
+      }),
+    ).rejects.toThrow("network lost");
+
+    expect(rollback).not.toHaveBeenCalled();
+  });
+
+  it("rolls back streaming prompt uploads when OpenCode rejects the send", async () => {
+    const rollback = vi.fn(() => Promise.resolve());
+    const chatUploadService = mockChatUploadService(rollback);
+    const { service, opencodeService, agent } = await setup({ chatUploadService });
+    const snapshot = await service.resolveCurrent(agent.id);
+    opencodeService.promptSessionAsync = vi.fn(() =>
+      Promise.reject(new OpenCodeRequestError("stream rejected", 400)),
+    );
+
+    await expect(
+      service.sendPromptAsync(snapshot.current.id, {
+        text: "inspect",
+        attachments: [attachment("async.txt")],
+      }),
+    ).rejects.toThrow("stream rejected");
+
+    expect(rollback).toHaveBeenCalledOnce();
+  });
+
+  it("keeps synchronous prompt uploads when synchronization fails after acceptance", async () => {
+    const rollback = vi.fn(() => Promise.resolve());
+    const chatUploadService = mockChatUploadService(rollback);
+    const { service, opencodeService, agent } = await setup({ chatUploadService });
+    const snapshot = await service.resolveCurrent(agent.id);
+    opencodeService.listSessionMessages = vi.fn(() =>
+      Promise.reject(new OpenCodeRequestError("messages unavailable", 500)),
+    );
+
+    await expect(
+      service.sendPrompt(snapshot.current.id, {
+        text: "inspect",
+        attachments: [attachment("sync.txt")],
+      }),
+    ).rejects.toThrow("messages unavailable");
+
+    expect(opencodeService.promptSession).toHaveBeenCalledOnce();
+    expect(rollback).not.toHaveBeenCalled();
+  });
+
+  it("keeps command uploads when synchronization fails after acceptance", async () => {
+    const rollback = vi.fn(() => Promise.resolve());
+    const chatUploadService = mockChatUploadService(rollback);
+    const { service, opencodeService, agent } = await setup({ chatUploadService });
+    const snapshot = await service.resolveCurrent(agent.id);
+    opencodeService.listSessionMessages = vi.fn(() =>
+      Promise.reject(new OpenCodeRequestError("messages unavailable", 500)),
+    );
+
+    await expect(
+      service.sendCommand(snapshot.current.id, {
+        command: "inspect",
+        arguments: "",
+        attachments: [attachment("command.txt")],
+      }),
+    ).rejects.toThrow("messages unavailable");
+
+    expect(opencodeService.commandSession).toHaveBeenCalledOnce();
+    expect(rollback).not.toHaveBeenCalled();
+  });
+
+  it("surfaces the rejection and cancels the watchdog when rollback fails", async () => {
+    const rollback = vi.fn(() => Promise.reject(new Error("cleanup failed")));
+    const chatUploadService = mockChatUploadService(rollback);
+    const cancel = vi.fn();
+    const { service, opencodeService, agent } = await setup({
+      chatUploadService,
+      watchdog: {
+        prepare: vi.fn(() => Promise.resolve({ arm: vi.fn(), cancel })),
+      } as unknown as InteractiveChatWatchdogService,
+    });
+    const snapshot = await service.resolveCurrent(agent.id);
+    opencodeService.promptSession = vi.fn(() =>
+      Promise.reject(new OpenCodeRequestError("prompt rejected", 400)),
+    );
+
+    await expect(
+      service.sendPrompt(snapshot.current.id, {
+        text: "inspect",
+        attachments: [attachment("sync.txt")],
+      }),
+    ).rejects.toThrow("prompt rejected");
+
+    expect(rollback).toHaveBeenCalledOnce();
+    expect(cancel).toHaveBeenCalled();
+  });
+
+  it("does not invoke upload storage for attachment-free sends", async () => {
+    const chatUploadService = mockChatUploadService(vi.fn(() => Promise.resolve()));
+    const { service, agent } = await setup({ chatUploadService });
+    const snapshot = await service.resolveCurrent(agent.id);
+
+    await service.sendPromptAsync(snapshot.current.id, { text: "plain", attachments: [] });
+
+    expect(chatUploadService.persist).not.toHaveBeenCalled();
   });
 
   it("runs command, shell, async prompt, and summarize on the current session", async () => {
@@ -1271,6 +1484,33 @@ describe("conversation-service delegating methods", () => {
     expect(after.current.id).not.toBe(conversationId);
   });
 
+  it("retains the conversation when upload cleanup fails", async () => {
+    const chatUploadService = mockChatUploadService(vi.fn(() => Promise.resolve()));
+    vi.mocked(chatUploadService.removeForConversation).mockRejectedValueOnce(
+      new Error("cleanup failed"),
+    );
+    const { service, agent } = await setup({ chatUploadService });
+    const snapshot = await service.resolveCurrent(agent.id);
+    await expect(service.deleteConversation(agent.id, snapshot.current.id)).rejects.toThrow(
+      "cleanup failed",
+    );
+    expect((await service.resolveCurrent(agent.id)).current.id).toBe(snapshot.current.id);
+  });
+
+  it("allows chat deletion to be retried after upload cleanup recovers", async () => {
+    const chatUploadService = mockChatUploadService(vi.fn(() => Promise.resolve()));
+    vi.mocked(chatUploadService.removeForConversation).mockRejectedValueOnce(
+      new Error("cleanup failed"),
+    );
+    const { service, agent } = await setup({ chatUploadService });
+    const snapshot = await service.resolveCurrent(agent.id);
+    await expect(service.deleteConversation(agent.id, snapshot.current.id)).rejects.toThrow(
+      "cleanup failed",
+    );
+    await service.deleteConversation(agent.id, snapshot.current.id);
+    expect((await service.resolveCurrent(agent.id)).current.id).not.toBe(snapshot.current.id);
+  });
+
   it("rejects a send queued behind conversation deletion", async () => {
     const deleting = createDeferred<void>();
     const { service, opencodeService, agent } = await setup();
@@ -1292,6 +1532,28 @@ describe("conversation-service delegating methods", () => {
     expect(opencodeService.promptSessionAsync).not.toHaveBeenCalled();
   });
 
+  it("serializes conversation deletion after an accepted command", async () => {
+    const command = createDeferred<void>();
+    const { service, opencodeService, agent } = await setup();
+    const snapshot = await service.resolveCurrent(agent.id);
+    opencodeService.commandSession = vi.fn(() => command.promise);
+
+    const sending = service.sendCommand(snapshot.current.id, {
+      command: "inspect",
+      arguments: "",
+      attachments: [attachment("command.txt")],
+    });
+    await vi.waitFor(() => expect(opencodeService.commandSession).toHaveBeenCalledOnce());
+    const deletion = service.deleteConversation(agent.id, snapshot.current.id);
+
+    expect(opencodeService.deleteSession).not.toHaveBeenCalled();
+
+    command.resolve();
+    await sending;
+    await deletion;
+    expect(opencodeService.deleteSession).toHaveBeenCalledOnce();
+  });
+
   it("completes local deletion when the OpenCode delete request stalls", async () => {
     const { service, opencodeService, agent } = await setup({ opencodeRequestMs: 10 });
     const snapshot = await service.resolveCurrent(agent.id);
@@ -1306,6 +1568,25 @@ describe("conversation-service delegating methods", () => {
     await expect(
       service.sendPromptAsync(snapshot.current.id, { text: "stale work", attachments: [] }),
     ).rejects.toThrow("Conversation not found.");
+  });
+
+  it("releases the conversation queue when an OpenCode command stalls", async () => {
+    const { service, opencodeService, agent } = await setup({ opencodeRequestMs: 10 });
+    const snapshot = await service.resolveCurrent(agent.id);
+    opencodeService.commandSession = vi.fn((input: { signal?: AbortSignal }) =>
+      neverSettlesUntilAborted(input.signal),
+    );
+
+    await expect(
+      service.sendCommand(snapshot.current.id, {
+        command: "stall",
+        arguments: "",
+        attachments: [],
+      }),
+    ).rejects.toThrow();
+    await expect(
+      service.deleteConversation(agent.id, snapshot.current.id),
+    ).resolves.toBeUndefined();
   });
 
   it("deletes a conversation that owns artifacts and share links", async () => {
@@ -1593,6 +1874,24 @@ describe("conversation-service delegating methods", () => {
     },
   );
 });
+
+function mockChatUploadService(rollback: () => Promise<void>): ChatUploadService {
+  return {
+    persist: vi.fn(() => Promise.resolve({ uploads: [], rollback })),
+    list: vi.fn(() => Promise.resolve([])),
+    removeForConversation: vi.fn(() => Promise.resolve()),
+  } as unknown as ChatUploadService;
+}
+
+function attachment(filename: string) {
+  return {
+    type: "document" as const,
+    filename,
+    mimeType: "text/plain",
+    dataUrl: "data:text/plain;base64,aGVsbG8=",
+    sizeBytes: 5,
+  };
+}
 
 function createDeferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
   let resolve!: (value: T) => void;

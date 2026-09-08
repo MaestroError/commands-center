@@ -508,7 +508,99 @@ describe("useConversation", () => {
     expect(connectConversationEvents).toHaveBeenCalledTimes(2);
   });
 
-  it("ignores a reconnect detail snapshot superseded by message, part, and status events", async () => {
+  it.each(["none", "updated", "delta", "removed"] as const)(
+    "refreshes pre-outage parts unless a %s part event arrives during reconnect",
+    async (change) => {
+      const reconnect = createDeferred<void>();
+      const detail = createDeferred<ConversationDetail>();
+      const message = {
+        id: "assistant-gap",
+        conversationId: "conv-1",
+        role: "assistant" as const,
+        content: "Partial",
+        attachments: [],
+        parts: [{ id: "part-gap", type: "text", text: "Partial" }],
+        createdAt: "2026-01-01T00:01:00.000Z",
+        updatedAt: "2026-01-01T00:01:00.000Z",
+      };
+      vi.mocked(getConversation).mockReturnValue(detail.promise);
+      vi.mocked(connectConversationEvents).mockImplementation(
+        async function* (_conversationId, signal): AsyncGenerator<ChatEvent> {
+          yield { type: "connected", properties: {} };
+          yield { type: "message.updated", properties: { sessionID: "sess-1", message } };
+          yield {
+            type: "message.part.updated",
+            properties: { sessionID: "sess-1", messageID: message.id, part: message.parts[0]! },
+          };
+          await reconnect.promise;
+          yield { type: "connected", properties: { reconnected: true } };
+          if (change === "updated") {
+            yield {
+              type: "message.part.updated",
+              properties: {
+                sessionID: "sess-1",
+                messageID: message.id,
+                part: { id: "part-gap", type: "text", text: "Live" },
+              },
+            };
+          } else if (change === "delta") {
+            yield {
+              type: "message.part.delta",
+              properties: {
+                sessionID: "sess-1",
+                messageID: message.id,
+                partID: "part-gap",
+                field: "text",
+                delta: " live",
+              },
+            };
+          } else if (change === "removed") {
+            yield {
+              type: "message.part.removed",
+              properties: { sessionID: "sess-1", messageID: message.id, partID: "part-gap" },
+            };
+          }
+          await waitForAbort(signal);
+        },
+      );
+      const queryClient = createQueryClient();
+      const { result } = renderHook(() => useConversation("writer"), {
+        wrapper: createWrapper(queryClient),
+      });
+      await waitFor(() =>
+        expect(result.current.parts[message.id]?.[0]).toMatchObject({ text: "Partial" }),
+      );
+      reconnect.resolve();
+      await waitFor(() => expect(getConversation).toHaveBeenCalledOnce());
+      const expected =
+        change === "none" ? "Complete" : change === "updated" ? "Live" : "Partial live";
+      if (change !== "none") {
+        await waitFor(() =>
+          expect(result.current.parts[message.id]).toEqual(
+            change === "removed" ? [] : [{ id: "part-gap", type: "text", text: expected }],
+          ),
+        );
+      }
+      detail.resolve(
+        makeConversation({
+          messages: [
+            {
+              ...message,
+              content: "Complete",
+              completedAt: "2026-01-01T00:02:00.000Z",
+              parts: [{ id: "part-gap", type: "text", text: "Complete" }],
+            },
+          ],
+        }),
+      );
+      await act(async () => Promise.resolve());
+      expect(result.current.parts[message.id]).toEqual(
+        change === "removed" ? [] : [{ id: "part-gap", type: "text", text: expected }],
+      );
+    },
+  );
+
+  it("does not let a reconnect snapshot clobber live message, part, and status events", async () => {
     const reconnect = createDeferred<void>();
     const detail = createDeferred<ConversationDetail>();
     vi.mocked(getConversation).mockReturnValue(detail.promise);
@@ -577,6 +669,195 @@ describe("useConversation", () => {
     expect(result.current.conversation?.messages[0]?.content).toBe("New message");
     expect(result.current.parts["assistant-race"]?.[0]).toMatchObject({ text: "New part" });
     expect(result.current.sessionStatus).toEqual({ type: "busy" });
+  });
+
+  it("restores a message persisted during the upstream gap", async () => {
+    const reconnect = createDeferred<void>();
+    const detail = createDeferred<ConversationDetail>();
+    vi.mocked(getConversation).mockReturnValue(detail.promise);
+    // A live event lands while the reconnect snapshot is still in flight, which
+    // is precisely when the missed message used to be dropped with the snapshot.
+    vi.mocked(connectConversationEvents).mockImplementation(
+      async function* (_conversationId, signal): AsyncGenerator<ChatEvent> {
+        yield { type: "connected", properties: {} };
+        await reconnect.promise;
+        yield { type: "connected", properties: { reconnected: true } };
+        yield {
+          type: "message.updated",
+          properties: {
+            sessionID: "sess-1",
+            message: {
+              id: "assistant-live",
+              conversationId: "conv-1",
+              role: "assistant",
+              content: "Live after reconnect",
+              parts: [],
+              attachments: [],
+              createdAt: "2026-01-01T00:04:00.000Z",
+              updatedAt: "2026-01-01T00:04:00.000Z",
+            },
+          },
+        };
+        await waitForAbort(signal);
+      },
+    );
+    const queryClient = createQueryClient();
+    const { result } = renderHook(() => useConversation("writer"), {
+      wrapper: createWrapper(queryClient),
+    });
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+
+    reconnect.resolve();
+    await waitFor(() =>
+      expect(result.current.conversation?.messages.map((message) => message.id)).toEqual([
+        "assistant-live",
+      ]),
+    );
+    detail.resolve(
+      makeConversation({
+        messages: [
+          {
+            id: "assistant-missed",
+            conversationId: "conv-1",
+            role: "assistant",
+            content: "Persisted while the stream was down",
+            parts: [{ id: "part-missed", type: "text", text: "Persisted." }],
+            attachments: [],
+            createdAt: "2026-01-01T00:03:00.000Z",
+            updatedAt: "2026-01-01T00:03:00.000Z",
+          },
+        ],
+      }),
+    );
+
+    // Snapshot order first, then what the live stream added after it was taken.
+    await waitFor(() =>
+      expect(result.current.conversation?.messages.map((message) => message.id)).toEqual([
+        "assistant-missed",
+        "assistant-live",
+      ]),
+    );
+    expect(result.current.parts["assistant-missed"]?.[0]).toMatchObject({ text: "Persisted." });
+    expect(result.current.conversation?.messageCount).toBe(2);
+  });
+
+  it("does not resurrect a message deleted while the reconnect snapshot was in flight", async () => {
+    const reconnect = createDeferred<void>();
+    const detail = createDeferred<ConversationDetail>();
+    vi.mocked(getConversation).mockReturnValue(detail.promise);
+    vi.mocked(connectConversationEvents).mockImplementation(
+      async function* (_conversationId, signal): AsyncGenerator<ChatEvent> {
+        yield { type: "connected", properties: {} };
+        yield {
+          type: "message.updated",
+          properties: {
+            sessionID: "sess-1",
+            message: {
+              id: "assistant-deleted",
+              conversationId: "conv-1",
+              role: "assistant",
+              content: "Reverted",
+              parts: [],
+              attachments: [],
+              createdAt: "2026-01-01T00:02:00.000Z",
+              updatedAt: "2026-01-01T00:02:00.000Z",
+            },
+          },
+        };
+        await reconnect.promise;
+        yield { type: "connected", properties: { reconnected: true } };
+        yield {
+          type: "message.removed",
+          properties: { sessionID: "sess-1", messageID: "assistant-deleted" },
+        };
+        await waitForAbort(signal);
+      },
+    );
+    const queryClient = createQueryClient();
+    const { result } = renderHook(() => useConversation("writer"), {
+      wrapper: createWrapper(queryClient),
+    });
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+
+    reconnect.resolve();
+    await waitFor(() => expect(result.current.conversation?.messages).toEqual([]));
+    // The snapshot predates the deletion and still carries the message.
+    detail.resolve(
+      makeConversation({
+        messages: [
+          {
+            id: "assistant-deleted",
+            conversationId: "conv-1",
+            role: "assistant",
+            content: "Reverted",
+            parts: [{ id: "part-deleted", type: "text", text: "Reverted" }],
+            attachments: [],
+            createdAt: "2026-01-01T00:02:00.000Z",
+            updatedAt: "2026-01-01T00:02:00.000Z",
+          },
+        ],
+      }),
+    );
+    await act(async () => Promise.resolve());
+
+    expect(result.current.conversation?.messages).toEqual([]);
+    expect(result.current.parts["assistant-deleted"]).toBeUndefined();
+  });
+
+  it("leaves the conversation untouched when a reconnect snapshot adds nothing", async () => {
+    const reconnect = createDeferred<void>();
+    const detail = createDeferred<ConversationDetail>();
+    vi.mocked(getConversation).mockReturnValue(detail.promise);
+    vi.mocked(connectConversationEvents).mockImplementation(
+      async function* (_conversationId, signal): AsyncGenerator<ChatEvent> {
+        yield { type: "connected", properties: {} };
+        await reconnect.promise;
+        yield { type: "connected", properties: { reconnected: true } };
+        yield {
+          type: "message.updated",
+          properties: {
+            sessionID: "sess-1",
+            message: {
+              id: "assistant-live",
+              conversationId: "conv-1",
+              role: "assistant",
+              content: "Streaming",
+              parts: [],
+              attachments: [],
+              createdAt: "2026-01-01T00:04:00.000Z",
+              updatedAt: "2026-01-01T00:04:00.000Z",
+            },
+          },
+        };
+        yield {
+          type: "message.part.updated",
+          properties: {
+            sessionID: "sess-1",
+            messageID: "assistant-live",
+            part: { id: "part-live", type: "text", text: "Streaming" },
+          },
+        };
+        await waitForAbort(signal);
+      },
+    );
+    const queryClient = createQueryClient();
+    const { result } = renderHook(() => useConversation("writer"), {
+      wrapper: createWrapper(queryClient),
+    });
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+
+    reconnect.resolve();
+    await waitFor(() =>
+      expect(result.current.parts["assistant-live"]?.[0]).toMatchObject({ text: "Streaming" }),
+    );
+    // The server has not caught up with the in-flight message yet.
+    detail.resolve(makeConversation({ messages: [] }));
+    await act(async () => Promise.resolve());
+
+    expect(result.current.conversation?.messages.map((message) => message.id)).toEqual([
+      "assistant-live",
+    ]);
+    expect(result.current.parts["assistant-live"]?.[0]).toMatchObject({ text: "Streaming" });
   });
 
   it("preserves a replayed watchdog error after reconnect detail hydration resolves", async () => {

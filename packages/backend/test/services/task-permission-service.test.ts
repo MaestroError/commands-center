@@ -70,6 +70,10 @@ describe("createTaskPermissionService", () => {
         action: "deny",
       });
       expect(effective.appToolPermissions).toContainEqual({
+        pattern: "cc_default_list_uploaded_files",
+        action: "deny",
+      });
+      expect(effective.appToolPermissions).toContainEqual({
         pattern: "cc_default_set_task_result",
         action: "allow",
       });
