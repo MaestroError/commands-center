@@ -8,6 +8,7 @@ import type { Specialist, Task, TaskRun, TaskSubtask } from "@cc/shared/schemas"
 import { TaskDetailPage } from "./TaskDetailPage";
 
 let mockParams: Record<string, string | undefined> = {};
+let mockLocationSearch = "?status=queued";
 const navigateMock = vi.fn();
 
 vi.mock("react-router", async (importOriginal) => {
@@ -16,7 +17,7 @@ vi.mock("react-router", async (importOriginal) => {
     ...actual,
     useParams: () => mockParams,
     useNavigate: () => navigateMock,
-    useLocation: () => ({ search: "?status=queued", pathname: "/tasks/task-1" }),
+    useLocation: () => ({ search: mockLocationSearch, pathname: "/tasks/task-1" }),
   };
 });
 
@@ -25,11 +26,21 @@ const mockUseTaskRunsQuery = vi.fn<() => unknown>();
 const mockUseTaskSubtasksQuery = vi.fn<() => unknown>();
 const mockUseTaskRunQuery = vi.fn<() => unknown>();
 const mockUseTaskRunSessionQuery = vi.fn<() => unknown>();
+const mockUseTaskUsageQuery = vi.fn<() => unknown>();
+const getMessagePartsMock = vi.fn();
+const getOlderMessagesMock = vi.fn();
 const duplicateMutateAsync = vi.fn();
 const updateMutate = vi.fn();
 const triggerMutate = vi.fn();
+const restoreMutateAsync = vi.fn();
+const removeMutateAsync = vi.fn();
 const openInChatMutateAsync = vi.fn();
 let openInChatIsPending = false;
+
+vi.mock("@/lib/api/conversations", () => ({
+  getMessageParts: (...args: unknown[]) => getMessagePartsMock(...args) as unknown,
+  getOlderMessages: (...args: unknown[]) => getOlderMessagesMock(...args) as unknown,
+}));
 
 vi.mock("@/hooks/use-tasks-query", () => ({
   useTaskQuery: () => mockUseTaskQuery(),
@@ -38,10 +49,13 @@ vi.mock("@/hooks/use-tasks-query", () => ({
   useTaskRunQuery: () => mockUseTaskRunQuery(),
   useTaskRunSessionQuery: () => mockUseTaskRunSessionQuery(),
   useArtifactDeliveryUrlsQuery: () => ({ data: undefined }),
+  useTaskUsageQuery: () => mockUseTaskUsageQuery(),
   useTaskMutations: () => ({
     duplicate: { mutateAsync: duplicateMutateAsync },
     update: { mutate: updateMutate, isPending: false },
     trigger: { mutate: triggerMutate },
+    restore: { mutateAsync: restoreMutateAsync, isPending: false },
+    remove: { mutateAsync: removeMutateAsync, isPending: false },
     openInChat: { mutateAsync: openInChatMutateAsync, isPending: openInChatIsPending },
     createArtifactShareLink: { isPending: false, mutateAsync: vi.fn() },
     revokeArtifactShareLink: { isPending: false, mutateAsync: vi.fn() },
@@ -95,18 +109,6 @@ function buildRun(overrides: Partial<TaskRun> = {}): TaskRun {
   } as TaskRun;
 }
 
-function buildConvertedRun(overrides: Partial<TaskRun> = {}): TaskRun {
-  return buildRun({
-    conversation: {
-      id: "conversation-1",
-      source: "task_run",
-      isCurrent: false,
-      convertedAt: "2026-08-26T08:00:00.000Z",
-    },
-    ...overrides,
-  });
-}
-
 function buildTask(overrides: Partial<Task> = {}): Task {
   return {
     id: "task-1",
@@ -146,6 +148,18 @@ function renderPage(mode?: "task" | "run") {
   );
 }
 
+function buildConvertedRun(overrides: Partial<TaskRun> = {}): TaskRun {
+  return buildRun({
+    conversation: {
+      id: "conversation-1",
+      source: "task_run",
+      isCurrent: false,
+      convertedAt: "2026-08-26T08:00:00.000Z",
+    },
+    ...overrides,
+  });
+}
+
 function mockOpenableRun(): void {
   mockUseTaskQuery.mockReturnValue({ data: buildTask(), isLoading: false, error: null });
   mockUseTaskRunQuery.mockReturnValue({ data: buildRun(), isLoading: false, error: null });
@@ -158,7 +172,9 @@ function mockOpenableRun(): void {
 
 beforeEach(() => {
   mockParams = { id: "task-1" };
+  mockLocationSearch = "?status=queued";
   vi.clearAllMocks();
+  openInChatIsPending = false;
   openInChatMutateAsync.mockReset();
   openInChatMutateAsync.mockResolvedValue({ current: { id: "conversation-1" } });
   mockUseSpecialistsQuery.mockReturnValue({ data: [buildAgent()] });
@@ -166,7 +182,7 @@ beforeEach(() => {
   mockUseTaskSubtasksQuery.mockReturnValue({ data: [], isLoading: false, error: null });
   mockUseTaskRunQuery.mockReturnValue({ data: undefined, isLoading: false, error: null });
   mockUseTaskRunSessionQuery.mockReturnValue({ data: undefined, isLoading: false, error: null });
-  openInChatIsPending = false;
+  mockUseTaskUsageQuery.mockReturnValue({ data: undefined, isLoading: false, error: null });
 });
 
 afterEach(() => {
@@ -220,6 +236,52 @@ describe("TaskDetailPage overview", () => {
     expect(screen.getByText("brief.pdf")).toBeInTheDocument();
   });
 
+  it("shows per-run token totals in the run history", async () => {
+    mockUseTaskQuery.mockReturnValue({ data: buildTask(), isLoading: false, error: null });
+    mockUseTaskRunsQuery.mockReturnValue({
+      data: [buildRun({ id: "run-1" }), buildRun({ id: "run-2" })],
+      isLoading: false,
+      error: null,
+    });
+    mockUseTaskUsageQuery.mockReturnValue({
+      data: {
+        taskId: "task-1",
+        runCount: 2,
+        total: {
+          totalTokens: 1_500,
+          messageCount: 4,
+          assistantMessageCount: 2,
+          countedMessageCount: 2,
+        },
+        runs: {
+          "run-1": {
+            totalTokens: 1_200,
+            messageCount: 2,
+            assistantMessageCount: 1,
+            countedMessageCount: 1,
+          },
+          // run-2 has a conversation but nothing recorded yet.
+          "run-2": {
+            totalTokens: 0,
+            messageCount: 2,
+            assistantMessageCount: 1,
+            countedMessageCount: 0,
+          },
+        },
+      },
+      isLoading: false,
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(screen.getByTestId("task-detail-tab-runs"));
+
+    expect(screen.getByTestId("task-run-row-run-1")).toHaveTextContent("1.2k tokens");
+    // Unrecorded reads as a dash, never as a confident zero.
+    expect(screen.getByTestId("task-run-row-run-2")).toHaveTextContent("—");
+  });
+
   it("duplicates a task and navigates to the copy's editor", async () => {
     mockUseTaskQuery.mockReturnValue({ data: buildTask(), isLoading: false, error: null });
     duplicateMutateAsync.mockResolvedValue({ id: "task-2" });
@@ -251,6 +313,123 @@ describe("TaskDetailPage overview", () => {
 
     await user.click(screen.getByRole("button", { name: "Run now" }));
     expect(triggerMutate).toHaveBeenCalledWith({ id: "task-1" });
+  });
+
+  it("renders archived task history without active-only mutations", async () => {
+    mockLocationSearch = "?view=archive";
+    mockUseTaskQuery.mockReturnValue({
+      data: buildTask({ archived: true, status: "archived" }),
+      isLoading: false,
+      error: null,
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    expect(screen.getByRole("button", { name: "Restore" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Edit" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit task title" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Duplicate" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Run now" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Leave comment" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Create signed links" })).not.toBeInTheDocument();
+    expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
+
+    await user.click(screen.getByTestId("task-detail-tab-runs"));
+    expect(screen.getByTestId("task-run-inspect-run-1")).toHaveAttribute(
+      "href",
+      "/tasks/task-1/runs/run-1?view=archive",
+    );
+    expect(screen.queryByTestId("task-run-reply-run-1")).not.toBeInTheDocument();
+  });
+
+  it("closes an open title editor when the task becomes archived", async () => {
+    mockUseTaskQuery.mockReturnValue({ data: buildTask(), isLoading: false, error: null });
+    const user = userEvent.setup();
+    const view = renderPage();
+    await user.click(screen.getByRole("button", { name: "Edit task title" }));
+    mockUseTaskQuery.mockReturnValue({
+      data: buildTask({ archived: true, status: "archived" }),
+      isLoading: false,
+      error: null,
+    });
+    view.rerender(
+      <MemoryRouter>
+        <TaskDetailPage />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+  });
+
+  it("closes an open run reply when the task becomes archived", async () => {
+    mockUseTaskQuery.mockReturnValue({ data: buildTask(), isLoading: false, error: null });
+    const user = userEvent.setup();
+    const view = renderPage();
+    await user.click(screen.getByTestId("task-detail-tab-runs"));
+    await user.click(screen.getByTestId("task-run-reply-run-1"));
+    expect(screen.getByTestId("run-reply-panel")).toBeInTheDocument();
+    mockUseTaskQuery.mockReturnValue({
+      data: buildTask({ archived: true, status: "archived" }),
+      isLoading: false,
+      error: null,
+    });
+    view.rerender(
+      <MemoryRouter>
+        <TaskDetailPage />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByTestId("run-reply-panel")).not.toBeInTheDocument();
+  });
+
+  it("restores an archived task into its active detail path", async () => {
+    const archivedTask = buildTask({ archived: true, status: "archived" });
+    mockUseTaskQuery.mockReturnValue({ data: archivedTask, isLoading: false, error: null });
+    restoreMutateAsync.mockResolvedValue(buildTask({ archived: false, status: "backlog" }));
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(screen.getByRole("button", { name: "Restore" }));
+
+    await waitFor(() => {
+      expect(restoreMutateAsync).toHaveBeenCalledWith("task-1");
+      expect(navigateMock).toHaveBeenCalledWith("/tasks/task-1");
+    });
+  });
+
+  it("confirms deletion and returns to the preserved archive view", async () => {
+    mockLocationSearch = "?view=archive";
+    mockUseTaskQuery.mockReturnValue({
+      data: buildTask({ archived: true, status: "archived" }),
+      isLoading: false,
+      error: null,
+    });
+    removeMutateAsync.mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(screen.getByRole("button", { name: "Delete" }));
+    await user.click(screen.getByRole("button", { name: "Delete task" }));
+
+    await waitFor(() => {
+      expect(removeMutateAsync).toHaveBeenCalledWith("task-1");
+      expect(navigateMock).toHaveBeenCalledWith("/tasks?view=archive");
+    });
+  });
+
+  it("returns a directly opened archived task to the archive view", () => {
+    mockLocationSearch = "";
+    mockUseTaskQuery.mockReturnValue({
+      data: buildTask({ archived: true, status: "archived" }),
+      isLoading: false,
+      error: null,
+    });
+
+    renderPage();
+
+    expect(screen.getByRole("link", { name: "All tasks" })).toHaveAttribute(
+      "href",
+      "/tasks?view=archive",
+    );
   });
 
   it("labels execution after a converted latest run as Start new run", async () => {
@@ -404,89 +583,19 @@ describe("TaskDetailPage run mode", () => {
     mockParams = { id: "task-1", runId: "run-1" };
   });
 
-  it("shows the run loading state", () => {
-    mockUseTaskQuery.mockReturnValue({ data: buildTask(), isLoading: false, error: null });
-    mockUseTaskRunQuery.mockReturnValue({ data: undefined, isLoading: true, error: null });
-    renderPage("run");
-    expect(screen.getByTestId("task-run-loading")).toBeInTheDocument();
-  });
-
-  it("shows the run error state", () => {
-    mockUseTaskQuery.mockReturnValue({ data: buildTask(), isLoading: false, error: null });
-    mockUseTaskRunQuery.mockReturnValue({
-      data: undefined,
-      isLoading: false,
-      error: new Error("run boom"),
-    });
-    renderPage("run");
-    expect(screen.getByText("run boom")).toBeInTheDocument();
-  });
-
-  it("renders the session and details tabs for a completed run and opens it in chat", async () => {
-    mockUseTaskQuery.mockReturnValue({ data: buildTask(), isLoading: false, error: null });
-    mockUseTaskRunQuery.mockReturnValue({
-      data: buildConvertedRun({
-        errorMessage: "a warning",
-        errorDetails: { code: "E1" },
-        renderedPrompt: "Do the work",
-        renderedContext: { foo: "bar" },
-        result: { messageCount: 2 },
-        effectivePermissions: { mode: "inherit" } as never,
-        resultText: "the result",
-      }),
-      isLoading: false,
-      error: null,
-    });
+  it.each([
+    ["archived", buildTask({ archived: true, status: "archived" })],
+    ["not yet loaded", undefined],
+  ])("hides chat continuation when the task is %s", (_label, task) => {
+    mockUseTaskQuery.mockReturnValue({ data: task, isLoading: !task, error: null });
+    mockUseTaskRunQuery.mockReturnValue({ data: buildRun(), isLoading: false, error: null });
     mockUseTaskRunSessionQuery.mockReturnValue({
-      data: {
-        canOpenInChat: true,
-        conversation: {
-          convertedAt: "2026-01-03T00:00:00.000Z",
-          messages: [
-            {
-              id: "m1",
-              role: "assistant",
-              content: "Working on it",
-              parts: [
-                {
-                  id: "p1",
-                  type: "tool",
-                  tool: "read",
-                  state: { status: "completed", input: { path: "a.ts" }, output: "ok" },
-                },
-              ],
-              attachments: [],
-              createdAt: "2026-01-01T00:00:00.000Z",
-            },
-          ],
-        },
-        diagnostics: [{ code: "warn", message: "heads up" }],
-      },
+      data: { canOpenInChat: true, diagnostics: [] },
       isLoading: false,
       error: null,
     });
-    openInChatMutateAsync.mockResolvedValue({ current: { id: "conv-9" } });
-
-    const user = userEvent.setup();
     renderPage("run");
-
-    expect(screen.getByTestId("task-run-inspector")).toBeInTheDocument();
-
-    // Expand the session log.
-    await user.click(screen.getByTestId("task-run-session-log"));
-    expect(screen.getByText("Working on it")).toBeInTheDocument();
-
-    // Switch to the details tab and expand its collapsible blocks.
-    await user.click(screen.getByTestId("task-run-tab-details"));
-    await user.click(screen.getByRole("button", { name: /Rendered prompt/ }));
-    await user.click(screen.getByRole("button", { name: /Rendered context/ }));
-    expect(screen.getByText("Do the work")).toBeInTheDocument();
-
-    // Reopening the converted chat reselects and navigates to the recovered conversation.
-    await user.click(screen.getByRole("button", { name: "Open chat" }));
-    await waitFor(() => {
-      expect(navigateMock).toHaveBeenCalledWith("/chat/planner/conv-9");
-    });
+    expect(screen.queryByRole("button", { name: "Continue in chat" })).not.toBeInTheDocument();
   });
 
   it("shows a converted run chat action while session inspection is loading", () => {
@@ -551,5 +660,233 @@ describe("TaskDetailPage run mode", () => {
     renderPage("run");
 
     expect(screen.getByRole("button", { name: "Continue in chat" })).toBeDisabled();
+  });
+
+  it("shows the run loading state", () => {
+    mockUseTaskQuery.mockReturnValue({ data: buildTask(), isLoading: false, error: null });
+    mockUseTaskRunQuery.mockReturnValue({ data: undefined, isLoading: true, error: null });
+    renderPage("run");
+    expect(screen.getByTestId("task-run-loading")).toBeInTheDocument();
+  });
+
+  it("shows the full session message count for a paginated run", () => {
+    mockUseTaskQuery.mockReturnValue({ data: buildTask(), isLoading: false, error: null });
+    mockUseTaskRunQuery.mockReturnValue({ data: buildRun(), isLoading: false, error: null });
+    mockUseTaskRunSessionQuery.mockReturnValue({
+      data: {
+        conversation: { id: "paged", messageCount: 125, messages: [], hasMoreMessages: true },
+        diagnostics: [],
+      },
+      isLoading: false,
+      error: null,
+    });
+    renderPage("run");
+    expect(screen.getByText("Messages").parentElement).toHaveTextContent("125");
+  });
+
+  it("shows the run error state", () => {
+    mockUseTaskQuery.mockReturnValue({ data: buildTask(), isLoading: false, error: null });
+    mockUseTaskRunQuery.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error("run boom"),
+    });
+    renderPage("run");
+    expect(screen.getByText("run boom")).toBeInTheDocument();
+  });
+
+  it("renders the session and details tabs for a completed run and opens it in chat", async () => {
+    mockUseTaskQuery.mockReturnValue({ data: buildTask(), isLoading: false, error: null });
+    mockUseTaskRunQuery.mockReturnValue({
+      data: buildRun({
+        errorMessage: "a warning",
+        errorDetails: { code: "E1" },
+        renderedPrompt: "Do the work",
+        renderedContext: { foo: "bar" },
+        result: { messageCount: 2 },
+        effectivePermissions: { mode: "inherit" } as never,
+        resultText: "the result",
+      }),
+      isLoading: false,
+      error: null,
+    });
+    mockUseTaskRunSessionQuery.mockReturnValue({
+      data: {
+        canOpenInChat: true,
+        conversation: {
+          convertedAt: "2026-01-03T00:00:00.000Z",
+          messages: [
+            {
+              id: "m1",
+              role: "assistant",
+              content: "Working on it",
+              parts: [
+                {
+                  id: "p1",
+                  type: "tool",
+                  tool: "read",
+                  state: { status: "completed", input: { path: "a.ts" }, output: "ok" },
+                },
+              ],
+              attachments: [],
+              createdAt: "2026-01-01T00:00:00.000Z",
+            },
+          ],
+        },
+        diagnostics: [{ code: "warn", message: "heads up" }],
+      },
+      isLoading: false,
+      error: null,
+    });
+    openInChatMutateAsync.mockResolvedValue({ current: { id: "conv-9" } });
+
+    const user = userEvent.setup();
+    renderPage("run");
+
+    expect(screen.getByTestId("task-run-inspector")).toBeInTheDocument();
+
+    // Expand the session log.
+    await user.click(screen.getByTestId("task-run-session-log"));
+    expect(screen.getByText("Working on it")).toBeInTheDocument();
+
+    // Switch to the details tab and expand its collapsible blocks.
+    await user.click(screen.getByTestId("task-run-tab-details"));
+    await user.click(screen.getByRole("button", { name: /Rendered prompt/ }));
+    await user.click(screen.getByRole("button", { name: /Rendered context/ }));
+    expect(screen.getByText("Do the work")).toBeInTheDocument();
+
+    // Continue in chat navigates to the recovered conversation.
+    await user.click(screen.getByRole("button", { name: "Continue in chat" }));
+    await waitFor(() => {
+      expect(navigateMock).toHaveBeenCalledWith("/chat/planner/conv-9");
+    });
+  });
+
+  it("offers the full output when the run log's tool output was trimmed", async () => {
+    // The session log renders projected parts, so long tool output arrives cut
+    // to a preview. Without the notice it would be silently truncated.
+    getMessagePartsMock.mockResolvedValue({
+      messageId: "m1",
+      parts: [
+        {
+          id: "p1",
+          type: "tool",
+          tool: "read",
+          messageID: "m1",
+          state: { status: "completed", input: { path: "a.ts" }, output: "THE COMPLETE OUTPUT" },
+        },
+      ],
+    });
+    mockUseTaskQuery.mockReturnValue({ data: buildTask(), isLoading: false, error: null });
+    mockUseTaskRunQuery.mockReturnValue({ data: buildRun(), isLoading: false, error: null });
+    mockUseTaskRunSessionQuery.mockReturnValue({
+      data: {
+        canOpenInChat: false,
+        conversation: {
+          id: "conv-1",
+          messages: [
+            {
+              id: "m1",
+              role: "assistant",
+              content: "",
+              parts: [
+                {
+                  id: "p1",
+                  type: "tool",
+                  tool: "read",
+                  messageID: "m1",
+                  state: {
+                    status: "completed",
+                    input: { path: "a.ts" },
+                    output: "truncated preview",
+                    outputTruncated: true,
+                    outputLength: 12_345,
+                  },
+                },
+              ],
+              attachments: [],
+              createdAt: "2026-01-01T00:00:00.000Z",
+            },
+          ],
+        },
+        diagnostics: [],
+      },
+      isLoading: false,
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    renderPage("run");
+    await user.click(screen.getByTestId("task-run-session-log"));
+
+    expect(screen.getByText(/12,345 characters/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Show full output" }));
+
+    expect(getMessagePartsMock).toHaveBeenCalledWith("conv-1", "m1");
+    expect(await screen.findByText(/THE COMPLETE OUTPUT/)).toBeInTheDocument();
+  });
+
+  it("shows token and timing figures in the run session log", async () => {
+    mockUseTaskQuery.mockReturnValue({ data: buildTask(), isLoading: false, error: null });
+    mockUseTaskRunQuery.mockReturnValue({ data: buildRun(), isLoading: false, error: null });
+    mockUseTaskRunSessionQuery.mockReturnValue({
+      data: {
+        canOpenInChat: false,
+        conversation: {
+          messages: [
+            {
+              id: "m1",
+              role: "assistant",
+              content: "Working on it",
+              parts: [
+                {
+                  id: "p1",
+                  type: "tool",
+                  tool: "read",
+                  state: {
+                    status: "completed",
+                    input: { path: "a.ts" },
+                    output: "ok",
+                    time: { start: 1_782_898_078_071, end: 1_782_898_078_075 },
+                  },
+                },
+              ],
+              attachments: [],
+              tokens: {
+                input: 46_890,
+                output: 232,
+                reasoning: 0,
+                cacheRead: 0,
+                cacheWrite: 0,
+                total: 47_122,
+              },
+              modelId: "claude-opus-5",
+              providerId: "anthropic",
+              createdAt: "2026-01-01T00:00:00.000Z",
+              updatedAt: "2026-01-01T00:00:12.500Z",
+            },
+          ],
+        },
+        diagnostics: [],
+      },
+      isLoading: false,
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    renderPage("run");
+
+    await user.click(screen.getByTestId("task-run-session-log"));
+
+    // Message-level usage.
+    await user.click(screen.getByRole("button", { name: "Message tokens and timing" }));
+    const messageDialog = await screen.findByRole("dialog");
+    expect(messageDialog).toHaveTextContent("47,122");
+    expect(messageDialog).toHaveTextContent("anthropic/claude-opus-5");
+    await user.click(screen.getByRole("button", { name: "Close" }));
+
+    // Per-tool timing on the same run log.
+    await user.click(screen.getByRole("button", { name: "Timing for read" }));
+    expect(await screen.findByRole("dialog")).toHaveTextContent("4ms");
   });
 });

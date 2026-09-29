@@ -32,6 +32,14 @@ export const activityStatusSchema = z.enum(["pending", "archived"]);
 
 const reviewSuggestedRepliesSchema = z.array(z.string().trim().min(1).max(200)).max(6);
 
+export const activityPresentationPayloadSchema = z
+  .object({
+    sourceSpecialistId: z.string().trim().min(1).optional(),
+    sourceSpecialistSlug: z.string().trim().min(1).optional(),
+    runOutput: z.string().trim().min(1).optional(),
+  })
+  .passthrough();
+
 /**
  * Shared payload helper for `task_needs_review` and `subtask_needs_review`.
  * `activitySchema.payload` stays opaque at the API boundary, but producers and
@@ -121,10 +129,17 @@ export const archiveAllActivitiesResponseSchema = z.object({
   archivedCount: z.number().int().nonnegative(),
 });
 
+export const unarchiveActivityResponseSchema = z.object({
+  activity: activitySchema,
+  archivedActivityIds: z.array(z.string().min(1)),
+});
+
 export type ActivityKind = z.infer<typeof activityKindSchema>;
 export type ActivityLevel = z.infer<typeof activityLevelSchema>;
 export type ActivityStatus = z.infer<typeof activityStatusSchema>;
 export type Activity = z.infer<typeof activitySchema>;
 export type ActivityListResponse = z.infer<typeof activityListResponseSchema>;
 export type ArchiveAllActivitiesResponse = z.infer<typeof archiveAllActivitiesResponseSchema>;
+export type UnarchiveActivityResponse = z.infer<typeof unarchiveActivityResponseSchema>;
 export type ReviewActivityPayload = z.infer<typeof reviewActivityPayloadSchema>;
+export type ActivityPresentationPayload = z.infer<typeof activityPresentationPayloadSchema>;

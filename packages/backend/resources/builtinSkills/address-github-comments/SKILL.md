@@ -1,13 +1,13 @@
 ---
-name: github-review-comments
-description: Address unresolved GitHub pull request review comments and requested changes. Use when asked to handle PR review feedback, review threads, unresolved comments, requested changes, or reviewer comments on a GitHub PR by deciding whether each comment should be fixed, answered, or clarified.
+name: address-github-comments
+description: Address unresolved GitHub pull request review comments and requested changes. Use when asked to handle PR review feedback, review threads, unresolved comments, requested changes, or reviewer comments on a GitHub PR by assessing every thread, grouping shared root causes, and deciding what should be fixed, answered, or clarified.
 compatibility: opencode
 metadata:
   category: quality
-  version: 1.0.0
+  version: 1.1.0
 ---
 
-# github-review-comments
+# address-github-comments
 
 Use this skill to work through GitHub PR review feedback end to end. Treat every unresolved review thread as a decision that must be resolved by a code change, an explanation, or a follow-up question.
 
@@ -19,14 +19,16 @@ Use this skill to work through GitHub PR review feedback end to end. Treat every
 2. Fetch thread-aware review data.
    - Prefer tools or GraphQL queries that expose review thread resolution state, file, line, author, and original comment context.
    - Do not rely only on flat comment lists when unresolved/resolved state matters.
-3. List every non-resolved review comment or thread.
+3. List every non-resolved review comment or thread before editing.
    - Skip resolved, outdated, duplicate, approval-only, and purely informational comments unless the user explicitly asks to revisit them.
-   - Group repeated comments only when they clearly refer to the same underlying change.
 4. Classify each non-resolved item before acting:
    - `Relevant:` the comment identifies a real bug, risk, unclear code, missing test, missing documentation, or requested improvement that fits the PR scope.
    - `Not relevant:` the comment is based on a misunderstanding, stale context, already-handled code, out-of-scope request, or a tradeoff that should intentionally remain.
    - `Ambiguous:` the comment lacks enough detail, conflicts with another requirement, or could be solved in multiple incompatible ways.
-5. Act on each item using the matching rule below.
+5. Group items only when evidence shows that they share a violated invariant, underlying cause, or corrective action.
+6. For each relevant group, trace the concern through the changed code, adjacent callers, tests, and applicable transaction, concurrency, retry, partial-failure, compensation, persistence, and cache boundaries.
+7. Define the smallest complete in-scope fix for the root cause. Include related manifestations that would otherwise leave the invariant broken; exclude unrelated pre-existing issues.
+8. Act on each group and item using the matching rules below, then account for every original thread in the final disposition.
 
 ## Action rules
 
@@ -34,13 +36,14 @@ Use this skill to work through GitHub PR review feedback end to end. Treat every
 
 When a comment is relevant:
 
-1. Implement the smallest appropriate fix.
-2. Run focused validation for that fix.
-3. If the user has asked you to commit/push, commit the fix separately from other unrelated review comments; otherwise ask for approval before committing.
-4. Reply to the review thread with what changed and the validation used.
-5. Resolve the review thread after the fix is committed and pushed, when a review-thread resolve tool is available.
+1. Implement the smallest complete fix for the underlying cause, not only the literal example in the comment.
+2. Update or add tests that exercise the invariant and meaningful related failure paths when a viable test structure exists.
+3. Run focused validation for the full root-cause group.
+4. If the user has asked you to commit and push, commit the group separately from unrelated causes; otherwise ask for approval before committing.
+5. Reply to every affected review thread with what changed, where related manifestations were handled, and the validation used.
+6. Resolve each review thread after the fix is committed and pushed, when a review-thread resolve tool is available.
 
-Use separate commits for independent review comments so reviewers can map each fix to its thread. Combine comments into one commit only when they require the same code change.
+Use separate commits for independent root causes so reviewers can map each fix to its threads. Combine comments when one coherent change is required to restore the shared invariant.
 
 ### Not relevant comments
 
@@ -67,8 +70,8 @@ If ambiguity blocks several comments, ask one clear question that covers the sha
 ## Commit discipline
 
 - Before committing or pushing, ask the user for approval.
-- Commit only files needed for the addressed review item.
-- Use terse commit messages and do not batch unrelated reviewer comments.
+- Commit only files needed for the addressed root-cause group.
+- Use terse commit messages and do not batch unrelated causes.
 - If tests or formatting modify extra files, include them only when they are caused by the fix.
 - Push after committing so GitHub thread resolution points at visible code.
 
@@ -77,6 +80,8 @@ If ambiguity blocks several comments, ask one clear question that covers the sha
 - Confirm GitHub authentication before attempting network or PR write actions.
 - Do not resolve a thread before the fix, answer, or follow-up is posted.
 - Do not mark a thread resolved when you are unsure.
+- Do not patch one manifestation when evidence shows the same in-scope defect remains elsewhere.
+- Do not expand a fix into unrelated cleanup merely because adjacent code was inspected.
 - Do not force-push, rebase, squash, or rewrite PR history unless the user explicitly asks.
 - If a comment requests a risky behavior change, explain the risk before editing.
 - If comments conflict, stop and ask the user or reviewer which direction wins.
@@ -88,7 +93,7 @@ Keep the user informed with a compact progress table:
 ```markdown
 Review Threads
 
-- Relevant: [file:line] Summary -> fixed in commit <sha>, validation: <check>, resolved.
+- Relevant: [file:line] Root cause and affected threads -> fixed in commit <sha>, validation: <check>, resolved.
 - Not relevant: [file:line] Summary -> answered with rationale, resolved or left open.
 - Ambiguous: [file:line] Summary -> asked follow-up question, left unresolved.
 ```

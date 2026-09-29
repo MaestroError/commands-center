@@ -1,11 +1,40 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useIsMutating,
+  useMutation,
+  useMutationState,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 
-import { archiveActivity, archiveAllActivities, fillSecret, getActivities } from "@/lib/api";
+import {
+  archiveActivity,
+  archiveAllActivities,
+  fillSecret,
+  getActivities,
+  unarchiveActivity,
+} from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
 
-import type { ActivityListResponse } from "@cc/shared/schemas";
+import type { Activity, ActivityListResponse } from "@cc/shared/schemas";
 
 const POLL_INTERVAL_MS = 20_000;
+const ACTIVITY_READ_STATE_SCOPE = { id: "activity-read-state" };
+const ACTIVITY_READ_STATE_MUTATION_KEY = ["activity-read-state"];
+
+export function useActivityReadStateChanging(): boolean {
+  return useIsMutating({ mutationKey: ACTIVITY_READ_STATE_MUTATION_KEY }) > 0;
+}
+
+export function useActivityReadStateError(): boolean {
+  const states = useMutationState({
+    filters: { mutationKey: ACTIVITY_READ_STATE_MUTATION_KEY },
+    select: (mutation) => mutation.state.status,
+  });
+  const latestSettled = [...states]
+    .reverse()
+    .find((status) => status === "error" || status === "success");
+  return latestSettled === "error";
+}
 
 export function useActivitiesQuery() {
   return useQuery({
@@ -27,27 +56,166 @@ export function useResolvedActivitiesQuery() {
 export function useArchiveActivityMutation() {
   const queryClient = useQueryClient();
   return useMutation({
+    mutationKey: ACTIVITY_READ_STATE_MUTATION_KEY,
+    scope: ACTIVITY_READ_STATE_SCOPE,
     mutationFn: (id: string) => archiveActivity(id),
-    // Optimistically drop the card and decrement the action-required count.
     onMutate: async (id) => {
-      await queryClient.cancelQueries({ queryKey: queryKeys.activities });
-      const previous = queryClient.getQueryData<ActivityListResponse>(queryKeys.activities);
-      if (previous) {
-        const removed = previous.activities.find((activity) => activity.id === id);
+      await Promise.all([
+        queryClient.cancelQueries({ queryKey: queryKeys.activities }),
+        queryClient.cancelQueries({ queryKey: queryKeys.activitiesResolved }),
+      ]);
+      const previousPending = queryClient.getQueryData<ActivityListResponse>(queryKeys.activities);
+      const previousResolved = queryClient.getQueryData<ActivityListResponse>(
+        queryKeys.activitiesResolved,
+      );
+      const removed = previousPending?.activities.find((activity) => activity.id === id);
+      const resolvedCollision = previousResolved?.activities.find((activity) => activity.id === id);
+      if (previousPending && removed) {
         queryClient.setQueryData<ActivityListResponse>(queryKeys.activities, {
-          activities: previous.activities.filter((activity) => activity.id !== id),
+          activities: previousPending.activities.filter((activity) => activity.id !== id),
           actionRequiredCount:
-            removed?.level === "action_required"
-              ? Math.max(0, previous.actionRequiredCount - 1)
-              : previous.actionRequiredCount,
+            removed.level === "action_required"
+              ? Math.max(0, previousPending.actionRequiredCount - 1)
+              : previousPending.actionRequiredCount,
         });
       }
-      return { previous };
+      if (previousResolved && removed) {
+        queryClient.setQueryData<ActivityListResponse>(queryKeys.activitiesResolved, {
+          ...previousResolved,
+          activities: sortActivities(
+            upsertActivity(previousResolved.activities, toActivityStatus(removed, "archived")),
+          ),
+        });
+      }
+      return { removed, resolvedCollision };
     },
     onError: (_error, _id, context) => {
-      if (context?.previous) {
-        queryClient.setQueryData(queryKeys.activities, context.previous);
+      if (!context?.removed) {
+        return;
       }
+      const removed = context.removed;
+      queryClient.setQueryData<ActivityListResponse>(queryKeys.activities, (current) => {
+        if (!current) return current;
+        const alreadyPending = current.activities.some(({ id }) => id === removed.id);
+        return {
+          activities: sortActivities(upsertActivity(current.activities, removed)),
+          actionRequiredCount:
+            current.actionRequiredCount +
+            (!alreadyPending && removed.level === "action_required" ? 1 : 0),
+        };
+      });
+      queryClient.setQueryData<ActivityListResponse>(queryKeys.activitiesResolved, (current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          activities: context.resolvedCollision
+            ? sortActivities(upsertActivity(current.activities, context.resolvedCollision))
+            : current.activities.filter(({ id }) => id !== removed.id),
+        };
+      });
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.activities });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.activitiesResolved });
+    },
+  });
+}
+
+export function useUnarchiveActivityMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationKey: ACTIVITY_READ_STATE_MUTATION_KEY,
+    scope: ACTIVITY_READ_STATE_SCOPE,
+    mutationFn: (id: string) => unarchiveActivity(id),
+    onMutate: async (id) => {
+      await Promise.all([
+        queryClient.cancelQueries({ queryKey: queryKeys.activities }),
+        queryClient.cancelQueries({ queryKey: queryKeys.activitiesResolved }),
+      ]);
+      const previousResolved = queryClient.getQueryData<ActivityListResponse>(
+        queryKeys.activitiesResolved,
+      );
+      const removed = previousResolved?.activities.find((activity) => activity.id === id);
+      const pendingCollision = queryClient
+        .getQueryData<ActivityListResponse>(queryKeys.activities)
+        ?.activities.find((activity) => activity.id === id);
+      if (previousResolved && removed) {
+        queryClient.setQueryData<ActivityListResponse>(queryKeys.activitiesResolved, {
+          ...previousResolved,
+          activities: previousResolved.activities.filter((activity) => activity.id !== id),
+        });
+      }
+      if (removed) {
+        queryClient.setQueryData<ActivityListResponse>(queryKeys.activities, (current) => {
+          if (!current) return current;
+          const alreadyPending = current.activities.some(({ id: currentId }) => currentId === id);
+          return {
+            activities: sortActivities(
+              upsertActivity(current.activities, toActivityStatus(removed, "pending")),
+            ),
+            actionRequiredCount:
+              current.actionRequiredCount +
+              (!alreadyPending && removed.level === "action_required" ? 1 : 0),
+          };
+        });
+      }
+      return { removed, pendingCollision };
+    },
+    onError: (_error, _id, context) => {
+      if (!context?.removed) {
+        return;
+      }
+      const removed = context.removed;
+      queryClient.setQueryData<ActivityListResponse>(queryKeys.activities, (current) => {
+        if (!current) return current;
+        const withoutRestored = current.activities.filter(({ id }) => id !== removed.id);
+        const activities = context.pendingCollision
+          ? sortActivities(upsertActivity(withoutRestored, context.pendingCollision))
+          : withoutRestored;
+        return {
+          activities,
+          actionRequiredCount: activities.filter(({ level }) => level === "action_required").length,
+        };
+      });
+      queryClient.setQueryData<ActivityListResponse>(queryKeys.activitiesResolved, (current) =>
+        current
+          ? {
+              ...current,
+              activities: sortActivities(upsertActivity(current.activities, removed)),
+            }
+          : current,
+      );
+    },
+    onSuccess: ({ activity, archivedActivityIds }) => {
+      let displaced: Activity[] = [];
+      queryClient.setQueryData<ActivityListResponse>(queryKeys.activities, (current) => {
+        if (!current) return current;
+        const archivedIds = new Set(archivedActivityIds);
+        displaced = current.activities.filter((entry) => archivedIds.has(entry.id));
+        const activities = sortActivities(
+          upsertActivity(
+            current.activities.filter((entry) => !archivedIds.has(entry.id)),
+            activity,
+          ),
+        );
+        return {
+          activities,
+          actionRequiredCount: activities.filter(({ level }) => level === "action_required").length,
+        };
+      });
+      queryClient.setQueryData<ActivityListResponse>(queryKeys.activitiesResolved, (current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          activities: sortActivities(
+            displaced.reduce(
+              (activities, entry) =>
+                upsertActivity(activities, toActivityStatus(entry, "archived")),
+              current.activities,
+            ),
+          ),
+        };
+      });
     },
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.activities });
@@ -59,12 +227,105 @@ export function useArchiveActivityMutation() {
 export function useArchiveAllActivitiesMutation() {
   const queryClient = useQueryClient();
   return useMutation({
+    mutationKey: ACTIVITY_READ_STATE_MUTATION_KEY,
+    scope: ACTIVITY_READ_STATE_SCOPE,
     mutationFn: archiveAllActivities,
-    onSuccess: () => {
+    onMutate: async () => {
+      await Promise.all([
+        queryClient.cancelQueries({ queryKey: queryKeys.activities }),
+        queryClient.cancelQueries({ queryKey: queryKeys.activitiesResolved }),
+      ]);
+      const previousPending = queryClient.getQueryData<ActivityListResponse>(queryKeys.activities);
+      const previousResolved = queryClient.getQueryData<ActivityListResponse>(
+        queryKeys.activitiesResolved,
+      );
+      if (previousPending) {
+        queryClient.setQueryData<ActivityListResponse>(queryKeys.activities, {
+          activities: [],
+          actionRequiredCount: 0,
+        });
+      }
+      if (previousPending && previousResolved) {
+        queryClient.setQueryData<ActivityListResponse>(queryKeys.activitiesResolved, {
+          ...previousResolved,
+          activities: sortActivities(
+            previousPending.activities.reduce(
+              (activities, activity) =>
+                upsertActivity(activities, toActivityStatus(activity, "archived")),
+              previousResolved.activities,
+            ),
+          ),
+        });
+      }
+      const resolvedCollisions = new Map(
+        previousResolved?.activities
+          .filter((activity) => previousPending?.activities.some(({ id }) => id === activity.id))
+          .map((activity) => [activity.id, activity]),
+      );
+      return { moved: previousPending?.activities ?? [], resolvedCollisions };
+    },
+    onError: (_error, _variables, context) => {
+      if (!context || context.moved.length === 0) {
+        return;
+      }
+      queryClient.setQueryData<ActivityListResponse>(queryKeys.activities, (current) => {
+        if (!current) return current;
+        const missing = context.moved.filter(
+          (activity) => !current.activities.some(({ id }) => id === activity.id),
+        );
+        return {
+          activities: sortActivities(
+            context.moved.reduce(
+              (activities, activity) => upsertActivity(activities, activity),
+              current.activities,
+            ),
+          ),
+          actionRequiredCount:
+            current.actionRequiredCount +
+            missing.filter(({ level }) => level === "action_required").length,
+        };
+      });
+      queryClient.setQueryData<ActivityListResponse>(queryKeys.activitiesResolved, (current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          activities: sortActivities(
+            context.moved.reduce((activities, activity) => {
+              const collision = context.resolvedCollisions.get(activity.id);
+              return collision
+                ? upsertActivity(activities, collision)
+                : activities.filter(({ id }) => id !== activity.id);
+            }, current.activities),
+          ),
+        };
+      });
+    },
+    onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.activities });
       void queryClient.invalidateQueries({ queryKey: queryKeys.activitiesResolved });
     },
   });
+}
+
+function toActivityStatus(activity: Activity, status: Activity["status"]): Activity {
+  const now = new Date().toISOString();
+  return {
+    ...activity,
+    status,
+    updatedAt: now,
+    archivedAt: status === "archived" ? now : null,
+  };
+}
+
+function sortActivities(activities: Activity[]): Activity[] {
+  return [...activities].sort(
+    (left, right) =>
+      left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id),
+  );
+}
+
+function upsertActivity(activities: Activity[], activity: Activity): Activity[] {
+  return [...activities.filter((entry) => entry.id !== activity.id), activity];
 }
 
 export function useFillSecretMutation() {

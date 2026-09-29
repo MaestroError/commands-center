@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   activityListResponseSchema,
   activitySchema,
+  unarchiveActivityResponseSchema,
   archiveAllActivitiesResponseSchema,
 } from "@cc/shared/schemas";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
@@ -57,6 +58,17 @@ export function registerActivityRoutes(server: AppServer, context: RuntimeContex
       },
     },
     async (request) => service.archive(request.params.id),
+  );
+
+  app.post(
+    "/api/activities/:id/unarchive",
+    {
+      schema: {
+        params: idParamsSchema,
+        response: { 200: unarchiveActivityResponseSchema },
+      },
+    },
+    async (request) => service.unarchive(request.params.id),
   );
 
   // Resolve a secret_request: store the value, restart the engine so it takes

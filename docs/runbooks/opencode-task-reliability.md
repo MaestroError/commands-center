@@ -138,3 +138,14 @@ In a current converted chat, `cc_default_add_task_artifact` remains a supported
 compatibility alias for the canonical `cc_default_add_artifact` tool. It writes
 to the existing conversation only; result and human-review task-run tools stay
 unavailable after the run is terminal.
+
+Conversion verifies that OpenCode accepted the chat permissions before selecting
+the conversation. Previously converted sessions reconcile those permissions when
+opened or used, so an upgrade does not leave them with frozen task-run rules.
+If OpenCode cannot confirm the permissions, chat execution is blocked until a
+retry succeeds. Cancellation finishes its session abort before conversion can
+proceed.
+
+Migration 0047 repairs duplicate current-conversation flags and enforces one
+current conversation per specialist. Archived task details remain read-only,
+including when their runs were previously continued in chat.

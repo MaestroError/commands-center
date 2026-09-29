@@ -1,3 +1,5 @@
+import { memo } from "react";
+
 import type { ConversationMessage, ConversationPart } from "@cc/shared/schemas";
 import { FileText, Folder, Paperclip, Zap } from "lucide-react";
 
@@ -10,7 +12,7 @@ type UserMessageProps = {
   onAttachmentClick?: (filename: string) => void;
 };
 
-export function UserMessage({ message, parts, onAttachmentClick }: UserMessageProps) {
+function UserMessageImpl({ message, parts, onAttachmentClick }: UserMessageProps) {
   const textPart = parts.find((p) => p.type === "text");
   const raw = (textPart?.["text"] as string) || message.content || "";
   const { skill, files, text } = parseUserMessage(raw);
@@ -63,3 +65,6 @@ export function UserMessage({ message, parts, onAttachmentClick }: UserMessagePr
     </div>
   );
 }
+
+/** Memoized alongside AssistantMessage; see the note there. */
+export const UserMessage = memo(UserMessageImpl);

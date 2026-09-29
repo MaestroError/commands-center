@@ -10,10 +10,14 @@ import type {
   TaskFeedbackThread,
   TaskRun,
   TaskRunFollowup,
+  TaskUsage,
 } from "@cc/shared/schemas";
 
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
 import { Markdown } from "@/components/chat/Markdown";
+import { UsageInfoButton } from "@/components/chat/UsageInfoButton";
+import { buildUsageTotalRows, formatUsageTotal } from "@/components/chat/usage-totals";
+import { formatRunDuration } from "@/pages/task-detail/task-detail-helpers";
 import { ArtifactShareControls } from "@/components/tasks/ArtifactShareControls";
 import { TaskPromptComposer } from "@/components/tasks/TaskPromptComposer";
 import { buildArtifactHref, formatDate, readAgentName } from "@/components/tasks/task-format";
@@ -29,6 +33,7 @@ import {
   useTaskFeedbackQuery,
   useTaskMutations,
   useTaskRunFollowupsQuery,
+  useTaskUsageQuery,
 } from "@/hooks/use-tasks-query";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -43,8 +48,11 @@ export function TaskFeedbackPanelSection(props: {
   agent?: Specialist;
   agents: Specialist[];
   runs: TaskRun[];
+  navigationSearch?: string;
+  readOnly?: boolean;
 }) {
   const feedbackQuery = useTaskFeedbackQuery(props.taskId);
+  const usageQuery = useTaskUsageQuery(props.taskId);
   const catalogQuery = useSpecialistCatalogQuery();
   const mutations = useTaskMutations();
   const feedbackSkills = useTaskComposerSkills(props.agent, catalogQuery.data);
@@ -86,8 +94,11 @@ export function TaskFeedbackPanelSection(props: {
           })
         }
         parentRuns={props.runs}
+        navigationSearch={props.navigationSearch}
+        usage={usageQuery.data}
         skills={feedbackSkills}
         task={props.task}
+        readOnly={props.readOnly}
       />
     </section>
   );
@@ -101,6 +112,8 @@ function TaskFeedbackSection(props: {
   parentRuns: TaskRun[];
   isLoading: boolean;
   error: unknown;
+  /** Per-run token totals, keyed by run id. */
+  usage?: TaskUsage;
   isSubmitting: boolean;
   isUpdatingFeedback: boolean;
   onSubmit: (
@@ -108,6 +121,8 @@ function TaskFeedbackSection(props: {
     options: { requeue: boolean; onSuccess: () => void },
   ) => Promise<void>;
   onUpdateFeedback: (feedbackId: string, input: { body: string }) => Promise<unknown>;
+  navigationSearch?: string;
+  readOnly?: boolean;
 }) {
   const [prompt, setPrompt] = useState<TaskPromptValue>(() => createTaskPromptValue());
   const [isEditorOpen, setIsEditorOpen] = useState(false);
@@ -165,7 +180,7 @@ function TaskFeedbackSection(props: {
 
   return (
     <div className="grid gap-4">
-      {isEditorOpen ? (
+      {props.readOnly ? null : isEditorOpen ? (
         <form
           className="grid gap-3 rounded-lg border border-border bg-surface p-3"
           onSubmit={handleSubmit}
@@ -237,8 +252,8 @@ function TaskFeedbackSection(props: {
           {timelineItems.map((item) => {
             if (item.type === "feedback") {
               const entry = item.feedback;
-              const isEditing = editingFeedbackId === entry.id;
-              const canEdit = canEditFeedback(entry, props.parentRuns);
+              const isEditing = !props.readOnly && editingFeedbackId === entry.id;
+              const canEdit = !props.readOnly && canEditFeedback(entry, props.parentRuns);
               return (
                 <article
                   className="grid gap-3"
@@ -306,7 +321,12 @@ function TaskFeedbackSection(props: {
                       </div>
                     ) : null}
                   </FeedbackComment>
-                  <FeedbackReplies agents={props.agents} subtasks={entry.subtasks} />
+                  <FeedbackReplies
+                    agents={props.agents}
+                    navigationSearch={props.navigationSearch}
+                    readOnly={props.readOnly}
+                    subtasks={entry.subtasks}
+                  />
                 </article>
               );
             }
@@ -323,9 +343,22 @@ function TaskFeedbackSection(props: {
                   <>
                     <StatusBadge status={run.status} />
                     <span>{formatDate(readRunCommentAt(run))}</span>
+                    <span className="tabular-nums">{formatRunDuration(run)}</span>
+                    {props.usage?.runs[run.id] ? (
+                      <span className="inline-flex items-center gap-0.5">
+                        <span className="tabular-nums">
+                          {formatUsageTotal(props.usage.runs[run.id]!)}
+                        </span>
+                        <UsageInfoButton
+                          label={`Token and cost totals for this run`}
+                          rows={buildUsageTotalRows(props.usage.runs[run.id]!)}
+                          title="Run usage"
+                        />
+                      </span>
+                    ) : null}
                     <Link
                       className="font-medium text-accent underline-offset-4 hover:underline"
-                      to={`/tasks/${props.task.id}/runs/${run.id}`}
+                      to={`/tasks/${props.task.id}/runs/${run.id}${props.navigationSearch ?? ""}`}
                     >
                       Open run
                     </Link>
@@ -335,8 +368,14 @@ function TaskFeedbackSection(props: {
                 taskId={props.task.id}
                 runId={run.id}
                 tone="agent"
+                readOnly={props.readOnly}
               >
-                <RunReplyPanel agent={agent} run={run} taskId={props.task.id} />
+                <RunReplyPanel
+                  agent={agent}
+                  readOnly={props.readOnly}
+                  run={run}
+                  taskId={props.task.id}
+                />
               </FeedbackComment>
             );
           })}
@@ -380,7 +419,12 @@ function SendButtons(props: {
   );
 }
 
-export function RunReplyPanel(props: { taskId: string; run: TaskRun; agent?: Specialist }) {
+export function RunReplyPanel(props: {
+  taskId: string;
+  run: TaskRun;
+  agent?: Specialist;
+  readOnly?: boolean;
+}) {
   const navigate = useNavigate();
   const [isComposerOpen, setIsComposerOpen] = useState(false);
   const [body, setBody] = useState("");
@@ -439,6 +483,10 @@ export function RunReplyPanel(props: { taskId: string; run: TaskRun; agent?: Spe
       ? "Replies require a recorded OpenCode session."
       : undefined;
 
+  if (props.readOnly && !followupsQuery.isLoading && followups.length === 0) {
+    return null;
+  }
+
   return (
     <div className="mt-3 grid gap-3 rounded-lg border border-border bg-surface p-3">
       {followupsQuery.isLoading ? (
@@ -452,7 +500,7 @@ export function RunReplyPanel(props: { taskId: string; run: TaskRun; agent?: Spe
         </div>
       ) : null}
 
-      {convertedConversation ? (
+      {props.readOnly ? null : convertedConversation ? (
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <p className="text-sm font-medium text-text-primary">Continued in chat</p>
@@ -582,6 +630,7 @@ function FeedbackComment(props: {
   meta: ReactNode;
   tone: "operator" | "agent";
   children?: ReactNode;
+  readOnly?: boolean;
 }) {
   return (
     <div className="flex gap-3 rounded-lg border border-border bg-surface-elevated p-3 shadow-sm">
@@ -612,6 +661,7 @@ function FeedbackComment(props: {
           artifacts={props.artifacts ?? []}
           taskId={props.taskId}
           runId={props.runId}
+          readOnly={props.readOnly}
         />
         {props.children}
       </div>
@@ -619,7 +669,12 @@ function FeedbackComment(props: {
   );
 }
 
-function RunArtifactAttachments(props: { artifacts: Artifact[]; taskId?: string; runId?: string }) {
+function RunArtifactAttachments(props: {
+  artifacts: Artifact[];
+  taskId?: string;
+  runId?: string;
+  readOnly?: boolean;
+}) {
   if (props.artifacts.length === 0) {
     return null;
   }
@@ -648,7 +703,7 @@ function RunArtifactAttachments(props: { artifacts: Artifact[]; taskId?: string;
               <span className="mt-2 block text-xs text-text-secondary">
                 {artifact.description ?? artifact.title}
               </span>
-              {props.taskId ? (
+              {props.taskId && !props.readOnly ? (
                 <ArtifactShareControls artifact={artifact} taskId={props.taskId} />
               ) : null}
             </span>
@@ -679,6 +734,8 @@ function useTaskComposerSkills(
 
 function FeedbackReplies(props: {
   agents: Specialist[];
+  navigationSearch?: string;
+  readOnly?: boolean;
   subtasks: TaskFeedbackThread["subtasks"];
 }) {
   const replies = props.subtasks.flatMap((subtask) =>
@@ -705,13 +762,14 @@ function FeedbackReplies(props: {
                 <span>{formatDate(readRunCommentAt(reply.run))}</span>
                 <Link
                   className="font-medium text-accent underline-offset-4 hover:underline"
-                  to={`/tasks/${reply.run.taskId}/runs/${reply.run.id}`}
+                  to={`/tasks/${reply.run.taskId}/runs/${reply.run.id}${props.navigationSearch ?? ""}`}
                 >
                   Open run
                 </Link>
               </>
             }
             artifacts={reply.run.artifacts}
+            readOnly={props.readOnly}
             taskId={reply.run.taskId}
             runId={reply.run.id}
             tone="agent"

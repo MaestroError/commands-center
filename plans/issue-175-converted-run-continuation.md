@@ -31,7 +31,7 @@ Make a converted task-run conversation the sole continuation surface while prese
 
 ## Non-Goals
 
-- No schema migration, dependency change, automatic task acceptance/archive, run-result merge, arbitrary historical artifact mutation, or change to normal unconverted reply behavior.
+- No dependency change, automatic task acceptance/archive, run-result merge, arbitrary historical artifact mutation, or change to normal unconverted reply behavior.
 
 ## Review Maintenance
 
@@ -44,3 +44,7 @@ Make a converted task-run conversation the sole continuation surface while prese
 7. Replace the converted OpenCode session's frozen task permissions with chat-compatible rules that allow the artifact compatibility alias while denying terminal result and human-review mutations.
 8. Reuse the runtime conversation service in task routes so conversion and direct replies share one per-run operation guard in the production HTTP topology.
 9. Make current-conversation transitions transactional and enforce one current conversation per specialist so concurrent chat starts or switches cannot leave a stale converted run artifact-authorized.
+
+## Database integrity
+
+Migration 0047 repairs duplicate current-conversation flags and enforces one current conversation per specialist with a partial unique index. It follows staging migrations through 0046.

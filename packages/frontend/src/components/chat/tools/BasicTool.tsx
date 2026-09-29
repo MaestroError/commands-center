@@ -1,7 +1,10 @@
 import { useState, type ReactNode } from "react";
 import { ChevronRight, Wrench, X } from "lucide-react";
 
+import type { ConversationPart } from "@cc/shared/schemas";
+
 import { CopyIdButton } from "../CopyIdButton";
+import { ToolUsageInfoButton } from "../UsageInfoButton";
 import { useCancellableTool } from "./use-cancellable-tool";
 
 type BasicToolProps = {
@@ -14,6 +17,8 @@ type BasicToolProps = {
   copyValue?: string;
   /** The tool call's id (`part.callID`). Lets the status dot become a cancel button when this call is blocked on the user. */
   callId?: string;
+  /** The tool part itself, when the caller has it. Adds the timing info button to the row. */
+  part?: ConversationPart;
   children?: ReactNode;
 };
 
@@ -40,6 +45,7 @@ export function BasicTool({
   hideDetails = false,
   copyValue,
   callId,
+  part,
   children,
 }: BasicToolProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
@@ -95,6 +101,7 @@ export function BasicTool({
             </span>
           )
         ) : null}
+        {part ? <ToolUsageInfoButton part={part} toolName={title} /> : null}
         {copyValue ? <CopyIdButton label={`tool id ${title}`} value={copyValue} /> : null}
       </div>
 

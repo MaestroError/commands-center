@@ -2,6 +2,7 @@ import { Check, CircleHelp } from "lucide-react";
 
 import type { ToolRendererProps } from "./tool-registry";
 import { getToolInput, getToolState } from "./tool-registry";
+import { ToolUsageInfoButton } from "../UsageInfoButton";
 
 export function QuestionTool({ part }: ToolRendererProps) {
   const state = getToolState(part);
@@ -27,6 +28,7 @@ export function QuestionTool({ part }: ToolRendererProps) {
           <span className="sdot" />
           {answered ? "Answered" : "Waiting"}
         </span>
+        <ToolUsageInfoButton part={part} toolName="Question" />
       </div>
       <div className="qa-body">
         {questions.length === 0 ? (

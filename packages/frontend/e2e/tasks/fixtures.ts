@@ -435,7 +435,9 @@ function handleTaskRoute(route: Route, state: TaskState) {
   if (!taskMatch) return route.fulfill(notFound());
   const [, rawId, sub] = taskMatch;
   const id = decodeURIComponent(rawId ?? "");
-  const task = state.tasks.find((entry) => entry.id === id);
+  const task =
+    state.tasks.find((entry) => entry.id === id) ??
+    state.archivedTasks.find((entry) => entry.id === id);
 
   if (sub === "runs") {
     return route.fulfill(json(state.runsByTaskId[id] ?? []));

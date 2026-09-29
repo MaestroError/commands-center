@@ -27,7 +27,7 @@ describe("request_secret tool", () => {
       expect(activities[0]).toMatchObject({
         kind: "secret_request",
         level: "action_required",
-        payload: { secretKey: "GITHUB_TOKEN" },
+        payload: { secretKey: "GITHUB_TOKEN", sourceSpecialistSlug: "ada" },
       });
     } finally {
       await testDb.cleanup();

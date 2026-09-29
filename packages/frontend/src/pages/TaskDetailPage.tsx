@@ -1,5 +1,6 @@
 import { Markdown } from "@/components/chat/Markdown";
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { TabBar } from "@/components/common/TabBar";
 import { AcceptanceCriteriaList } from "@/components/tasks/AcceptanceCriteria";
 import { ArtifactGeneratedUrls } from "@/components/tasks/ArtifactGeneratedUrls";
@@ -13,6 +14,7 @@ import {
   useTaskQuery,
   useTaskRunsQuery,
   useTaskSubtasksQuery,
+  useTaskUsageQuery,
 } from "@/hooks/use-tasks-query";
 import type { Specialist, Task, TaskRun, TaskSubtask } from "@cc/shared/schemas";
 import { Check, X } from "lucide-react";
@@ -92,7 +94,9 @@ function TaskOverview(props: {
   const [isTitleEditing, setIsTitleEditing] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
   const [actionError, setActionError] = useState<string>();
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const task = props.task;
+  const archiveSearch = task?.archived ? buildArchiveSearch(location.search) : "";
   const activeSectionId = selectedSectionId ?? "overview";
   const latestRunResult = readLatestRunResult(runsQuery.data ?? []);
 
@@ -115,13 +119,36 @@ function TaskOverview(props: {
     }
   }
 
+  async function handleRestoreTask(task: Task): Promise<void> {
+    setActionError(undefined);
+
+    try {
+      const restored = await mutations.restore.mutateAsync(task.id);
+      void navigate(`/tasks/${restored.id}`);
+    } catch (error) {
+      setActionError(readError(error));
+    }
+  }
+
+  async function handleDeleteTask(task: Task): Promise<void> {
+    setActionError(undefined);
+
+    try {
+      await mutations.remove.mutateAsync(task.id);
+      setIsDeleteConfirmOpen(false);
+      void navigate(`/tasks${archiveSearch}`);
+    } catch (error) {
+      setActionError(readError(error));
+    }
+  }
+
   return (
     <div className="grid gap-4" data-testid="task-detail-page">
       <section className="cc-panel p-6">
         <p className="cc-eyebrow">Tasks</p>
         <div className="mt-3 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="min-w-0 max-w-3xl">
-            {task && isTitleEditing ? (
+            {task && !task.archived && isTitleEditing ? (
               <form
                 className="flex min-w-0 items-center gap-2"
                 onSubmit={(event) => {
@@ -165,6 +192,10 @@ function TaskOverview(props: {
                   <X aria-hidden="true" className="h-4 w-4" />
                 </button>
               </form>
+            ) : task?.archived ? (
+              <h1 className="break-words p-1 text-[33px] font-bold tracking-tight text-text-primary [overflow-wrap:anywhere]">
+                {task.title}
+              </h1>
             ) : (
               <h1 className="text-[33px] font-bold tracking-tight text-text-primary">
                 <button
@@ -194,26 +225,49 @@ function TaskOverview(props: {
             <div className="flex flex-wrap gap-2">
               <Link
                 className={buttonVariants({ variant: "secondary" })}
-                to={`/tasks${location.search}`}
+                to={`/tasks${task.archived ? archiveSearch : location.search}`}
               >
                 All tasks
               </Link>
-              <Link
-                className={buttonVariants({ variant: "secondary" })}
-                to={`/tasks/${task.id}/edit`}
-              >
-                Edit
-              </Link>
-              <Button
-                variant="secondary"
-                onClick={() => void handleDuplicateTask(task)}
-                type="button"
-              >
-                Duplicate
-              </Button>
-              <Button onClick={() => mutations.trigger.mutate({ id: task.id })} type="button">
-                {task.latestRunConversation?.convertedAt ? "Start new run" : "Run now"}
-              </Button>
+              {task.archived ? (
+                <>
+                  <Button
+                    variant="secondary"
+                    disabled={mutations.restore.isPending}
+                    onClick={() => void handleRestoreTask(task)}
+                    type="button"
+                  >
+                    Restore
+                  </Button>
+                  <Button
+                    variant="danger"
+                    disabled={mutations.remove.isPending}
+                    onClick={() => setIsDeleteConfirmOpen(true)}
+                    type="button"
+                  >
+                    Delete
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Link
+                    className={buttonVariants({ variant: "secondary" })}
+                    to={`/tasks/${task.id}/edit`}
+                  >
+                    Edit
+                  </Link>
+                  <Button
+                    variant="secondary"
+                    onClick={() => void handleDuplicateTask(task)}
+                    type="button"
+                  >
+                    Duplicate
+                  </Button>
+                  <Button onClick={() => mutations.trigger.mutate({ id: task.id })} type="button">
+                    {task.latestRunConversation?.convertedAt ? "Start new run" : "Run now"}
+                  </Button>
+                </>
+              )}
             </div>
           ) : null}
         </div>
@@ -250,6 +304,7 @@ function TaskOverview(props: {
                   agent={props.agent}
                   agents={props.agents}
                   isRunsLoading={runsQuery.isLoading}
+                  navigationSearch={archiveSearch}
                   runs={runsQuery.data ?? []}
                   runsError={runsQuery.error}
                   sectionId={activeSectionId}
@@ -268,15 +323,33 @@ function TaskOverview(props: {
             </aside>
           </section>
 
-          <TaskRunOutcomeSummary runs={runsQuery.data ?? []} taskId={task.id} />
+          <TaskRunOutcomeSummary
+            navigationSearch={archiveSearch}
+            readOnly={task.archived}
+            runs={runsQuery.data ?? []}
+            taskId={task.id}
+          />
           <TaskFeedbackPanelSection
             agent={props.agent}
             agents={props.agents}
             runs={runsQuery.data ?? []}
             task={task}
             taskId={task.id}
+            navigationSearch={archiveSearch}
+            readOnly={task.archived}
           />
         </>
+      ) : null}
+      {task && isDeleteConfirmOpen ? (
+        <ConfirmDialog
+          confirmDisabled={mutations.remove.isPending}
+          confirmLabel="Delete task"
+          confirmVariant="danger"
+          description="This removes the archived task and its saved context. Run history remains subject to the existing task deletion policy."
+          onCancel={() => setIsDeleteConfirmOpen(false)}
+          onConfirm={() => void handleDeleteTask(task)}
+          title={`Delete ${task.title}?`}
+        />
       ) : null}
     </div>
   );
@@ -310,7 +383,12 @@ function TaskDecisionSummary(props: { latestRunResult?: string; task: Task }) {
   );
 }
 
-function TaskRunOutcomeSummary(props: { runs: TaskRun[]; taskId: string }) {
+function TaskRunOutcomeSummary(props: {
+  runs: TaskRun[];
+  taskId: string;
+  navigationSearch?: string;
+  readOnly?: boolean;
+}) {
   const resultRuns = props.runs.filter(hasTaskResultSummary);
   const artifacts = aggregateRunArtifacts(props.runs);
 
@@ -340,7 +418,7 @@ function TaskRunOutcomeSummary(props: { runs: TaskRun[]; taskId: string }) {
                 </div>
                 <Link
                   className="font-medium text-accent underline-offset-4 hover:underline"
-                  to={`/tasks/${run.taskId}/runs/${run.id}`}
+                  to={`/tasks/${run.taskId}/runs/${run.id}${props.navigationSearch ?? ""}`}
                 >
                   Open run
                 </Link>
@@ -393,7 +471,9 @@ function TaskRunOutcomeSummary(props: { runs: TaskRun[]; taskId: string }) {
                   {formatDate(artifact.latestRun.completedAt ?? artifact.latestRun.updatedAt)}
                 </p>
                 <ArtifactGeneratedUrls artifact={artifact.artifact} />
-                <ArtifactShareControls artifact={artifact.artifact} taskId={props.taskId} />
+                {props.readOnly ? null : (
+                  <ArtifactShareControls artifact={artifact.artifact} taskId={props.taskId} />
+                )}
               </article>
             ))}
           </div>
@@ -413,7 +493,9 @@ function TaskDetailSectionContent(props: {
   runs: TaskRun[];
   isRunsLoading: boolean;
   runsError: unknown;
+  navigationSearch?: string;
 }) {
+  const usageQuery = useTaskUsageQuery(props.taskId);
   const subtasksQuery = useTaskSubtasksQuery(props.taskId);
   const isSubtasksSection = props.sectionId === "subtasks";
 
@@ -445,6 +527,7 @@ function TaskDetailSectionContent(props: {
         isLoading={subtasksQuery.isLoading}
         runs={props.runs}
         taskId={props.taskId}
+        navigationSearch={props.navigationSearch}
         subtasks={subtasksQuery.data ?? []}
       />
     );
@@ -468,6 +551,9 @@ function TaskDetailSectionContent(props: {
           subtasks={subtasksQuery.data ?? []}
           isLoading={props.isRunsLoading}
           error={props.runsError}
+          navigationSearch={props.navigationSearch}
+          readOnly={props.task.archived}
+          usage={usageQuery.data}
         />
       </div>
     );
@@ -512,6 +598,7 @@ function TaskSubtasksSection(props: {
   subtasks: TaskSubtask[];
   runs: TaskRun[];
   taskId: string;
+  navigationSearch?: string;
   isLoading: boolean;
   error: unknown;
 }) {
@@ -556,7 +643,7 @@ function TaskSubtasksSection(props: {
                           </div>
                           <Link
                             className="font-medium text-accent underline-offset-4 hover:underline"
-                            to={`/tasks/${props.taskId}/runs/${run.id}`}
+                            to={`/tasks/${props.taskId}/runs/${run.id}${props.navigationSearch ?? ""}`}
                           >
                             Open run
                           </Link>
@@ -590,7 +677,17 @@ function TaskTodos(props: { task: Task }) {
         Your definition of done. The specialist sees these but can&apos;t check them off — verify
         and tick each one during review.
       </p>
-      <AcceptanceCriteriaList className="mt-3" interactive task={props.task} />
+      <AcceptanceCriteriaList
+        className="mt-3"
+        interactive={!props.task.archived}
+        task={props.task}
+      />
     </div>
   );
+}
+
+function buildArchiveSearch(search: string): string {
+  const params = new URLSearchParams(search);
+  params.set("view", "archive");
+  return `?${params.toString()}`;
 }

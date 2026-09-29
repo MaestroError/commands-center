@@ -44,7 +44,7 @@ export function AcceptanceCriteriaList({
               <button
                 aria-checked={isMet}
                 aria-label={`Mark "${todo.content}" as ${isMet ? "not met" : "met"}`}
-                className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 disabled:cursor-not-allowed disabled:opacity-50 ${
+                className={`mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 disabled:cursor-not-allowed disabled:opacity-50 md:h-4 md:w-4 ${
                   isMet
                     ? "border-accent text-accent"
                     : "border-border text-transparent hover:border-accent/50"

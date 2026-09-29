@@ -2,7 +2,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Logger } from "pino";
 
 import type { AppDb } from "../../src/db/client";
-import { agents } from "../../src/db/schema/index";
+import { eq } from "drizzle-orm";
+
+import { agents, conversations } from "../../src/db/schema/index";
 import type {
   EngineStatus,
   OpenCodeOrchestrator,
@@ -2537,6 +2539,397 @@ describe("createTaskExecutionService", () => {
     }
   });
 
+  it("does not complete an idle session whose assistant tool is still running", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService({ incompleteAsyncPrompt: true }),
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitor: {
+        initialPollMs: 1,
+        maxPollMs: 1,
+        idlePolls: 1,
+        noProgressMs: 60_000,
+        maxLifetimeMs: 60_000,
+      },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Incomplete tool" });
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      expect((await taskService.getRunById(run.id))?.status).toBe("running");
+    } finally {
+      executionService.dispose();
+      await testDb.cleanup();
+    }
+  });
+
+  it("completes a missing session status only with a completed assistant turn", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService({
+        completeAsyncPrompt: true,
+        missingSessionStatus: true,
+      }),
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitor: { initialPollMs: 1, maxPollMs: 1, idlePolls: 1 },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Completed missing status",
+      });
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, run.id, "completed");
+    } finally {
+      executionService.dispose();
+      await testDb.cleanup();
+    }
+  });
+
+  it("finalizes a recovered incomplete assistant turn as an engine interruption", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const opencodeService = createMockOpenCodeService({
+      incompleteAsyncPrompt: true,
+      missingSessionStatus: true,
+    });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitor: { autoStart: false },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Interrupted turn" });
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, run.id, "running");
+      await expect
+        .poll(
+          async () => (await taskService.getRunById(run.id))?.triggerMetadata?.["opencodeMonitor"],
+        )
+        .toBeDefined();
+      await executionService.resumeRunningTaskRuns();
+
+      const interrupted = await taskService.getRunById(run.id);
+      expect(interrupted?.status).toBe("cancelled");
+      expect(interrupted?.finalMessage).toBeUndefined();
+      expect(interrupted?.errorDetails).toMatchObject({
+        errorName: "TaskRunEngineInterrupted",
+        stage: "task_session_interrupted",
+        opencodeSessionId: "session-1",
+        lastAssistantMessageId: "message-2",
+      });
+      expect(opencodeService.abortSession).toHaveBeenCalledWith(expect.any(String), "session-1");
+    } finally {
+      executionService.dispose();
+      await testDb.cleanup();
+    }
+  });
+
+  it.each(["busy", "unavailable"] as const)(
+    "preserves a recovered run when its confirmation status is %s",
+    async (status) => {
+      const testDb = await createTestDatabase();
+      const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+      const opencodeService = createMockOpenCodeService({
+        incompleteAsyncPrompt: true,
+        missingSessionStatus: true,
+      });
+      const conversationService = createConversationService({
+        db: testDb.client.db,
+        config: testDb.config,
+        opencodeService,
+      });
+      const executionService = createTaskExecutionService({
+        taskService,
+        conversationService,
+        monitor: { autoStart: false },
+      });
+      try {
+        const agent = await insertAgent(testDb.client.db);
+        const task = await taskService.create({
+          agentId: agent.id,
+          title: "Transient status absence",
+        });
+        const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+        await expectRunStatus(taskService, run.id, "running");
+        await expect
+          .poll(
+            async () =>
+              (await taskService.getRunById(run.id))?.triggerMetadata?.["opencodeMonitor"],
+          )
+          .toBeDefined();
+        opencodeService.getSessionStatus = vi
+          .fn<typeof opencodeService.getSessionStatus>()
+          .mockResolvedValueOnce({ type: "unknown" })
+          .mockImplementation(() => {
+            if (status === "unavailable") return Promise.reject(new Error("status unavailable"));
+            return Promise.resolve({ type: "busy" });
+          });
+        await executionService.resumeRunningTaskRuns();
+        expect((await taskService.getRunById(run.id))?.status).toBe("running");
+        expect(opencodeService.abortSession).not.toHaveBeenCalled();
+      } finally {
+        executionService.dispose();
+        await testDb.cleanup();
+      }
+    },
+  );
+
+  it("keeps a run that completed while startup recovery was reading the status", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const opencodeService = createMockOpenCodeService({
+      incompleteAsyncPrompt: true,
+      missingSessionStatus: true,
+    });
+    // Recovery reads the conversation before it reads the session status. Model a
+    // turn that finishes in that window: the status map no longer reports the
+    // session, while the snapshot recovery already took still looks unfinished.
+    const listSessionMessages = opencodeService.listSessionMessages;
+    const getSessionStatus = opencodeService.getSessionStatus;
+    let recovering = false;
+    let finishedDuringStatusRead = false;
+    opencodeService.getSessionStatus = (...args: Parameters<typeof getSessionStatus>) => {
+      if (recovering) {
+        finishedDuringStatusRead = true;
+      }
+      return getSessionStatus(...args);
+    };
+    opencodeService.listSessionMessages = async (
+      ...args: Parameters<typeof listSessionMessages>
+    ) => {
+      const messages = await listSessionMessages(...args);
+      return finishedDuringStatusRead
+        ? messages.map((message) =>
+            message.info.role === "assistant"
+              ? {
+                  info: {
+                    ...message.info,
+                    time: { ...message.info.time, completed: message.info.time.created + 1 },
+                  },
+                  parts: [
+                    { id: `part-${message.info.id}`, type: "text", text: "Task finished: done" },
+                  ],
+                }
+              : message,
+          )
+        : messages;
+    };
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitor: { autoStart: false },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Completed during read" });
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, run.id, "running");
+      await expect
+        .poll(
+          async () => (await taskService.getRunById(run.id))?.triggerMetadata?.["opencodeMonitor"],
+        )
+        .toBeDefined();
+      recovering = true;
+      await executionService.resumeRunningTaskRuns();
+
+      const recovered = await taskService.getRunById(run.id);
+      expect(recovered?.status).not.toBe("cancelled");
+      expect(opencodeService.abortSession).not.toHaveBeenCalled();
+      await expect(taskService.listRuns(task.id)).resolves.toHaveLength(1);
+    } finally {
+      executionService.dispose();
+      await testDb.cleanup();
+    }
+  });
+
+  it("cancels a monitored run as interrupted when its session stops being reported", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const opencodeService = createMockOpenCodeService({
+      incompleteAsyncPrompt: true,
+      missingSessionStatus: true,
+    });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitor: {
+        initialPollMs: 1,
+        maxPollMs: 1,
+        idlePolls: 1,
+        retryFailFastMs: 15,
+        noProgressMs: 30,
+        maxLifetimeMs: 5 * 60 * 1_000,
+      },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Engine went away" });
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, run.id, "cancelled");
+      const cancelled = await taskService.getRunById(run.id);
+      expect(cancelled?.cancellationReason).toContain("engine interruption");
+      expect(cancelled?.errorDetails).toMatchObject({
+        errorName: "TaskRunEngineInterrupted",
+        stage: "task_session_interrupted",
+      });
+    } finally {
+      executionService.dispose();
+      await testDb.cleanup();
+    }
+  });
+
+  it("requeues a recovered engine interruption within the configured bound", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService({
+        incompleteAsyncPrompt: true,
+        missingSessionStatus: true,
+      }),
+    });
+    const monitorSettingsService = {
+      get: vi.fn(() =>
+        Promise.resolve({
+          taskRunMonitorRequeueAfterStall: true,
+          taskRunMonitorRequeueLimit: 1,
+        }),
+      ),
+      update: vi.fn(),
+    } as unknown as TaskRunMonitorSettingsService;
+    const orchestrator = createMockOrchestrator({ healthy: true });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitorSettingsService,
+      orchestrator,
+      monitor: { autoStart: false },
+      defer: { initialDelayMs: 10, maxDelayMs: 10, jitterRatio: 0 },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Retry interruption" });
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, run.id, "running");
+      await expect
+        .poll(
+          async () => (await taskService.getRunById(run.id))?.triggerMetadata?.["opencodeMonitor"],
+        )
+        .toBeDefined();
+      orchestrator.setHealthy(false);
+      await executionService.resumeRunningTaskRuns();
+      await expect.poll(async () => taskService.listRuns(task.id)).toHaveLength(2);
+      const runs = await taskService.listRuns(task.id);
+      const requeued = runs.find((entry) => entry.retryOfRunId === run.id);
+
+      expect(requeued?.status).toBe("queued");
+      expect(requeued?.triggerMetadata).toMatchObject({
+        requeueReason: "engine_interruption",
+        requeueCount: 1,
+      });
+    } finally {
+      executionService.dispose();
+      await testDb.cleanup();
+    }
+  });
+
+  it("stops requeueing recovered engine interruptions at the configured bound", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService({
+        incompleteAsyncPrompt: true,
+        missingSessionStatus: true,
+      }),
+    });
+    const monitorSettingsService = {
+      get: vi.fn(() =>
+        Promise.resolve({
+          taskRunMonitorRequeueAfterStall: true,
+          taskRunMonitorRequeueLimit: 1,
+        }),
+      ),
+      update: vi.fn(),
+    } as unknown as TaskRunMonitorSettingsService;
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitorSettingsService,
+      monitor: { autoStart: false },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Bound interruption" });
+      const run = await executionService.trigger(task.id, {
+        triggerSource: "manual",
+        metadata: { requeueCount: 1 },
+      });
+
+      await expectRunStatus(taskService, run.id, "running");
+      await expect
+        .poll(
+          async () => (await taskService.getRunById(run.id))?.triggerMetadata?.["opencodeMonitor"],
+        )
+        .toBeDefined();
+      await executionService.resumeRunningTaskRuns();
+
+      const runs = await taskService.listRuns(task.id);
+      expect(runs).toHaveLength(1);
+      expect(runs[0]?.status).toBe("cancelled");
+      expect(runs[0]?.cancellationReason).toContain("Requeue limit (1) reached");
+    } finally {
+      executionService.dispose();
+      await testDb.cleanup();
+    }
+  });
+
   it("recovers missing monitor metadata when a running run is resumed", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
@@ -3376,7 +3769,7 @@ describe("createTaskExecutionService", () => {
     const executionService = createTaskExecutionService({
       taskService,
       conversationService,
-      monitor: { initialPollMs: 1, maxPollMs: 1, idlePolls: 1, noProgressMs: 5 },
+      monitor: { initialPollMs: 1, maxPollMs: 1, idlePolls: 1, noProgressMs: 0 },
     });
 
     try {
@@ -3387,6 +3780,7 @@ describe("createTaskExecutionService", () => {
 
       await expectRunStatus(taskService, run.id, "completed");
     } finally {
+      executionService.dispose();
       await testDb.cleanup();
     }
   });
@@ -3555,7 +3949,7 @@ describe("createTaskExecutionService", () => {
     }
   });
 
-  it("auto-retries a failed feedback subtask up to the cap, then leaves it failed", async () => {
+  it("caps automatic retries of failed feedback subtasks", { timeout: 10_000 }, async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
     // Every run errors (terminal provider error, no fallback models configured),
@@ -3603,10 +3997,13 @@ describe("createTaskExecutionService", () => {
 
       // 1 original + 2 auto-retries = 3 runs, all errored, then the chain stops.
       await expect
-        .poll(async () => {
-          const runs = await taskService.listRuns(task.id);
-          return runs.length === 3 && runs.every((entry) => entry.status === "error");
-        })
+        .poll(
+          async () => {
+            const runs = await taskService.listRuns(task.id);
+            return runs.length === 3 && runs.every((entry) => entry.status === "error");
+          },
+          { timeout: 5_000 },
+        )
         .toBe(true);
 
       executionService.dispose();
@@ -4175,6 +4572,8 @@ function createMockOpenCodeService(
     listSessionMessagesErrors?: Error[];
     sessionStatusErrors?: Error[];
     completeAsyncPrompt?: boolean;
+    incompleteAsyncPrompt?: boolean;
+    missingSessionStatus?: boolean;
     // Complete async prompts only once this many have been accepted (0-indexed).
     // Lets a test stall the first run but let a requeued run finish.
     completeAsyncPromptAfter?: number;
@@ -4292,6 +4691,9 @@ function createMockOpenCodeService(
       }
 
       options.onStatus?.();
+      if (options.missingSessionStatus) {
+        return Promise.resolve({ type: "unknown" as const });
+      }
       const perSession = statusSequenceBySession.get(sessionID);
       return Promise.resolve(perSession?.shift() ?? statusSequence.shift() ?? { type: "idle" });
     },
@@ -4393,6 +4795,7 @@ function createMockOpenCodeService(
 
       const shouldComplete =
         options.completeAsyncPrompt === true ||
+        options.incompleteAsyncPrompt === true ||
         (options.completeAsyncPromptAfter !== undefined &&
           promptIndex >= options.completeAsyncPromptAfter);
       if (shouldComplete) {
@@ -4404,6 +4807,7 @@ function createMockOpenCodeService(
             assistantMessageId,
             text,
             error,
+            completed: !options.incompleteAsyncPrompt,
           }),
         );
       }
@@ -4423,13 +4827,17 @@ function createMockOpenCodeService(
     assistantMessageId: string;
     text: string;
     error?: { name: string; message: string; data?: Record<string, unknown> };
+    completed?: boolean;
   }): OpenCodeSessionMessage {
     return {
       info: {
         id: input.assistantMessageId,
         sessionID: input.sessionID,
         role: "assistant",
-        time: { created: nextTime(), completed: nextTime() },
+        time:
+          input.completed === false
+            ? { created: nextTime() }
+            : { created: nextTime(), completed: nextTime() },
         ...(input.error
           ? {
               error: {
@@ -4440,13 +4848,211 @@ function createMockOpenCodeService(
             }
           : {}),
       },
-      parts: [
-        {
-          id: `part-${input.assistantMessageId}`,
-          type: "text",
-          text: `Task finished: ${input.text}`,
-        },
-      ],
+      parts:
+        input.completed === false
+          ? [
+              {
+                id: `part-${input.assistantMessageId}`,
+                type: "tool",
+                state: { status: "running" },
+              },
+            ]
+          : [
+              {
+                id: `part-${input.assistantMessageId}`,
+                type: "text",
+                text: `Task finished: ${input.text}`,
+              },
+            ],
     };
   }
+}
+
+describe("converted chat permission reconciliation", () => {
+  it.each([undefined, []] satisfies Array<OpenCodeSessionPermissionRule[] | undefined>)(
+    "rejects conversion when OpenCode returns unconfirmed permissions (%j)",
+    async (permission) => {
+      const ctx = await createContinuationFixture();
+      try {
+        vi.mocked(ctx.opencodeService.updateSessionPermissions).mockResolvedValueOnce({
+          id: ctx.conversation.opencodeSessionId,
+          time: { created: 1 },
+          permission,
+        });
+        await expect(
+          ctx.conversationService.openTaskRunConversationInChat(ctx.task.id, ctx.run.id),
+        ).rejects.toThrow("OpenCode did not confirm");
+        const row = await ctx.testDb.client.db.query.conversations.findFirst({
+          where: (table, operators) => operators.eq(table.id, ctx.conversation.id),
+        });
+        expect(row).toMatchObject({ is_current: false, converted_at: null });
+        expect(ctx.opencodeService.updateSessionPermissions).toHaveBeenCalledTimes(2);
+      } finally {
+        await ctx.testDb.cleanup();
+      }
+    },
+  );
+
+  it.each(["current", "prompt", "async prompt", "command"] as const)(
+    "reconciles a legacy converted session before %s use",
+    async (operation) => {
+      const ctx = await createContinuationFixture();
+      try {
+        await ctx.testDb.client.db
+          .update(conversations)
+          .set({
+            source: "chat",
+            converted_at: new Date(),
+            is_current: true,
+          })
+          .where(eq(conversations.id, ctx.conversation.id));
+        if (operation === "current") {
+          await ctx.conversationService.resolveCurrent(ctx.agent.id);
+        } else if (operation === "prompt") {
+          await ctx.conversationService.sendPrompt(ctx.conversation.id, {
+            text: "Continue",
+            attachments: [],
+          });
+        } else if (operation === "async prompt") {
+          await ctx.conversationService.sendPromptAsync(ctx.conversation.id, {
+            text: "Continue",
+            attachments: [],
+          });
+        } else {
+          await ctx.conversationService.sendCommand(ctx.conversation.id, {
+            command: "help",
+            attachments: [],
+            arguments: "",
+          });
+        }
+        expect(ctx.opencodeService.updateSessionPermissions).toHaveBeenCalledWith(
+          expect.any(String),
+          ctx.conversation.opencodeSessionId,
+          [
+            { permission: "cc_default_add_task_artifact", pattern: "*", action: "allow" },
+            { permission: "cc_default_set_task_result", pattern: "*", action: "deny" },
+            { permission: "cc_default_mark_needs_human_review", pattern: "*", action: "deny" },
+          ],
+        );
+      } finally {
+        ctx.conversationService.dispose();
+        await ctx.testDb.cleanup();
+      }
+    },
+  );
+
+  it.each(["missing", "mismatched", "failed"] as const)(
+    "blocks legacy chat prompts when permission reconciliation is %s",
+    async (response) => {
+      const ctx = await createContinuationFixture();
+      try {
+        await ctx.testDb.client.db
+          .update(conversations)
+          .set({
+            source: "chat",
+            converted_at: new Date(),
+            is_current: true,
+          })
+          .where(eq(conversations.id, ctx.conversation.id));
+        if (response === "failed") {
+          vi.mocked(ctx.opencodeService.updateSessionPermissions).mockRejectedValueOnce(
+            new Error("Unavailable"),
+          );
+        } else {
+          vi.mocked(ctx.opencodeService.updateSessionPermissions).mockResolvedValueOnce({
+            id: ctx.conversation.opencodeSessionId,
+            time: { created: 1 },
+            permission: response === "missing" ? undefined : [],
+          });
+        }
+        await expect(
+          ctx.conversationService.sendPrompt(ctx.conversation.id, {
+            text: "Continue",
+            attachments: [],
+          }),
+        ).rejects.toThrow();
+        expect(ctx.opencodeService.promptSession).not.toHaveBeenCalled();
+      } finally {
+        await ctx.testDb.cleanup();
+      }
+    },
+  );
+
+  it("waits for cancellation abort before converting the session", async () => {
+    const ctx = await createContinuationFixture();
+    const releaseAbort = createDeferred<void>();
+    const abortStarted = createDeferred<void>();
+    const executionService = createTaskExecutionService({
+      db: ctx.testDb.client.db,
+      taskService: ctx.taskService,
+      conversationService: ctx.conversationService,
+      monitor: { autoStart: false },
+    });
+    let cancellation: Promise<unknown> | undefined;
+    let conversion: Promise<unknown> | undefined;
+    try {
+      await ctx.taskService.updateRun(ctx.run.id, { status: "running" });
+      vi.mocked(ctx.opencodeService.abortSession).mockImplementation(async () => {
+        abortStarted.resolve();
+        await releaseAbort.promise;
+      });
+      cancellation = executionService.cancel(ctx.run.id);
+      await abortStarted.promise;
+      conversion = ctx.conversationService.openTaskRunConversationInChat(ctx.task.id, ctx.run.id);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(ctx.opencodeService.updateSessionPermissions).not.toHaveBeenCalled();
+      releaseAbort.resolve();
+      await cancellation;
+      await conversion;
+      expect(
+        (await ctx.taskService.getRunById(ctx.run.id))?.conversation?.convertedAt,
+      ).toBeDefined();
+    } finally {
+      releaseAbort.resolve();
+      await Promise.allSettled([cancellation, conversion]);
+      executionService.dispose();
+      await ctx.testDb.cleanup();
+    }
+  });
+});
+
+async function createContinuationFixture() {
+  const testDb = await createTestDatabase();
+  const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+  const opencodeService = createMockOpenCodeService();
+  opencodeService.promptSession = vi.fn(opencodeService.promptSession);
+  opencodeService.commandSession = vi.fn(() => Promise.resolve());
+  const conversationService = createConversationService({
+    db: testDb.client.db,
+    config: testDb.config,
+    opencodeService,
+  });
+  const agent = await insertAgent(testDb.client.db);
+  const task = await taskService.create({ agentId: agent.id, title: "Continue task" });
+  const run = await taskService.createRun({
+    taskId: task.id,
+    agentId: agent.id,
+    status: "completed",
+    triggerSource: "manual",
+    renderedPrompt: "Initial work",
+    completedAt: "2026-06-01T12:00:00.000Z",
+  });
+  const conversation = await conversationService.createTaskRunConversation({
+    agentId: agent.id,
+    taskId: task.id,
+    taskRunId: run.id,
+    title: "Task: Continue task",
+    permission: [{ permission: "cc_default_add_artifact", pattern: "*", action: "deny" }],
+  });
+  await taskService.updateRun(run.id, { opencodeSessionId: conversation.opencodeSessionId });
+  return {
+    testDb,
+    taskService,
+    opencodeService,
+    conversationService,
+    agent,
+    task,
+    run,
+    conversation,
+  };
 }
