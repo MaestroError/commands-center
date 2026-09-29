@@ -275,6 +275,50 @@ test.describe("tasks board", { tag: "@tasks" }, () => {
     await expect(page.getByLabel("Subtask: Review release notes")).toBeVisible();
   });
 
+  test("opens archived task detail as read-only and restores it", async ({ page }) => {
+    const state = createTaskState();
+    state.runsByTaskId["task-archived"] = [
+      { ...state.runsByTaskId["task-ready"]![0]!, taskId: "task-archived" },
+    ];
+    await mockTaskApi(page, state);
+
+    await page.goto("/tasks?view=archive");
+    await page.getByRole("link", { name: "Archived release" }).click();
+
+    await expect(page).toHaveURL(/\/tasks\/task-archived\?view=archive$/);
+    await expect(page.getByTestId("task-detail-page")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Restore" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Delete" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Edit" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Run now" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Edit task title" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Leave comment" })).toHaveCount(0);
+    await expect(page.getByRole("checkbox")).toHaveCount(0);
+    await expect(page.getByText("Release notes drafted.").first()).toBeVisible();
+
+    await page.getByTestId("task-detail-tab-runs").click();
+    await page.getByTestId(/task-run-inspect-/).click();
+    await expect(page).toHaveURL(/\/tasks\/task-archived\/runs\/[^/]+\?view=archive$/);
+    await page.getByRole("link", { name: "Back to task" }).click();
+    await expect(page).toHaveURL(/\/tasks\/task-archived\?view=archive$/);
+
+    await page.getByRole("button", { name: "Restore" }).click();
+    await expect(page).toHaveURL(/\/tasks\/task-archived$/);
+    await expect(page.getByRole("link", { name: "Edit" })).toBeVisible();
+  });
+
+  test("deletes an archived task from its confirmed detail action", async ({ page }) => {
+    const state = createTaskState();
+    await mockTaskApi(page, state);
+
+    await page.goto("/tasks/task-archived?view=archive");
+    await page.getByRole("button", { name: "Delete" }).click();
+    await page.getByRole("button", { name: "Delete task" }).click();
+
+    await expect(page).toHaveURL(/\/tasks\?view=archive$/);
+    await expect(page.getByText("No archived tasks yet")).toBeVisible();
+  });
+
   test("cancels a running card from the queued column", async ({ page }) => {
     const state = createTaskState();
     const runningTask = {

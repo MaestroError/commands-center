@@ -8,6 +8,7 @@ import type { Specialist, Task, TaskRun, TaskSubtask } from "@cc/shared/schemas"
 import { TaskDetailPage } from "./TaskDetailPage";
 
 let mockParams: Record<string, string | undefined> = {};
+let mockLocationSearch = "?status=queued";
 const navigateMock = vi.fn();
 
 vi.mock("react-router", async (importOriginal) => {
@@ -16,7 +17,7 @@ vi.mock("react-router", async (importOriginal) => {
     ...actual,
     useParams: () => mockParams,
     useNavigate: () => navigateMock,
-    useLocation: () => ({ search: "?status=queued", pathname: "/tasks/task-1" }),
+    useLocation: () => ({ search: mockLocationSearch, pathname: "/tasks/task-1" }),
   };
 });
 
@@ -31,6 +32,8 @@ const getOlderMessagesMock = vi.fn();
 const duplicateMutateAsync = vi.fn();
 const updateMutate = vi.fn();
 const triggerMutate = vi.fn();
+const restoreMutateAsync = vi.fn();
+const removeMutateAsync = vi.fn();
 const openInChatMutateAsync = vi.fn();
 
 vi.mock("@/lib/api/conversations", () => ({
@@ -50,6 +53,8 @@ vi.mock("@/hooks/use-tasks-query", () => ({
     duplicate: { mutateAsync: duplicateMutateAsync },
     update: { mutate: updateMutate, isPending: false },
     trigger: { mutate: triggerMutate },
+    restore: { mutateAsync: restoreMutateAsync, isPending: false },
+    remove: { mutateAsync: removeMutateAsync, isPending: false },
     openInChat: { mutateAsync: openInChatMutateAsync },
     createArtifactShareLink: { isPending: false, mutateAsync: vi.fn() },
     revokeArtifactShareLink: { isPending: false, mutateAsync: vi.fn() },
@@ -144,6 +149,7 @@ function renderPage(mode?: "task" | "run") {
 
 beforeEach(() => {
   mockParams = { id: "task-1" };
+  mockLocationSearch = "?status=queued";
   vi.clearAllMocks();
   mockUseSpecialistsQuery.mockReturnValue({ data: [buildAgent()] });
   mockUseTaskRunsQuery.mockReturnValue({ data: [buildRun()], isLoading: false, error: null });
@@ -283,6 +289,123 @@ describe("TaskDetailPage overview", () => {
     expect(triggerMutate).toHaveBeenCalledWith({ id: "task-1" });
   });
 
+  it("renders archived task history without active-only mutations", async () => {
+    mockLocationSearch = "?view=archive";
+    mockUseTaskQuery.mockReturnValue({
+      data: buildTask({ archived: true, status: "archived" }),
+      isLoading: false,
+      error: null,
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    expect(screen.getByRole("button", { name: "Restore" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Edit" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit task title" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Duplicate" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Run now" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Leave comment" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Create signed links" })).not.toBeInTheDocument();
+    expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
+
+    await user.click(screen.getByTestId("task-detail-tab-runs"));
+    expect(screen.getByTestId("task-run-inspect-run-1")).toHaveAttribute(
+      "href",
+      "/tasks/task-1/runs/run-1?view=archive",
+    );
+    expect(screen.queryByTestId("task-run-reply-run-1")).not.toBeInTheDocument();
+  });
+
+  it("closes an open title editor when the task becomes archived", async () => {
+    mockUseTaskQuery.mockReturnValue({ data: buildTask(), isLoading: false, error: null });
+    const user = userEvent.setup();
+    const view = renderPage();
+    await user.click(screen.getByRole("button", { name: "Edit task title" }));
+    mockUseTaskQuery.mockReturnValue({
+      data: buildTask({ archived: true, status: "archived" }),
+      isLoading: false,
+      error: null,
+    });
+    view.rerender(
+      <MemoryRouter>
+        <TaskDetailPage />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+  });
+
+  it("closes an open run reply when the task becomes archived", async () => {
+    mockUseTaskQuery.mockReturnValue({ data: buildTask(), isLoading: false, error: null });
+    const user = userEvent.setup();
+    const view = renderPage();
+    await user.click(screen.getByTestId("task-detail-tab-runs"));
+    await user.click(screen.getByTestId("task-run-reply-run-1"));
+    expect(screen.getByTestId("run-reply-panel")).toBeInTheDocument();
+    mockUseTaskQuery.mockReturnValue({
+      data: buildTask({ archived: true, status: "archived" }),
+      isLoading: false,
+      error: null,
+    });
+    view.rerender(
+      <MemoryRouter>
+        <TaskDetailPage />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByTestId("run-reply-panel")).not.toBeInTheDocument();
+  });
+
+  it("restores an archived task into its active detail path", async () => {
+    const archivedTask = buildTask({ archived: true, status: "archived" });
+    mockUseTaskQuery.mockReturnValue({ data: archivedTask, isLoading: false, error: null });
+    restoreMutateAsync.mockResolvedValue(buildTask({ archived: false, status: "backlog" }));
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(screen.getByRole("button", { name: "Restore" }));
+
+    await waitFor(() => {
+      expect(restoreMutateAsync).toHaveBeenCalledWith("task-1");
+      expect(navigateMock).toHaveBeenCalledWith("/tasks/task-1");
+    });
+  });
+
+  it("confirms deletion and returns to the preserved archive view", async () => {
+    mockLocationSearch = "?view=archive";
+    mockUseTaskQuery.mockReturnValue({
+      data: buildTask({ archived: true, status: "archived" }),
+      isLoading: false,
+      error: null,
+    });
+    removeMutateAsync.mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(screen.getByRole("button", { name: "Delete" }));
+    await user.click(screen.getByRole("button", { name: "Delete task" }));
+
+    await waitFor(() => {
+      expect(removeMutateAsync).toHaveBeenCalledWith("task-1");
+      expect(navigateMock).toHaveBeenCalledWith("/tasks?view=archive");
+    });
+  });
+
+  it("returns a directly opened archived task to the archive view", () => {
+    mockLocationSearch = "";
+    mockUseTaskQuery.mockReturnValue({
+      data: buildTask({ archived: true, status: "archived" }),
+      isLoading: false,
+      error: null,
+    });
+
+    renderPage();
+
+    expect(screen.getByRole("link", { name: "All tasks" })).toHaveAttribute(
+      "href",
+      "/tasks?view=archive",
+    );
+  });
+
   it("renders a minimal task without optional fields", async () => {
     mockUseTaskQuery.mockReturnValue({
       data: buildTask({
@@ -340,6 +463,21 @@ describe("TaskDetailPage overview", () => {
 describe("TaskDetailPage run mode", () => {
   beforeEach(() => {
     mockParams = { id: "task-1", runId: "run-1" };
+  });
+
+  it.each([
+    ["archived", buildTask({ archived: true, status: "archived" })],
+    ["not yet loaded", undefined],
+  ])("hides chat continuation when the task is %s", (_label, task) => {
+    mockUseTaskQuery.mockReturnValue({ data: task, isLoading: !task, error: null });
+    mockUseTaskRunQuery.mockReturnValue({ data: buildRun(), isLoading: false, error: null });
+    mockUseTaskRunSessionQuery.mockReturnValue({
+      data: { canOpenInChat: true, diagnostics: [] },
+      isLoading: false,
+      error: null,
+    });
+    renderPage("run");
+    expect(screen.queryByRole("button", { name: "Continue in chat" })).not.toBeInTheDocument();
   });
 
   it("shows the run loading state", () => {
