@@ -39,6 +39,7 @@ function specialistDocumentsRoot(config: RuntimeConfig, slug: string): string {
 }
 
 const ARTIFACT_MANIFEST_FILE = "published-artifacts.json";
+const publicationTails = new Map<string, Promise<void>>();
 const WINDOWS_DRIVE_PREFIX = /^[a-zA-Z]:/;
 
 const ARTIFACT_MIME_TYPES = {
@@ -302,60 +303,73 @@ export function createArtifactService(options: { db: AppDb; config: RuntimeConfi
         throw new BadRequestError("Only file and document artifacts can be shared.");
       }
 
-      const manifest = await readManifest(options.config);
-      const existing = manifest.artifacts.find((entry) => entry.id === artifactId);
+      const key = manifestPath(options.config);
+      const previous = publicationTails.get(key) ?? Promise.resolve();
+      const { promise: pending, resolve: release } = Promise.withResolvers<void>();
+      publicationTails.set(key, pending);
+      await previous;
 
-      if (existing) {
-        return toRegisteredArtifact(row, existing, []);
-      }
+      try {
+        const manifest = await readManifest(options.config);
+        const existing = manifest.artifacts.find((entry) => entry.id === artifactId);
 
-      const filename = validateFilename(row.link);
-      const mimeType = resolveMimeType(filename);
-      const agentSlug = await getArtifactAgentSlug(row.conversation_id);
-      const sourcePath =
-        row.type === "document"
-          ? resolveDocumentSourcePath(
-              options.config,
-              row.link,
-              row.document_scope,
-              row.document_owner_slug,
-            )
-          : await resolveFileSourcePath(options.config, row.link, agentSlug);
-      const sourceStat = await stat(sourcePath).catch((error: unknown) => {
-        if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-          throw new NotFoundError("Artifact source file not found.");
+        if (existing) {
+          return toRegisteredArtifact(row, existing, []);
         }
-        throw error;
-      });
 
-      if (!sourceStat.isFile()) {
-        throw new BadRequestError("Artifact source must be a file.");
+        const filename = validateFilename(row.link);
+        const mimeType = resolveMimeType(filename);
+        const agentSlug = await getArtifactAgentSlug(row.conversation_id);
+        const sourcePath =
+          row.type === "document"
+            ? resolveDocumentSourcePath(
+                options.config,
+                row.link,
+                row.document_scope,
+                row.document_owner_slug,
+              )
+            : await resolveFileSourcePath(options.config, row.link, agentSlug);
+        const sourceStat = await stat(sourcePath).catch((error: unknown) => {
+          if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+            throw new NotFoundError("Artifact source file not found.");
+          }
+          throw error;
+        });
+
+        if (!sourceStat.isFile()) {
+          throw new BadRequestError("Artifact source must be a file.");
+        }
+
+        const content = await readFile(sourcePath);
+        const checksum = createHash("sha256").update(content).digest("hex");
+        const storageKey = `artifacts/${artifactId}/${filename}`;
+        const destinationPath = resolveArtifactStoragePath(options.config, storageKey);
+
+        await mkdir(dirname(destinationPath), { recursive: true });
+        await copyFile(sourcePath, destinationPath);
+
+        const stored = publishedArtifactSchema.parse({
+          id: artifactId,
+          originalFilename: filename,
+          mimeType,
+          sizeBytes: sourceStat.size,
+          checksum,
+          storageKey,
+          createdAt: new Date().toISOString(),
+        });
+
+        await writeManifest(options.config, {
+          version: 1,
+          artifacts: [...manifest.artifacts, stored],
+        });
+
+        return toRegisteredArtifact(row, stored, []);
+      } finally {
+        release();
+        if (publicationTails.get(key) === pending) {
+          publicationTails.delete(key);
+        }
       }
-
-      const content = await readFile(sourcePath);
-      const checksum = createHash("sha256").update(content).digest("hex");
-      const storageKey = `artifacts/${artifactId}/${filename}`;
-      const destinationPath = resolveArtifactStoragePath(options.config, storageKey);
-
-      await mkdir(dirname(destinationPath), { recursive: true });
-      await copyFile(sourcePath, destinationPath);
-
-      const stored = publishedArtifactSchema.parse({
-        id: artifactId,
-        originalFilename: filename,
-        mimeType,
-        sizeBytes: sourceStat.size,
-        checksum,
-        storageKey,
-        createdAt: new Date().toISOString(),
-      });
-
-      await writeManifest(options.config, {
-        version: 1,
-        artifacts: [...manifest.artifacts, stored],
-      });
-
-      return toRegisteredArtifact(row, stored, []);
     },
 
     // Download-time lookup: resolves the published file metadata for a shared
@@ -455,6 +469,12 @@ async function readManifest(
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
       return { version: 1, artifacts: [] };
+    }
+
+    if (error instanceof SyntaxError || error instanceof z.ZodError) {
+      throw new ConflictError(
+        "Published artifact manifest is invalid. Back up sessions/published-artifacts.json and restore a valid copy before retrying. The existing file has not been changed.",
+      );
     }
 
     throw error;
