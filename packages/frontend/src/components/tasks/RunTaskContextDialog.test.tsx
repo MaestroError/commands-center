@@ -2,6 +2,8 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
+import { TASK_CONTEXT_ATTACHMENT_EXTENSIONS } from "@cc/shared/lib";
+
 import { RunTaskContextDialog } from "./RunTaskContextDialog";
 
 describe("RunTaskContextDialog", () => {
@@ -49,5 +51,14 @@ describe("RunTaskContextDialog", () => {
     await user.click(overlay!);
 
     expect(onCancel).not.toHaveBeenCalled();
+  });
+
+  it("accepts every extension supported by task context storage", () => {
+    render(<RunTaskContextDialog taskTitle="Release review" onCancel={vi.fn()} onRun={vi.fn()} />);
+
+    expect(screen.getByLabelText("Add attachments")).toHaveAttribute(
+      "accept",
+      TASK_CONTEXT_ATTACHMENT_EXTENSIONS.join(","),
+    );
   });
 });

@@ -4,9 +4,11 @@ import {
   activityListResponseSchema,
   activitySchema,
   archiveAllActivitiesResponseSchema,
+  unarchiveActivityResponseSchema,
   type Activity,
   type ActivityListResponse,
   type ArchiveAllActivitiesResponse,
+  type UnarchiveActivityResponse,
   apiTokenActivityListResponseSchema,
   apiTokenAuditSettingsSchema,
   apiTokenListResponseSchema,
@@ -241,6 +243,14 @@ export async function archiveActivity(id: string): Promise<Activity> {
   return requestJson<Activity>(
     `/api/activities/${encodeURIComponent(id)}/archive`,
     activitySchema,
+    { method: "POST" },
+  );
+}
+
+export async function unarchiveActivity(id: string): Promise<UnarchiveActivityResponse> {
+  return requestJson<UnarchiveActivityResponse>(
+    `/api/activities/${encodeURIComponent(id)}/unarchive`,
+    unarchiveActivityResponseSchema,
     { method: "POST" },
   );
 }

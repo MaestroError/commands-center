@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes, useParams } from "react-router";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
+import { TASK_CONTEXT_ATTACHMENT_EXTENSIONS } from "@cc/shared/lib";
 import type {
   Specialist,
   SpecialistCatalog,
@@ -1283,6 +1284,23 @@ describe("TasksPage", () => {
         expect.objectContaining({ method: "POST" }),
       );
     });
+  });
+
+  it("accepts every storage extension in the persistent task context picker", async () => {
+    mockFetch({
+      taskPayload: { ...task, context: { text: "Old context", attachments: [] } },
+    });
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("link", { name: "Ship release" }));
+    await user.click(await screen.findByRole("button", { name: /^Context/i }));
+
+    expect(await screen.findByLabelText("Add attachment")).toHaveAttribute(
+      "accept",
+      TASK_CONTEXT_ATTACHMENT_EXTENSIONS.join(","),
+    );
   });
 
   it("persists the board panel context expanded state per task", async () => {

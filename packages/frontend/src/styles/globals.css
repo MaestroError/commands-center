@@ -124,6 +124,8 @@
   --chat-agent-border: #bfdbfe;
   --terminal-bg: #e2e8f0;
   --terminal-fg: #0f172a;
+  --shadow-fixed-header: 0 12px 28px -18px rgba(15, 23, 42, 0.55);
+  --shadow-fixed-footer: 0 -12px 28px -18px rgba(15, 23, 42, 0.55);
   --shadow-surface: 0 24px 64px -40px rgba(15, 23, 42, 0.65);
   --radius-surface: 0.75rem;
   --radius-control: 0.375rem;
@@ -197,6 +199,8 @@
   --chat-agent-border: #1d4ed8;
   --terminal-bg: #020617;
   --terminal-fg: #cbd5e1;
+  --shadow-fixed-header: 0 14px 30px -18px rgba(0, 0, 0, 0.88);
+  --shadow-fixed-footer: 0 -14px 30px -18px rgba(0, 0, 0, 0.88);
   --shadow-surface: 0 24px 64px -40px rgba(0, 0, 0, 0.78);
   --radius-surface: 0.75rem;
   --radius-control: 0.375rem;
@@ -1045,6 +1049,42 @@ textarea {
   font-size: 13px;
   font-style: italic;
   color: var(--text-secondary);
+}
+
+/* ---- Context window ring ---- */
+/* Drawn with a conic gradient rather than inline SVG, which the design-system
+   audit reserves for a small allowlist. --cc-context-turn is the filled
+   fraction (0-1) set from the component. */
+.cc-context-ring {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: conic-gradient(
+    var(--accent) calc(var(--cc-context-turn, 0) * 360deg),
+    color-mix(in srgb, var(--text-secondary) 30%, transparent) 0
+  );
+  position: relative;
+}
+/* Punch the middle out so it reads as a ring, not a pie. */
+.cc-context-ring::after {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  background: var(--surface);
+}
+.cc-context-ring--warn {
+  background: conic-gradient(
+    var(--warning) calc(var(--cc-context-turn, 0) * 360deg),
+    color-mix(in srgb, var(--text-secondary) 30%, transparent) 0
+  );
+}
+.cc-context-ring--danger {
+  background: conic-gradient(
+    var(--danger) calc(var(--cc-context-turn, 0) * 360deg),
+    color-mix(in srgb, var(--text-secondary) 30%, transparent) 0
+  );
 }
 
 /* ---- Tool-call cards ---- */

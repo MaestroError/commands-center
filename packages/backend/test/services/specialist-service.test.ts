@@ -463,7 +463,9 @@ describe("createSpecialistService", () => {
         catalog.ccManagedMcpServers
           ?.find((server) => server.name === "cc_default")
           ?.tools.map((tool) => tool.name),
-      ).toEqual(expect.arrayContaining(["list_specialists", "get_self_profile"]));
+      ).toEqual(
+        expect.arrayContaining(["list_specialists", "get_self_profile", "list_uploaded_files"]),
+      );
     } finally {
       await testDb.cleanup();
     }
@@ -565,6 +567,7 @@ describe("createSpecialistService", () => {
       "Global skill authoring helper",
     );
     await createSkill(testDb.cwd, "global-tool-authoring", "Global tool authoring helper");
+    await createSkill(testDb.cwd, "address-github-comments", "Address GitHub comments helper");
     const service = createSpecialistService({
       db: testDb.client.db,
       config: testDb.config,
@@ -580,8 +583,10 @@ describe("createSpecialistService", () => {
         defaultModel: "openai/gpt-4.1",
         capabilities: {
           builtInSkills: [
+            "address-github-comments",
             "custom-skill-authoring",
             "custom-tool-authoring",
+            "github-review-comments",
             "global-skill-authoring",
           ],
           customTools: [],
@@ -591,9 +596,16 @@ describe("createSpecialistService", () => {
       });
 
       expect(agent.capabilities.builtInSkills).toEqual([
+        "address-github-comments",
         "global-skill-authoring",
         "global-tool-authoring",
       ]);
+      await expect(
+        readFile(
+          join(agent.workspacePath, ".opencode", "skills", "address-github-comments", "SKILL.md"),
+          "utf8",
+        ),
+      ).resolves.toContain("Address GitHub comments helper");
       await expect(
         readFile(
           join(agent.workspacePath, ".opencode", "skills", "global-skill-authoring", "SKILL.md"),

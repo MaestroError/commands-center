@@ -14,6 +14,7 @@ type TerminalRun = Pick<
   TaskRun,
   | "id"
   | "taskId"
+  | "agentId"
   | "subtaskId"
   | "status"
   | "outcome"
@@ -36,7 +37,7 @@ type TerminalRun = Pick<
  *   which carries `errorDetails`)   → `task_run_failed` (action_required)
  * - ...a usage limit with no fallback available → `task_run_failed` (action_required)
  * - ...a usage limit that queued a different-provider fallback → `task_run_failed` (info)
- * - success, no subtask             → `task_completed`
+ * - success, no subtask             → `task_completed` (info)
  * - success, feedback subtask       → `feedback_resolved`
  * - needs review, no subtask        → `task_needs_review`
  * - needs review, feedback subtask  → `subtask_needs_review`
@@ -76,11 +77,8 @@ export function buildTerminalActivity(args: {
   const basePayload: Record<string, unknown> = {
     taskId: run.taskId,
     taskRunId: run.id,
+    sourceSpecialistId: run.agentId,
     ...(run.subtaskId ? { subtaskId: run.subtaskId } : {}),
-  };
-  const outcomePayload: Record<string, unknown> = {
-    ...basePayload,
-    ...((run.artifacts?.length ?? 0) > 0 ? { artifacts: run.artifacts } : {}),
   };
   const reviewQuestionPayload: Record<string, unknown> = run.reviewQuestion
     ? {
@@ -90,6 +88,8 @@ export function buildTerminalActivity(args: {
     : {};
 
   if (failed) {
+    const body = run.errorMessage ?? run.finalMessage ?? run.resultText ?? null;
+    const payload = withRunOutput(basePayload, run.resultText, body);
     const usageLimit = readUsageLimitFailure(run.errorDetails);
 
     if (usageLimit?.fallbackModel) {
@@ -97,8 +97,8 @@ export function buildTerminalActivity(args: {
         kind: "task_run_failed",
         level: "info",
         title: `Usage limit reached, retrying with ${usageLimit.fallbackModel}: ${taskTitle}`,
-        body: run.errorMessage ?? run.finalMessage ?? null,
-        payload: basePayload,
+        body,
+        payload,
         dedupeKey: `task_run_failed:${run.id}`,
       };
     }
@@ -108,8 +108,8 @@ export function buildTerminalActivity(args: {
         kind: "task_run_failed",
         level: "action_required",
         title: `Usage limit reached: ${taskTitle}`,
-        body: run.errorMessage ?? run.finalMessage ?? null,
-        payload: basePayload,
+        body,
+        payload,
         dedupeKey: `task_run_failed:${run.id}`,
       };
     }
@@ -118,19 +118,24 @@ export function buildTerminalActivity(args: {
       kind: "task_run_failed",
       level: "action_required",
       title: `Task run failed: ${taskTitle}`,
-      body: run.errorMessage ?? run.finalMessage ?? null,
-      payload: basePayload,
+      body,
+      payload,
       dedupeKey: `task_run_failed:${run.id}`,
     };
   }
 
   if (success) {
+    const body = run.finalMessage ?? run.resultText ?? null;
+    const outcomePayload: Record<string, unknown> = {
+      ...withRunOutput(basePayload, run.resultText, body),
+      ...((run.artifacts?.length ?? 0) > 0 ? { artifacts: run.artifacts } : {}),
+    };
     if (!run.subtaskId) {
       return {
         kind: "task_completed",
-        level: "action_required",
+        level: "info",
         title: `Task completed: ${taskTitle}`,
-        body: run.resultText ?? run.finalMessage ?? null,
+        body,
         payload: outcomePayload,
         dedupeKey: `task_completed:${run.id}`,
       };
@@ -140,8 +145,8 @@ export function buildTerminalActivity(args: {
         kind: "feedback_resolved",
         level: "info",
         title: `Feedback resolved: ${taskTitle}`,
-        body: run.resultText ?? run.finalMessage ?? null,
-        payload: basePayload,
+        body,
+        payload: withRunOutput(basePayload, run.resultText, body),
         dedupeKey: `feedback_resolved:${run.id}`,
       };
     }
@@ -149,12 +154,17 @@ export function buildTerminalActivity(args: {
   }
 
   if (needsReview) {
+    const body = run.humanReviewReason ?? run.finalMessage ?? run.resultText ?? null;
+    const outcomePayload: Record<string, unknown> = {
+      ...withRunOutput(basePayload, run.resultText, body),
+      ...((run.artifacts?.length ?? 0) > 0 ? { artifacts: run.artifacts } : {}),
+    };
     if (!run.subtaskId) {
       return {
         kind: "task_needs_review",
         level: "action_required",
         title: `Task needs review: ${taskTitle}`,
-        body: run.humanReviewReason ?? run.resultText ?? run.finalMessage ?? null,
+        body,
         payload: { ...outcomePayload, ...reviewQuestionPayload },
         dedupeKey: `task_needs_review:${run.id}`,
       };
@@ -164,8 +174,11 @@ export function buildTerminalActivity(args: {
         kind: "subtask_needs_review",
         level: "action_required",
         title: `Feedback needs review: ${taskTitle}`,
-        body: run.humanReviewReason ?? run.resultText ?? run.finalMessage ?? null,
-        payload: { ...basePayload, ...reviewQuestionPayload },
+        body,
+        payload: {
+          ...withRunOutput(basePayload, run.resultText, body),
+          ...reviewQuestionPayload,
+        },
         dedupeKey: `subtask_needs_review:${run.id}`,
       };
     }
@@ -173,6 +186,18 @@ export function buildTerminalActivity(args: {
   }
 
   return null;
+}
+
+function withRunOutput(
+  payload: Record<string, unknown>,
+  resultText: string | undefined,
+  body: string | null,
+): Record<string, unknown> {
+  const output = resultText?.trim();
+  if (!output || output === body?.trim()) {
+    return payload;
+  }
+  return { ...payload, runOutput: output };
 }
 
 function readUsageLimitFailure(

@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router";
-import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Activity, Task } from "@cc/shared/schemas";
 
@@ -10,6 +10,11 @@ import { makeTabKey, parseTabsParam } from "@/hooks/use-editor-tabs";
 import { ActivityCard } from "./ActivityCard";
 
 const { updateMutate } = vi.hoisted(() => ({ updateMutate: vi.fn() }));
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
 
 const task: Task = {
   id: "t1",
@@ -52,6 +57,19 @@ vi.mock("@/hooks/use-tasks-query", () => ({
   }),
 }));
 
+vi.mock("@/hooks/use-specialists-query", () => ({
+  useSpecialistsQuery: () => ({
+    data: [
+      {
+        id: "agent-1",
+        slug: "tonny",
+        name: "Tonny",
+        iconPath: "emoji:🧑‍💻",
+      },
+    ],
+  }),
+}));
+
 function activity(overrides: Partial<Activity> & { id: string; kind: Activity["kind"] }): Activity {
   return {
     level: "action_required",
@@ -71,7 +89,7 @@ function renderCard(value: Activity, props: Partial<Parameters<typeof ActivityCa
   render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={["/"]}>
-        <ActivityCard activity={value} onArchive={vi.fn()} {...props} />
+        <ActivityCard activity={value} onMarkRead={vi.fn()} {...props} />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -81,6 +99,8 @@ describe("ActivityCard acceptance criteria", () => {
   it("task_completed: shows the task's acceptance criteria", () => {
     renderCard(activity({ id: "a1", kind: "task_completed", payload: { taskId: "t1" } }));
 
+    fireEvent.click(screen.getByRole("button", { name: /Acceptance criteria/ }));
+
     expect(screen.getByRole("list", { name: "Acceptance criteria" })).toBeInTheDocument();
     expect(screen.getByText("Read changelog")).toBeInTheDocument();
     expect(screen.getByText("Tag the release")).toBeInTheDocument();
@@ -89,7 +109,22 @@ describe("ActivityCard acceptance criteria", () => {
   it("task_needs_review: criteria are interactive (operator can toggle)", () => {
     renderCard(activity({ id: "a1", kind: "task_needs_review", payload: { taskId: "t1" } }));
 
+    fireEvent.click(screen.getByRole("button", { name: /Acceptance criteria/ }));
+
     expect(screen.getAllByRole("checkbox").length).toBeGreaterThan(0);
+  });
+
+  it("task_needs_review: uses responsive checkbox hit-area sizing", () => {
+    renderCard(activity({ id: "a1", kind: "task_needs_review", payload: { taskId: "t1" } }));
+
+    fireEvent.click(screen.getByRole("button", { name: /Acceptance criteria/ }));
+
+    expect(screen.getByRole("checkbox", { name: 'Mark "Read changelog" as met' })).toHaveClass(
+      "h-11",
+      "w-11",
+      "md:h-4",
+      "md:w-4",
+    );
   });
 
   it("task_needs_review: shows both the reason and question", () => {
@@ -312,8 +347,10 @@ describe("ActivityCard acceptance criteria", () => {
 
   it("read-only history renders non-interactive criteria", () => {
     renderCard(activity({ id: "a1", kind: "task_completed", payload: { taskId: "t1" } }), {
-      readOnly: true,
+      mode: "resolved",
     });
+
+    fireEvent.click(screen.getByRole("button", { name: /Acceptance criteria/ }));
 
     expect(screen.getByText("Read changelog")).toBeInTheDocument();
     // Read-only criteria render as disabled markers, not toggle buttons.
@@ -322,7 +359,7 @@ describe("ActivityCard acceptance criteria", () => {
 
   it("compact cards omit criteria to stay condensed", () => {
     renderCard(activity({ id: "a1", kind: "task_completed", payload: { taskId: "t1" } }), {
-      compact: true,
+      mode: "compact",
     });
 
     expect(screen.queryByText("Read changelog")).not.toBeInTheDocument();
@@ -338,7 +375,7 @@ describe("ActivityCard acceptance criteria", () => {
           artifacts: [{ title: "PR #4", type: "url", link: "https://example.com/pull/4" }],
         },
       }),
-      { compact: true },
+      { mode: "compact" },
     );
 
     expect(screen.queryByRole("list", { name: "Activity artifacts" })).not.toBeInTheDocument();
@@ -349,4 +386,410 @@ describe("ActivityCard acceptance criteria", () => {
 
     expect(screen.queryByText("Read changelog")).not.toBeInTheDocument();
   });
+
+  it("renders source specialist metadata from the normalized payload", () => {
+    renderCard(
+      activity({
+        id: "a1",
+        kind: "specialist_info",
+        payload: { sourceSpecialistId: "agent-1" },
+      }),
+    );
+
+    const source = screen.getByTestId("activity-source");
+    expect(within(source).getByText("by")).toBeInTheDocument();
+    expect(within(source).getByText("Tonny")).toBeInTheDocument();
+  });
+
+  it("constrains the card and swipe wrapper to the feed width", () => {
+    renderCard(activity({ id: "a1", kind: "specialist_info" }));
+
+    const card = screen.getByTestId("activity-card-a1");
+    expect(card).toHaveClass("w-full", "max-w-full", "min-w-0");
+    expect(card.parentElement).toHaveClass("w-full", "max-w-full", "min-w-0");
+  });
+
+  it("elevates the mobile fixed footer above scrolling content", () => {
+    renderCard(activity({ id: "a1", kind: "specialist_info" }), { mobile: true });
+
+    expect(screen.getByTestId("activity-card-footer")).toHaveClass(
+      "bg-surface-elevated",
+      "shadow-[var(--shadow-fixed-footer)]",
+    );
+  });
+
+  it("keeps long mobile review actions reachable in a bounded scrolling footer", () => {
+    renderCard(
+      activity({
+        id: "a1",
+        kind: "task_needs_review",
+        payload: {
+          taskId: "t1",
+          taskRunId: "run-1",
+          question: "Review this detailed request ".repeat(20),
+          suggestedReplies: [
+            "Approve after checking every listed condition",
+            "Request revisions for the remaining edge cases",
+            "Pause until the additional evidence is available",
+          ],
+        },
+      }),
+      { mobile: true },
+    );
+
+    const footer = screen.getByTestId("activity-card-footer");
+
+    expect(footer).toHaveClass(
+      "max-h-[60%]",
+      "min-h-0",
+      "shrink",
+      "overflow-y-auto",
+      "overscroll-contain",
+    );
+    expect(footer).not.toHaveClass("shrink-0");
+    expect(within(footer).getByRole("textbox", { name: "Review reply" })).toBeInTheDocument();
+    expect(within(footer).getByRole("button", { name: "Mark read" })).toBeInTheDocument();
+  });
+
+  it("uses the rounded reference surface and elevated header on mobile", () => {
+    renderCard(activity({ id: "a1", kind: "specialist_warning" }), { mobile: true });
+
+    expect(screen.getByTestId("activity-card-a1")).toHaveClass("rounded-xl", "border-l-[3px]");
+    expect(screen.getByTestId("activity-card-header")).toHaveClass(
+      "max-h-[40%]",
+      "min-h-0",
+      "overflow-y-auto",
+      "shrink",
+      "shadow-[var(--shadow-fixed-header)]",
+    );
+  });
+
+  it("places mobile metadata before the title", () => {
+    renderCard(
+      activity({
+        id: "a1",
+        kind: "specialist_warning",
+        title: "Warning title",
+        payload: { sourceSpecialistId: "agent-1" },
+      }),
+      { mobile: true },
+    );
+
+    const source = screen.getByTestId("activity-source");
+    const title = screen.getByRole("heading", { name: "Warning title" });
+    expect(source.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("reveals structured run output on demand", () => {
+    renderCard(
+      activity({
+        id: "a1",
+        kind: "task_completed",
+        payload: { runOutput: "outcome: ready_for_review" },
+      }),
+    );
+
+    expect(screen.queryByText("outcome: ready_for_review")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Run output/ }));
+    expect(screen.getByText("outcome: ready_for_review")).toBeInTheDocument();
+  });
+
+  it("uses responsive sizing for mobile disclosure controls", () => {
+    renderCard(
+      activity({
+        id: "a1",
+        kind: "task_completed",
+        payload: { taskId: "t1", runOutput: "outcome: ready_for_review" },
+      }),
+    );
+
+    expect(screen.getByRole("button", { name: /Run output/ })).toHaveClass(
+      "min-h-11",
+      "md:min-h-0",
+    );
+    expect(screen.getByRole("button", { name: /Acceptance criteria/ })).toHaveClass(
+      "min-h-11",
+      "md:min-h-0",
+    );
+  });
+
+  it("offers mark unread for resolved cards", () => {
+    const onMarkUnread = vi.fn();
+    renderCard(activity({ id: "a1", kind: "specialist_info", status: "archived" }), {
+      mode: "resolved",
+      onMarkUnread,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Mark unread" }));
+
+    expect(onMarkUnread).toHaveBeenCalledWith("a1");
+  });
+
+  it("uses responsive sizing for the resolved action", () => {
+    renderCard(activity({ id: "a1", kind: "specialist_info", status: "archived" }), {
+      mode: "resolved",
+      onMarkUnread: vi.fn(),
+    });
+
+    expect(screen.getByRole("button", { name: "Mark unread" })).toHaveClass(
+      "min-h-11",
+      "md:min-h-0",
+    );
+  });
+
+  it("swipes a pending card aside to mark it read", async () => {
+    const onMarkRead = vi.fn();
+    renderCard(activity({ id: "a1", kind: "specialist_info" }), { onMarkRead });
+    const card = screen.getByTestId("activity-card-a1");
+
+    dispatchPointer(card, "pointerdown", 200, 20);
+    dispatchPointer(card, "pointermove", 40, 24);
+    dispatchPointer(card, "pointerup", 40, 24);
+
+    expect(card).toHaveStyle({ transform: "translateX(-110%)" });
+    await waitFor(() => expect(onMarkRead).toHaveBeenCalledWith("a1"));
+  });
+
+  it("uses the pointer-up displacement before React commits drag state", () => {
+    vi.useFakeTimers();
+    const onMarkRead = vi.fn();
+    renderCard(activity({ id: "a1", kind: "specialist_info" }), { onMarkRead });
+    const card = screen.getByTestId("activity-card-a1");
+
+    act(() => {
+      dispatchPointerEvent(card, "pointerdown", 200, 20);
+      dispatchPointerEvent(card, "pointermove", 40, 24);
+      dispatchPointerEvent(card, "pointerup", 40, 24);
+    });
+    void act(() => vi.runAllTimers());
+
+    expect(onMarkRead).toHaveBeenCalledWith("a1");
+  });
+
+  it("resets a cancelled swipe without marking the card read", () => {
+    vi.useFakeTimers();
+    const onMarkRead = vi.fn();
+    renderCard(activity({ id: "a1", kind: "specialist_info" }), { onMarkRead });
+    const card = screen.getByTestId("activity-card-a1");
+
+    dispatchPointer(card, "pointerdown", 200, 20);
+    dispatchPointer(card, "pointermove", 40, 24);
+    dispatchPointer(card, "pointercancel", 40, 24);
+    void act(() => vi.runAllTimers());
+
+    expect(card).toHaveStyle({ transform: "translateX(0px)" });
+    expect(onMarkRead).not.toHaveBeenCalled();
+  });
+
+  it("waits for the exit duration before resolving a clicked card", () => {
+    vi.useFakeTimers();
+    mockReducedMotion(false);
+    const onMarkRead = vi.fn();
+    renderCard(activity({ id: "a1", kind: "specialist_info" }), { onMarkRead });
+
+    fireEvent.click(screen.getByRole("button", { name: "Mark read" }));
+    void act(() => vi.advanceTimersByTime(179));
+    expect(onMarkRead).not.toHaveBeenCalled();
+
+    void act(() => vi.advanceTimersByTime(1));
+    expect(onMarkRead).toHaveBeenCalledOnce();
+  });
+
+  it("resolves immediately when reduced motion is requested", () => {
+    vi.useFakeTimers();
+    mockReducedMotion(true);
+    const onMarkRead = vi.fn();
+    renderCard(activity({ id: "a1", kind: "specialist_info" }), { onMarkRead });
+
+    fireEvent.click(screen.getByRole("button", { name: "Mark read" }));
+    void act(() => vi.runAllTimers());
+
+    expect(onMarkRead).toHaveBeenCalledOnce();
+  });
+
+  it("snaps back after a below-threshold swipe", () => {
+    vi.useFakeTimers();
+    const onMarkRead = vi.fn();
+    renderCard(activity({ id: "a1", kind: "specialist_info" }), { onMarkRead });
+    const card = screen.getByTestId("activity-card-a1");
+
+    dispatchPointer(card, "pointerdown", 200, 20);
+    dispatchPointer(card, "pointermove", 120, 22);
+    dispatchPointer(card, "pointerup", 120, 22);
+    void act(() => vi.runAllTimers());
+
+    expect(card).toHaveStyle({ transform: "translateX(0px)" });
+    expect(onMarkRead).not.toHaveBeenCalled();
+  });
+
+  it("snaps back after a rightward swipe beyond the threshold", () => {
+    vi.useFakeTimers();
+    const onMarkRead = vi.fn();
+    renderCard(activity({ id: "a1", kind: "specialist_info" }), { onMarkRead });
+    const card = screen.getByTestId("activity-card-a1");
+
+    dispatchPointer(card, "pointerdown", 200, 20);
+    dispatchPointer(card, "pointermove", 340, 22);
+    dispatchPointer(card, "pointerup", 340, 22);
+    void act(() => vi.runAllTimers());
+
+    expect(card).toHaveStyle({ transform: "translateX(0px)" });
+    expect(onMarkRead).not.toHaveBeenCalled();
+  });
+
+  it("ignores a primarily vertical gesture", () => {
+    vi.useFakeTimers();
+    const onMarkRead = vi.fn();
+    renderCard(activity({ id: "a1", kind: "specialist_info" }), { onMarkRead });
+    const card = screen.getByTestId("activity-card-a1");
+
+    dispatchPointer(card, "pointerdown", 200, 20);
+    dispatchPointer(card, "pointermove", 180, 100);
+    dispatchPointer(card, "pointerup", 180, 100);
+    void act(() => vi.runAllTimers());
+
+    expect(onMarkRead).not.toHaveBeenCalled();
+  });
+
+  it("keeps vertical mobile body scrolling separate from swipe-to-read", () => {
+    vi.useFakeTimers();
+    const onMarkRead = vi.fn();
+    renderCard(activity({ id: "a1", kind: "specialist_info", body: "Scrollable body" }), {
+      mobile: true,
+      onMarkRead,
+    });
+    const body = screen.getByText("Scrollable body");
+    const card = screen.getByTestId("activity-card-a1");
+
+    dispatchPointer(body, "pointerdown", 200, 20);
+    dispatchPointer(body, "pointermove", 20, 22);
+    dispatchPointer(body, "pointerup", 20, 22);
+    fireEvent.scroll(body);
+    void act(() => vi.runAllTimers());
+
+    expect(onMarkRead).not.toHaveBeenCalled();
+    expect(card).toHaveStyle({ transform: "translateX(0px)" });
+  });
+
+  it("does not submit duplicate mark-read requests while exiting", () => {
+    vi.useFakeTimers();
+    const onMarkRead = vi.fn();
+    renderCard(activity({ id: "a1", kind: "specialist_info" }), { onMarkRead });
+    const button = screen.getByRole("button", { name: "Mark read" });
+
+    fireEvent.click(button);
+    fireEvent.click(button);
+    void act(() => vi.runAllTimers());
+
+    expect(onMarkRead).toHaveBeenCalledOnce();
+  });
+
+  it("does not submit a second mark-read request from another swipe while exiting", () => {
+    vi.useFakeTimers();
+    const onMarkRead = vi.fn();
+    renderCard(activity({ id: "a1", kind: "specialist_info" }), { onMarkRead });
+    const card = screen.getByTestId("activity-card-a1");
+
+    dispatchPointer(card, "pointerdown", 200, 20);
+    dispatchPointer(card, "pointermove", 40, 22);
+    dispatchPointer(card, "pointerup", 40, 22);
+    dispatchPointer(card, "pointerdown", 200, 20);
+    dispatchPointer(card, "pointermove", 40, 22);
+    dispatchPointer(card, "pointerup", 40, 22);
+    void act(() => vi.runAllTimers());
+
+    expect(onMarkRead).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ["button", () => screen.getByRole("button", { name: "Mark read" })],
+    ["link", () => screen.getByRole("link", { name: "Runbook" })],
+    ["textarea", () => screen.getByRole("textbox", { name: "Review reply" })],
+  ])("does not start a swipe from an interactive %s", (_label, getTarget) => {
+    vi.useFakeTimers();
+    const onMarkRead = vi.fn();
+    renderCard(
+      activity({
+        id: "a1",
+        kind: "task_needs_review",
+        body: "[Runbook](https://example.com/runbook)",
+        payload: { taskId: "t1", taskRunId: "run-1", question: "Ship it?" },
+      }),
+      { onMarkRead },
+    );
+    const card = screen.getByTestId("activity-card-a1");
+
+    dispatchPointer(getTarget(), "pointerdown", 200, 20);
+    dispatchPointer(card, "pointermove", 20, 22);
+    dispatchPointer(card, "pointerup", 20, 22);
+    void act(() => vi.runAllTimers());
+
+    expect(onMarkRead).not.toHaveBeenCalled();
+  });
+
+  it("does not start a swipe from an acceptance-criteria checkbox", () => {
+    vi.useFakeTimers();
+    const onMarkRead = vi.fn();
+    renderCard(activity({ id: "a1", kind: "task_needs_review", payload: { taskId: "t1" } }), {
+      onMarkRead,
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Acceptance criteria/ }));
+    const card = screen.getByTestId("activity-card-a1");
+
+    dispatchPointer(screen.getAllByRole("checkbox")[0]!, "pointerdown", 200, 20);
+    dispatchPointer(card, "pointermove", 20, 22);
+    dispatchPointer(card, "pointerup", 20, 22);
+    void act(() => vi.runAllTimers());
+
+    expect(onMarkRead).not.toHaveBeenCalled();
+  });
+
+  it("does not start a swipe from a label", () => {
+    vi.useFakeTimers();
+    const onMarkRead = vi.fn();
+    renderCard(activity({ id: "a1", kind: "specialist_info" }), { onMarkRead });
+    const card = screen.getByTestId("activity-card-a1");
+    const label = document.createElement("label");
+    label.textContent = "Future field";
+    card.append(label);
+
+    dispatchPointer(label, "pointerdown", 200, 20);
+    dispatchPointer(card, "pointermove", 20, 22);
+    dispatchPointer(card, "pointerup", 20, 22);
+    void act(() => vi.runAllTimers());
+
+    expect(onMarkRead).not.toHaveBeenCalled();
+  });
 });
+
+function dispatchPointer(element: Element, type: string, clientX: number, clientY: number): void {
+  fireEvent(element, createPointerEvent(type, clientX, clientY));
+}
+
+function dispatchPointerEvent(
+  element: Element,
+  type: string,
+  clientX: number,
+  clientY: number,
+): void {
+  element.dispatchEvent(createPointerEvent(type, clientX, clientY));
+}
+
+function createPointerEvent(type: string, clientX: number, clientY: number): MouseEvent {
+  const event = new MouseEvent(type, { bubbles: true, clientX, clientY });
+  Object.defineProperty(event, "pointerId", { value: 1 });
+  return event;
+}
+
+function mockReducedMotion(matches: boolean): void {
+  vi.spyOn(window, "matchMedia").mockReturnValue({
+    matches,
+    media: "(prefers-reduced-motion: reduce)",
+    onchange: null,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  });
+}

@@ -30,7 +30,7 @@ export function createRequestSecretDefinition(options: {
     context: requestSecretToolMetadata.context,
     inputSchema: requestSecretInputSchema,
     outputSchema: requestSecretOutputSchema,
-    async execute(args: unknown, _context: { agentSlug: string }) {
+    async execute(args: unknown, context: { agentSlug: string }) {
       const parsed = requestSecretInputSchema.parse(args);
       const key = parsed.key.trim();
 
@@ -43,7 +43,7 @@ export function createRequestSecretDefinition(options: {
           level: "action_required",
           title: `Secret needed: ${key}`,
           body: parsed.reason ?? null,
-          payload: { secretKey: key },
+          payload: { secretKey: key, sourceSpecialistSlug: context.agentSlug },
           dedupeKey: `secret_request:${key}`,
         });
 

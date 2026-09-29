@@ -113,7 +113,7 @@ describe("ChatComposer attachments", () => {
     );
   });
 
-  it("normalizes an attached Markdown file to text/plain before sending", async () => {
+  it("keeps the browser media type of an attached Markdown file", async () => {
     const user = userEvent.setup();
     const { props } = renderComposer();
 
@@ -130,7 +130,9 @@ describe("ChatComposer attachments", () => {
 
     expect(props.onSend).toHaveBeenCalledWith(
       expect.objectContaining({
-        attachments: [expect.objectContaining({ filename: "notes.md", mimeType: "text/plain" })],
+        // The transport normalization to text/plain happens server-side, so the
+        // record the composer sends stays truthful about the file.
+        attachments: [expect.objectContaining({ filename: "notes.md", mimeType: "text/markdown" })],
       }),
     );
   });

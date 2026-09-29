@@ -43,12 +43,14 @@ import {
   updateTaskSubtaskInputSchema,
   uploadTaskContextAttachmentInputSchema,
   uploadTaskContextAttachmentResponseSchema,
+  taskUsageSchema,
 } from "@cc/shared/schemas";
 
 import type { AppServer } from "../lib/fastify-zod.js";
 import type { RuntimeContext } from "../lib/start-server-runtime.js";
 import { NotFoundError } from "../lib/api-error.js";
 import { createConversationService } from "../services/conversation-service.js";
+import { createUsageService } from "../services/usage-service.js";
 import { createTaskExecutionService } from "../services/task-execution-service.js";
 import { createTaskContextAttachmentService } from "../services/task-context-attachment-service.js";
 import { createTaskSchedulerService } from "../services/task-scheduler-service.js";
@@ -93,6 +95,7 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
   const activityService =
     context.activityService ??
     createActivityService({ db: context.database.db, logger: context.logger });
+  const usageService = createUsageService({ db: context.database.db });
   const conversationService = createConversationService({
     db: context.database.db,
     config: context.config,
@@ -144,6 +147,20 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
     config: context.config,
     logger: context.logger,
   });
+
+  // Token and cost totals for a task, with the per-run breakdown it sums.
+  app.get(
+    "/api/tasks/:id/usage",
+    {
+      schema: {
+        params: taskIdParamsSchema,
+        response: {
+          200: taskUsageSchema,
+        },
+      },
+    },
+    async (request) => usageService.getTaskUsage(request.params.id),
+  );
 
   app.get(
     "/api/tasks/runs/active",

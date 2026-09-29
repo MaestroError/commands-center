@@ -67,6 +67,8 @@ import {
   type UploadTaskContextAttachmentInput,
   type UploadTaskContextAttachmentResponse,
   updateTaskInputSchema,
+  taskUsageSchema,
+  type TaskUsage,
 } from "@cc/shared/schemas";
 
 export async function listTasks(query: Partial<ListTasksQuery> = {}): Promise<Task[]> {
@@ -461,4 +463,9 @@ export async function listTaskSchedulerState(): Promise<TaskSchedulerState[]> {
     "/api/tasks/scheduler/state",
     taskSchedulerStateListSchema,
   );
+}
+
+/** A task's token and cost totals, with the per-run breakdown. */
+export async function getTaskUsage(taskId: string): Promise<TaskUsage> {
+  return requestJson<TaskUsage>(`/api/tasks/${encodeURIComponent(taskId)}/usage`, taskUsageSchema);
 }

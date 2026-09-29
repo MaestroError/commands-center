@@ -14,6 +14,7 @@ import {
   useTaskQuery,
   useTaskRunsQuery,
   useTaskSubtasksQuery,
+  useTaskUsageQuery,
 } from "@/hooks/use-tasks-query";
 import type { Specialist, Task, TaskRun, TaskSubtask } from "@cc/shared/schemas";
 import { Check, X } from "lucide-react";
@@ -147,7 +148,7 @@ function TaskOverview(props: {
         <p className="cc-eyebrow">Tasks</p>
         <div className="mt-3 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="min-w-0 max-w-3xl">
-            {task && isTitleEditing ? (
+            {task && !task.archived && isTitleEditing ? (
               <form
                 className="flex min-w-0 items-center gap-2"
                 onSubmit={(event) => {
@@ -488,6 +489,7 @@ function TaskDetailSectionContent(props: {
   runsError: unknown;
   navigationSearch?: string;
 }) {
+  const usageQuery = useTaskUsageQuery(props.taskId);
   const subtasksQuery = useTaskSubtasksQuery(props.taskId);
   const isSubtasksSection = props.sectionId === "subtasks";
 
@@ -545,6 +547,7 @@ function TaskDetailSectionContent(props: {
           error={props.runsError}
           navigationSearch={props.navigationSearch}
           readOnly={props.task.archived}
+          usage={usageQuery.data}
         />
       </div>
     );

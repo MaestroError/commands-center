@@ -3,10 +3,14 @@ import { describe, expect, it, vi } from "vitest";
 import type { TaskRun } from "@cc/shared/schemas";
 
 import { TaskRunPromptError } from "../../src/services/conversation-service";
+import type { ConversationMessage } from "@cc/shared/schemas";
+
 import {
   DEFAULT_TRANSPORT_RETRY_CONFIG,
   buildTaskRunErrorDetails,
   createTaskRunTransport,
+  isAssistantTurnComplete,
+  isLatestTurnComplete,
   isRetryableLocalOpenCodeError,
   mergeOpencodeMonitorMetadata,
   readElapsedRunMs,
@@ -155,6 +159,65 @@ describe("opencode monitor metadata", () => {
         run({ triggerMetadata: { opencodeMonitor: { ...valid, baselineMessageCount: -1 } } }),
       ),
     ).toBeUndefined();
+  });
+});
+
+function message(overrides: Partial<ConversationMessage> = {}): ConversationMessage {
+  return {
+    id: "message-1",
+    conversationId: "conversation-1",
+    role: "assistant",
+    content: "done",
+    parts: [],
+    attachments: [],
+    createdAt: "2026-06-01T12:00:00.000Z",
+    updatedAt: "2026-06-01T12:00:01.000Z",
+    ...overrides,
+  } as ConversationMessage;
+}
+
+describe("assistant turn completion evidence", () => {
+  it("requires a completion marker", () => {
+    expect(isAssistantTurnComplete(message())).toBe(false);
+    expect(isAssistantTurnComplete(message({ completedAt: "2026-06-01T12:00:01.000Z" }))).toBe(
+      true,
+    );
+  });
+
+  it("rejects a turn OpenCode ended without an answer", () => {
+    for (const reason of ["interrupted", "aborted", "error"]) {
+      expect(
+        isAssistantTurnComplete(
+          message({
+            completedAt: "2026-06-01T12:00:01.000Z",
+            parts: [{ id: "part-1", type: "step-finish", reason }],
+          }),
+        ),
+      ).toBe(false);
+    }
+  });
+
+  it("accepts a turn whose closing step finished normally", () => {
+    expect(
+      isAssistantTurnComplete(
+        message({
+          completedAt: "2026-06-01T12:00:01.000Z",
+          parts: [
+            { id: "part-1", type: "step-finish", reason: "tool-calls" },
+            { id: "part-2", type: "step-finish", reason: "stop" },
+          ],
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it("does not accept an earlier turn as evidence for a newer prompt", () => {
+    const answered = message({ id: "assistant-1", completedAt: "2026-06-01T12:00:01.000Z" });
+    const followup = message({ id: "user-2", role: "user", content: "one more thing" });
+
+    expect(isLatestTurnComplete([answered])).toBe(true);
+    expect(isLatestTurnComplete([answered, followup])).toBe(false);
+    expect(isLatestTurnComplete([])).toBe(false);
   });
 });
 

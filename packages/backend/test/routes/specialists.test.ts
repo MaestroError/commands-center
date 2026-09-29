@@ -90,12 +90,12 @@ describe("agent routes", () => {
       expect(catalog.statusCode).toBe(200);
       const catalogBody = catalog.json<{ builtInSkills: Array<{ slug: string }> }>();
       expect(catalogBody.builtInSkills.map((skill) => skill.slug)).toEqual([
+        "address-github-comments",
         "code-review",
         "code-security",
         "code-simplification",
         "concise-summarizer",
         "final-review",
-        "github-review-comments",
         "global-skill-authoring",
         "global-tool-authoring",
         "okf-md-knowledge-base-management",

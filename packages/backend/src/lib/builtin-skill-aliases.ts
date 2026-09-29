@@ -1,6 +1,7 @@
 const BUILT_IN_SKILL_ALIASES = {
   "custom-skill-authoring": "global-skill-authoring",
   "custom-tool-authoring": "global-tool-authoring",
+  "github-review-comments": "address-github-comments",
 } as const;
 
 export function normalizeBuiltInSkillSlug(slug: string): string {

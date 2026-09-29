@@ -314,6 +314,57 @@ export function readLatestAssistantMessage(
   return messages.findLast((message) => message.role === "assistant");
 }
 
+// Reasons OpenCode records on the closing `step-finish` part when a turn ended
+// without producing an answer. The frontend reads the same signal to mark a
+// message interrupted (see message-timeline-utils.ts).
+const INTERRUPTED_STEP_FINISH_REASONS = new Set(["interrupted", "aborted", "error"]);
+
+/**
+ * Completion evidence that answers the newest prompt in scope.
+ *
+ * A reply reactivates the run before its prompt is delivered, so the previous
+ * turn's monitor metadata — and with it the message baseline — still describes
+ * the earlier turn for a moment. Requiring the completed assistant message to
+ * come *after* the last user message keeps that earlier answer from standing in
+ * as completion evidence for an unanswered follow-up. Ordering is read from the
+ * conversation itself rather than from timestamps, so it holds regardless of
+ * how OpenCode's clock compares to this service's.
+ */
+export function isLatestTurnComplete(messages: ConversationMessage[]): boolean {
+  const latestUserIndex = messages.findLastIndex((message) => message.role === "user");
+  const latestAssistantIndex = messages.findLastIndex((message) => message.role === "assistant");
+
+  if (latestAssistantIndex < 0 || latestAssistantIndex < latestUserIndex) {
+    return false;
+  }
+
+  return isAssistantTurnComplete(messages[latestAssistantIndex]!);
+}
+
+/**
+ * Affirmative evidence that an assistant turn finished normally, which is what
+ * a successful task completion requires.
+ *
+ * `time.completed` is the primary marker: an interrupted engine never records
+ * it. It is not sufficient on its own, though — OpenCode also timestamps a turn
+ * it ended as interrupted/aborted/errored, and those must not settle as a
+ * success. The closing `step-finish` reason is therefore used to reject them.
+ *
+ * Deliberately not used the other way round: every step of a multi-step turn
+ * emits its own `step-finish`, so treating one as completion evidence in the
+ * absence of `time.completed` would settle a turn that is still running.
+ */
+export function isAssistantTurnComplete(message: ConversationMessage): boolean {
+  if (!message.completedAt) {
+    return false;
+  }
+
+  const stepFinish = message.parts.findLast((part) => part.type === "step-finish");
+  const reason = stepFinish?.["reason"];
+
+  return !(typeof reason === "string" && INTERRUPTED_STEP_FINISH_REASONS.has(reason));
+}
+
 export function summarizeTaskRunConversation(conversation: {
   messages: ConversationMessage[];
 }): string {

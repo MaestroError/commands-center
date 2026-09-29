@@ -10,6 +10,7 @@ import {
 import type { TaskService } from "./task-service.js";
 import {
   buildTaskRunErrorDetails,
+  isLatestTurnComplete,
   mergeOpencodeMonitorMetadata,
   readElapsedRunMs,
   readLatestAssistantMessage,
@@ -120,6 +121,12 @@ export type TaskRunMonitorHooks = {
    * cancel/requeue policy; the monitor only detects the stall.
    */
   finalizeStalledRun(run: TaskRun, details: TaskRunStallDetails): Promise<void>;
+  /**
+   * Finalize a run whose OpenCode session stopped being reported while its
+   * latest assistant turn was unfinished — the engine went away mid-turn. Same
+   * cancel/requeue policy as a stall, with an interruption diagnostic.
+   */
+  finalizeInterruptedRun(run: TaskRun, details: { lastAssistantMessageId?: string }): Promise<void>;
   /** Mark a task run as needing review when OpenCode is waiting for hidden input. */
   finalizeBlockedInteraction(
     run: TaskRun,
@@ -252,13 +259,13 @@ export function createTaskRunMonitorService(deps: {
     }
 
     let statusType: string | undefined;
-    let statusKnown = false;
+    let statusReadSucceeded = false;
     let retryStatus: { attempt: number; message: string; next: number } | undefined;
 
     try {
       const status = await transport.getSessionStatus(run);
       statusType = status.type;
-      statusKnown = true;
+      statusReadSucceeded = true;
       handle.lastStatus = status.type;
       if (status.type === "retry") {
         retryStatus = { attempt: status.attempt, message: status.message, next: status.next };
@@ -272,13 +279,14 @@ export function createTaskRunMonitorService(deps: {
 
     const conversation = await transport.syncConversation(run);
     const monitorMetadata = await ensureOpencodeMonitorMetadata(run, conversation);
-    const latestAssistant = readLatestAssistantMessage(
-      conversation.messages.slice(monitorMetadata.baselineMessageCount),
-    );
+    const scopedMessages = conversation.messages.slice(monitorMetadata.baselineMessageCount);
+    const latestAssistant = readLatestAssistantMessage(scopedMessages);
 
     if (latestAssistant?.id) {
       handle.lastAssistantMessageId = latestAssistant.id;
     }
+
+    const completedTurn = isLatestTurnComplete(scopedMessages);
 
     // Progress = the session produced new content. Deliberately excludes session
     // status, so a wedged-but-busy session (no new messages) trips the stall
@@ -337,6 +345,14 @@ export function createTaskRunMonitorService(deps: {
     // or tool). Finalize as a stall instead of holding the run until the much
     // larger max-lifetime cap.
     if (runtime.noProgressMs > 0 && Date.now() - handle.lastProgressAtMs >= runtime.noProgressMs) {
+      // A session the status map no longer reports, with an unfinished turn and
+      // no new output, is an engine that went away mid-turn rather than a wedged
+      // one. Same policy, accurate diagnostic. The stall timeout is deliberately
+      // still the trigger: status absence alone is momentary during handoffs.
+      if (statusReadSucceeded && statusType === "unknown" && !completedTurn) {
+        return finalizeInterrupted(handle, run);
+      }
+
       return finalizeStalled(handle, run, runtime.noProgressMs);
     }
 
@@ -346,17 +362,23 @@ export function createTaskRunMonitorService(deps: {
       return false;
     }
 
-    if (!statusKnown) {
+    if (!statusReadSucceeded) {
       // OpenCode status is temporarily unavailable. Do not let an existing
       // assistant message advance idle-settle detection, or the run could be
       // marked completed while OpenCode is still busy. Keep polling with backoff
-      // until status is known again (or the monitor lifetime times out).
+      // until the status request succeeds again (or the monitor lifetime times out).
       handle.idleCount = 0;
       handle.delayMs = nextMonitorDelay(handle.delayMs);
       return false;
     }
 
     if (!latestAssistant) {
+      handle.idleCount = 0;
+      handle.delayMs = config.initialPollMs;
+      return false;
+    }
+
+    if (!completedTurn) {
       handle.idleCount = 0;
       handle.delayMs = config.initialPollMs;
       return false;
@@ -555,6 +577,13 @@ export function createTaskRunMonitorService(deps: {
       noProgressMs,
       monitorElapsedMs: Date.now() - handle.startedAtMs,
       lastStatus: handle.lastStatus,
+      lastAssistantMessageId: handle.lastAssistantMessageId,
+    });
+    return true;
+  }
+
+  async function finalizeInterrupted(handle: TaskRunMonitorHandle, run: TaskRun): Promise<boolean> {
+    await hooks.finalizeInterruptedRun(run, {
       lastAssistantMessageId: handle.lastAssistantMessageId,
     });
     return true;

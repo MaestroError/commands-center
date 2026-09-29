@@ -137,9 +137,15 @@ export const appendTaskContextInputSchema = z.object({
 
 export const uploadTaskContextAttachmentInputSchema = z.object({
   filename: z.string().trim().min(1),
-  mimeType: z.string().trim().min(1),
+  /**
+   * Advisory only. The server derives the stored media type from the filename
+   * extension and verifies it against the payload, because callers (browsers
+   * and external MCP clients alike) mislabel files routinely.
+   */
+  mimeType: z.string().trim().default(""),
   dataUrl: z.string().min(1),
-  sizeBytes: z.number().int().nonnegative(),
+  /** Advisory only. The decoded payload length is what gets recorded. */
+  sizeBytes: z.number().int().nonnegative().optional(),
 });
 
 export const manualTaskScheduleSchema = z.object({

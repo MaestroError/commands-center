@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import type { Logger } from "pino";
 
 import {
@@ -6,6 +6,7 @@ import {
   type Activity,
   type ActivityKind,
   type ActivityLevel,
+  type UnarchiveActivityResponse,
 } from "@cc/shared/schemas";
 
 import type { AppDb } from "../db/client.js";
@@ -30,16 +31,6 @@ export type ActivityService = ReturnType<typeof createActivityService>;
 export function createActivityService(options: { db: AppDb; logger?: Logger }) {
   const { db } = options;
 
-  async function findPendingByDedupeKey(dedupeKey: string): Promise<ActivityRow | undefined> {
-    return db.query.activities.findFirst({
-      where: (table, operators) =>
-        operators.and(
-          operators.eq(table.dedupe_key, dedupeKey),
-          operators.eq(table.status, "pending"),
-        ),
-    });
-  }
-
   return {
     /** Create a pending activity, or update the existing non-archived one with the same dedupeKey. */
     async emit(input: EmitActivityInput): Promise<Activity> {
@@ -47,29 +38,38 @@ export function createActivityService(options: { db: AppDb; logger?: Logger }) {
       const payloadJson = input.payload ? JSON.stringify(input.payload) : null;
 
       if (input.dedupeKey) {
-        const existing = await findPendingByDedupeKey(input.dedupeKey);
-        if (existing) {
-          await db
-            .update(activities)
-            .set({
+        const [row] = await db
+          .insert(activities)
+          .values({
+            id: createId(),
+            kind: input.kind,
+            level: input.level,
+            status: "pending",
+            title: input.title,
+            body: input.body ?? null,
+            payload_json: payloadJson,
+            dedupe_key: input.dedupeKey,
+            created_at: now,
+            updated_at: now,
+            archived_at: null,
+          })
+          .onConflictDoUpdate({
+            target: activities.dedupe_key,
+            targetWhere: sql`${activities.status} = 'pending'`,
+            set: {
               kind: input.kind,
               level: input.level,
               title: input.title,
               body: input.body ?? null,
               payload_json: payloadJson,
               updated_at: now,
-            })
-            .where(eq(activities.id, existing.id));
-          return mapActivity({
-            ...existing,
-            kind: input.kind,
-            level: input.level,
-            title: input.title,
-            body: input.body ?? null,
-            payload_json: payloadJson,
-            updated_at: now,
-          });
+            },
+          })
+          .returning();
+        if (!row) {
+          throw new Error("Failed to emit activity.");
         }
+        return mapActivity(row);
       }
 
       const row: ActivityRow = {
@@ -136,6 +136,51 @@ export function createActivityService(options: { db: AppDb; logger?: Logger }) {
         .set({ status: "archived", archived_at: now, updated_at: now })
         .where(eq(activities.id, id));
       return mapActivity({ ...existing, status: "archived", archived_at: now, updated_at: now });
+    },
+
+    async unarchive(id: string): Promise<UnarchiveActivityResponse> {
+      const existing = await db.query.activities.findFirst({
+        where: (table, operators) => operators.eq(table.id, id),
+      });
+      if (!existing) {
+        throw new NotFoundError("Activity not found.");
+      }
+      if (existing.status === "pending") {
+        return { activity: mapActivity(existing), archivedActivityIds: [] };
+      }
+      const now = new Date();
+      const archivedActivityIds = db.transaction((tx) => {
+        let archivedIds: string[] = [];
+        if (existing.dedupe_key) {
+          archivedIds = tx
+            .update(activities)
+            .set({ status: "archived", archived_at: now, updated_at: now })
+            .where(
+              and(
+                eq(activities.dedupe_key, existing.dedupe_key),
+                eq(activities.status, "pending"),
+                ne(activities.id, id),
+              ),
+            )
+            .returning({ id: activities.id })
+            .all()
+            .map(({ id: archivedId }) => archivedId);
+        }
+        tx.update(activities)
+          .set({ status: "pending", archived_at: null, updated_at: now })
+          .where(eq(activities.id, id))
+          .run();
+        return archivedIds;
+      });
+      return {
+        activity: mapActivity({
+          ...existing,
+          status: "pending",
+          archived_at: null,
+          updated_at: now,
+        }),
+        archivedActivityIds,
+      };
     },
 
     async archiveAllPending(): Promise<number> {

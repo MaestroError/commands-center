@@ -1,0 +1,1 @@
+CREATE INDEX `messages_usage_idx` ON `messages` (`conversation_id`,`tokens_input`,`tokens_output`,`tokens_reasoning`,`tokens_cache_read`,`tokens_cache_write`,`cost`);
