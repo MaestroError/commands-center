@@ -205,7 +205,7 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
     },
 
     async sendRunReply(runId: string, input: unknown): Promise<TaskRunFollowup> {
-      return sendRunReply(runId, input);
+      return taskRunOperationGuard.runExclusive(runId, () => sendRunReply(runId, input));
     },
 
     startTaskRunMonitor(runId: string): void {
@@ -254,9 +254,9 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
     async cancel(runId: string, input: CancelTaskRunInput = {}): Promise<TaskRun> {
       const parsed = cancelTaskRunInputSchema.parse(input);
       taskRunOperationGuard.requestCancellation(runId);
-      let guarded: { run: TaskRun; cancelled: TaskRun };
+      let cancelled: TaskRun;
       try {
-        guarded = await taskRunOperationGuard.runExclusive(runId, async () => {
+        cancelled = await taskRunOperationGuard.runExclusive(runId, async () => {
           const run = await findRun(runId);
 
           if (!["queued", "running"].includes(run.status)) {
@@ -272,15 +272,13 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
             throw new NotFoundError("Task run not found.");
           }
 
-          return { run, cancelled };
+          await abortOpenCodeTaskRun(run);
+          return cancelled;
         });
       } finally {
         taskRunOperationGuard.clearCancellationRequest(runId);
       }
 
-      const { run, cancelled } = guarded;
-
-      await abortOpenCodeTaskRun(run);
       notifyRunTerminal(cancelled);
       scheduleAgentDrain(cancelled.agentId);
       return cancelled;

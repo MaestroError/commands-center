@@ -534,5 +534,34 @@ describe("task schemas", () => {
         suggestedReplies: ["us-east-1", "eu-west-1"],
       });
     });
+
+    it("accepts compact linked-conversation metadata", () => {
+      const parsed = taskRunSchema.parse({
+        id: "run-1",
+        taskId: "task-1",
+        agentId: "agent-1",
+        fallbackModels: [],
+        status: "completed",
+        triggerSource: "manual",
+        renderedPrompt: "",
+        artifacts: [],
+        needsHumanReview: false,
+        conversation: {
+          id: "conversation-1",
+          source: "task_run",
+          isCurrent: true,
+          convertedAt: "2026-06-01T12:00:00.000Z",
+        },
+        createdAt: "2026-06-01T12:00:00.000Z",
+        updatedAt: "2026-06-01T12:00:00.000Z",
+      });
+
+      expect(parsed.conversation).toEqual({
+        id: "conversation-1",
+        source: "task_run",
+        isCurrent: true,
+        convertedAt: "2026-06-01T12:00:00.000Z",
+      });
+    });
   });
 });

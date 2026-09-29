@@ -158,8 +158,9 @@ async function resolveCurrentChatOwner(
     where: (table, operators) =>
       operators.and(
         operators.eq(table.agent_id, agent.id),
-        operators.eq(table.source, "chat"),
         operators.eq(table.is_current, true),
+        operators.eq(table.status, "active"),
+        operators.or(operators.eq(table.source, "chat"), operators.isNotNull(table.converted_at)),
       ),
     columns: { id: true },
   });

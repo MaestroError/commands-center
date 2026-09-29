@@ -28,6 +28,14 @@ import {
   stringifyOptional,
 } from "./mappers.js";
 
+const TERMINAL_RUN_STATUSES: ReadonlySet<string> = new Set([
+  "completed",
+  "failed",
+  "error",
+  "cancelled",
+  "skipped",
+]);
+
 export function createTaskRunOps(ctx: TaskServiceContext, service: TaskServiceRef) {
   const {
     applyTaskStatusForTerminalRun,
@@ -323,26 +331,55 @@ export function createTaskRunOps(ctx: TaskServiceContext, service: TaskServiceRe
       artifact: TaskRunArtifact,
     ): Promise<TaskRun> {
       const parsed = addTaskRunArtifactInputSchema.parse({ taskRunId, artifact });
-      const run = await requireWritableRun(parsed.taskRunId, agentId);
+      const run = await options.db.query.task_runs.findFirst({
+        where: (table, operators) => operators.eq(table.id, parsed.taskRunId),
+      });
+
+      if (!run) {
+        throw new NotFoundError("Task run not found.");
+      }
+
+      if (run.agent_id !== agentId) {
+        throw new NotFoundError("Task run not found.");
+      }
 
       // Artifacts are conversation-anchored; resolve the run's own conversation
       // and record the artifact there.
       const conversation = await options.db.query.conversations.findFirst({
-        where: (table, operators) => operators.eq(table.task_run_id, parsed.taskRunId),
-        columns: { id: true },
+        where: (table, operators) =>
+          operators.and(
+            operators.eq(table.task_run_id, parsed.taskRunId),
+            operators.eq(table.agent_id, agentId),
+            operators.eq(table.status, "active"),
+          ),
+        columns: { id: true, converted_at: true, is_current: true },
       });
 
       if (!conversation) {
         throw new NotFoundError("Task run session not found.");
       }
 
-      await artifactService.create({
-        conversationId: conversation.id,
-        title: parsed.artifact.title,
-        description: parsed.artifact.description,
-        type: parsed.artifact.type,
-        link: parsed.artifact.link,
-      });
+      if (
+        !(run.status === "running" && !conversation.converted_at) &&
+        !(
+          TERMINAL_RUN_STATUSES.has(run.status) &&
+          conversation.converted_at &&
+          conversation.is_current
+        )
+      ) {
+        throw new ConflictError("Only running task runs can be updated by an agent.");
+      }
+
+      await artifactService.create(
+        {
+          conversationId: conversation.id,
+          title: parsed.artifact.title,
+          description: parsed.artifact.description,
+          type: parsed.artifact.type,
+          link: parsed.artifact.link,
+        },
+        { agentId, currentConvertedTaskRunId: parsed.taskRunId },
+      );
 
       const refreshed = await service.getRunById(run.id);
 

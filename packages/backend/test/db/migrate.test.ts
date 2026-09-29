@@ -63,6 +63,9 @@ describe("migrateDatabase", () => {
       expect(tableExists(sqlite, "oauth_records")).toBe(true);
       expect(indexExists(sqlite, "oauth_records_model_grant_id_idx")).toBe(true);
       expect(indexExists(sqlite, "oauth_records_model_expires_at_idx")).toBe(true);
+      expect(indexWhere(sqlite, "conversations_agent_current_idx")).toBe(
+        '"conversations"."is_current" = true',
+      );
       expect(tableExists(sqlite, "automations")).toBe(false);
       expect(tableExists(sqlite, "automation_runs")).toBe(false);
     } finally {
@@ -121,6 +124,60 @@ describe("migrateDatabase", () => {
         ownerSpecialistId: "agent-researcher",
         relativePath: "notes/shared.md",
       });
+    } finally {
+      client.close();
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it("repairs duplicate current conversations before enforcing uniqueness", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "cc-migrate-db-"));
+    const config = loadRuntimeConfig({ cwd, env: { NODE_ENV: "test" } });
+    const client = createDatabaseClient(config);
+    const sqlite = (client.db as typeof client.db & { $client: SqliteClient }).$client;
+
+    try {
+      migrateDatabase(client.db);
+      sqlite.prepare("DROP INDEX conversations_agent_current_idx").run();
+      sqlite
+        .prepare(
+          "CREATE INDEX conversations_agent_current_idx ON conversations (agent_id, is_current)",
+        )
+        .run();
+      sqlite
+        .prepare(
+          [
+            "INSERT INTO agents",
+            "(id, slug, name, role, instructions, default_model, status, capabilities_json, created_at, updated_at)",
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          ].join(" "),
+        )
+        .run("agent-1", "agent-1", "Agent", "Role", "Instructions", "model", "active", "{}", 1, 1);
+      const insertConversation = sqlite.prepare(
+        [
+          "INSERT INTO conversations",
+          "(id, agent_id, opencode_session_id, status, source, is_current, created_at, updated_at)",
+          "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        ].join(" "),
+      );
+      insertConversation.run("older", "agent-1", "session-1", "active", "chat", 1, 1, 1);
+      insertConversation.run("newer", "agent-1", "session-2", "active", "chat", 1, 2, 2);
+      sqlite
+        .prepare(
+          "DELETE FROM __drizzle_migrations WHERE created_at = (SELECT MAX(created_at) FROM __drizzle_migrations)",
+        )
+        .run();
+
+      migrateDatabase(client.db);
+
+      expect(
+        sqlite
+          .prepare("SELECT id FROM conversations WHERE agent_id = ? AND is_current = true")
+          .all("agent-1"),
+      ).toEqual([{ id: "newer" }]);
+      expect(() =>
+        sqlite.prepare("UPDATE conversations SET is_current = true WHERE id = ?").run("older"),
+      ).toThrow();
     } finally {
       client.close();
       await rm(cwd, { recursive: true, force: true });

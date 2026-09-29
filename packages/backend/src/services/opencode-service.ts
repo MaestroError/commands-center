@@ -64,11 +64,18 @@ const openCodeMessageSchema = z.object({
   parts: z.array(openCodePartSchema),
 });
 
+const openCodeSessionPermissionRuleSchema = z.object({
+  permission: z.string().min(1),
+  pattern: z.string().min(1),
+  action: z.enum(["allow", "deny", "ask"]),
+});
+
 const openCodeSessionSchema = z
   .object({
     id: z.string().min(1),
     parentID: z.string().min(1).optional(),
     title: z.string().min(1).optional(),
+    permission: z.array(openCodeSessionPermissionRuleSchema).optional(),
     time: z
       .object({
         created: z.number().int(),
@@ -138,11 +145,7 @@ export type OpenCodeSessionStatusMap = z.infer<typeof openCodeSessionStatusMapSc
 export type OpenCodePendingPermission = z.infer<typeof openCodePendingPermissionSchema>;
 export type OpenCodePendingQuestion = z.infer<typeof openCodePendingQuestionSchema>;
 
-export type OpenCodeSessionPermissionRule = {
-  permission: string;
-  pattern: string;
-  action: "allow" | "deny" | "ask";
-};
+export type OpenCodeSessionPermissionRule = z.infer<typeof openCodeSessionPermissionRuleSchema>;
 
 export type CreateOpenCodeSessionOptions = {
   title?: string;
@@ -416,6 +419,21 @@ export function createOpenCodeService(options: {
         directory,
         method: "GET",
         path: `/session/${encodeURIComponent(sessionID)}`,
+      });
+      return openCodeSessionSchema.parse(result);
+    },
+
+    async updateSessionPermissions(
+      directory: string,
+      sessionID: string,
+      permission: OpenCodeSessionPermissionRule[],
+    ): Promise<OpenCodeSession> {
+      const result = await requestSessionJson({
+        config: options.config,
+        directory,
+        method: "PATCH",
+        path: `/session/${encodeURIComponent(sessionID)}`,
+        body: { permission },
       });
       return openCodeSessionSchema.parse(result);
     },
@@ -913,7 +931,7 @@ async function withNotFoundRemap<T>(requestId: string, run: () => Promise<T>): P
 async function requestSessionJson(options: {
   config: RuntimeConfig;
   directory: string;
-  method: "GET" | "POST" | "DELETE";
+  method: "GET" | "POST" | "PATCH" | "DELETE";
   path: string;
   body?: Record<string, unknown>;
   signal?: AbortSignal;
@@ -924,7 +942,7 @@ async function requestSessionJson(options: {
 async function requestOpenCodeJson(options: {
   config: RuntimeConfig;
   directory: string;
-  method: "GET" | "POST" | "DELETE";
+  method: "GET" | "POST" | "PATCH" | "DELETE";
   path: string;
   body?: Record<string, unknown>;
   query?: Record<string, string | number | boolean | undefined>;
