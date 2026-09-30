@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -96,7 +96,7 @@ describe("writeConfigFileAtomic", () => {
       const path = join(dir, "out.json");
       await writeConfigFileAtomic(path, { version: 1, name: "test" });
 
-      await expect(readFile(`${path}.tmp`, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+      expect(await readdir(dir)).toEqual(["out.json"]);
     });
   });
 
@@ -118,6 +118,30 @@ describe("writeConfigFileAtomic", () => {
 
       const raw = await readFile(path, "utf8");
       expect(JSON.parse(raw)).toEqual({ version: 2, name: "second" });
+    });
+  });
+});
+
+describe("concurrent atomic writes", () => {
+  it("leaves one complete payload when writers overlap", async () => {
+    await withTmpDir(async (dir) => {
+      const path = join(dir, "config.json");
+      const payloads = Array.from({ length: 20 }, (_, index) => ({
+        index,
+        content: String(index).repeat((index + 1) * 10000),
+      }));
+      await Promise.all(payloads.map((payload) => writeConfigFileAtomic(path, payload)));
+      expect(payloads).toContainEqual(JSON.parse(await readFile(path, "utf8")));
+      expect(await readdir(dir)).toEqual(["config.json"]);
+    });
+  });
+
+  it("cleans up its temporary file when replacement fails", async () => {
+    await withTmpDir(async (dir) => {
+      const path = join(dir, "existing-directory");
+      await mkdir(path);
+      await expect(writeConfigFileAtomic(path, { version: 1 })).rejects.toThrow();
+      expect(await readdir(dir)).toEqual(["existing-directory"]);
     });
   });
 });

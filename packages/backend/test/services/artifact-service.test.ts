@@ -1,3 +1,6 @@
+import { fork } from "node:child_process";
+import { once } from "node:events";
+import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -6,7 +9,7 @@ import { describe, expect, it } from "vitest";
 
 import type { AppDb } from "../../src/db/client";
 import { agents, artifact_share_links, conversations } from "../../src/db/schema/index";
-import { BadRequestError, NotFoundError } from "../../src/lib/api-error";
+import { BadRequestError, ConflictError, NotFoundError } from "../../src/lib/api-error";
 import { createArtifactService } from "../../src/services/artifact-service";
 import { createTaskService } from "../../src/services/task-service";
 import { createTestDatabase } from "../helpers/db";
@@ -463,4 +466,179 @@ describe("createArtifactService", () => {
       await testDb.cleanup();
     }
   });
+});
+
+async function setupPublication() {
+  const { testDb, service } = await setup();
+  const agentId = await insertAgent(testDb.client.db);
+  const conversationId = await insertConversation(testDb.client.db, agentId);
+  const sourcePath = join(testDb.config.paths.workspaceDir, "report.txt");
+  await writeFile(sourcePath, "report contents");
+  const createArtifact = () =>
+    service.create({
+      conversationId,
+      title: "Report",
+      type: "file",
+      link: "report.txt",
+    });
+  const otherService = createArtifactService({ db: testDb.client.db, config: testDb.config });
+  const manifestPath = join(
+    testDb.config.paths.subdirectories.sessions,
+    "published-artifacts.json",
+  );
+  return { testDb, service, otherService, createArtifact, sourcePath, manifestPath };
+}
+
+describe("artifact publication concurrency", () => {
+  it("preserves every independently published artifact across service instances", async () => {
+    const fixture = await setupPublication();
+    try {
+      const artifacts = await Promise.all(
+        Array.from({ length: 12 }, () => fixture.createArtifact()),
+      );
+      const results = await Promise.all(
+        artifacts.map((artifact, index) =>
+          (index % 2 ? fixture.service : fixture.otherService).publishArtifact(artifact.id),
+        ),
+      );
+      const manifest: { artifacts: { id: string }[] } = JSON.parse(
+        await readFile(fixture.manifestPath, "utf8"),
+      );
+      expect(manifest.artifacts.map((entry) => entry.id).sort()).toEqual(
+        results.map((entry) => entry.id).sort(),
+      );
+    } finally {
+      await fixture.testDb.cleanup();
+    }
+  });
+
+  it("publishes the same artifact once across concurrent callers", async () => {
+    const fixture = await setupPublication();
+    try {
+      const artifact = await fixture.createArtifact();
+      const results = await Promise.all(
+        Array.from({ length: 12 }, (_, index) =>
+          (index % 2 ? fixture.service : fixture.otherService).publishArtifact(artifact.id),
+        ),
+      );
+      const manifest: { artifacts: { id: string }[] } = JSON.parse(
+        await readFile(fixture.manifestPath, "utf8"),
+      );
+      expect(manifest.artifacts).toHaveLength(1);
+      expect(results.every((result) => JSON.stringify(result) === JSON.stringify(results[0]))).toBe(
+        true,
+      );
+    } finally {
+      await fixture.testDb.cleanup();
+    }
+  });
+
+  it("allows queued publication after a source-file failure", async () => {
+    const fixture = await setupPublication();
+    try {
+      const artifact = await fixture.createArtifact();
+      const missing = await fixture.service.create({
+        conversationId: artifact.conversationId,
+        title: "Missing",
+        type: "file",
+        link: "missing.txt",
+      });
+      const results = await Promise.allSettled([
+        fixture.service.publishArtifact(missing.id),
+        fixture.otherService.publishArtifact(artifact.id),
+      ]);
+      expect(results[0]).toMatchObject({ status: "rejected", reason: expect.any(NotFoundError) });
+      expect(results[1]).toMatchObject({ status: "fulfilled", value: { id: artifact.id } });
+    } finally {
+      await fixture.testDb.cleanup();
+    }
+  });
+
+  it.each(["{broken", '{"version":1,"artifacts":[{"id":"historical"}]}'])(
+    "preserves invalid manifest %s with an actionable error",
+    async (damaged) => {
+      const fixture = await setupPublication();
+      try {
+        const artifact = await fixture.createArtifact();
+        await mkdir(dirname(fixture.manifestPath), { recursive: true });
+        await writeFile(fixture.manifestPath, damaged);
+        await expect(fixture.service.publishArtifact(artifact.id)).rejects.toBeInstanceOf(
+          ConflictError,
+        );
+        await expect(fixture.service.getRegisteredArtifact(artifact.id)).rejects.toThrow(
+          "Back up sessions/published-artifacts.json",
+        );
+        expect(await readFile(fixture.manifestPath, "utf8")).toBe(damaged);
+        await writeFile(fixture.manifestPath, JSON.stringify({ version: 1, artifacts: [] }));
+        await expect(fixture.service.publishArtifact(artifact.id)).resolves.toMatchObject({
+          id: artifact.id,
+        });
+      } finally {
+        await fixture.testDb.cleanup();
+      }
+    },
+  );
+});
+
+const publicationWorker = fileURLToPath(
+  new URL("../fixtures/artifact-publication-worker.ts", import.meta.url),
+);
+
+describe("cross-process artifact publication", () => {
+  it("preserves publications from independent Node processes", async () => {
+    const fixture = await setupPublication();
+    const workers: ReturnType<typeof fork>[] = [];
+    try {
+      const artifacts = await Promise.all(
+        Array.from({ length: 12 }, () => fixture.createArtifact()),
+      );
+      for (const group of [artifacts.slice(0, 6), artifacts.slice(6)]) {
+        const worker = fork(
+          publicationWorker,
+          ["publish", fixture.testDb.cwd, ...group.map((artifact) => artifact.id)],
+          { execArgv: ["--import", "tsx"] },
+        );
+        workers.push(worker);
+        expect((await once(worker, "message"))[0]).toBe("ready");
+      }
+      const exits = workers.map((worker) => once(worker, "exit"));
+      for (const worker of workers) worker.send("publish");
+      expect(await Promise.all(exits)).toEqual([
+        [0, null],
+        [0, null],
+      ]);
+      const manifest: { artifacts: { id: string }[] } = JSON.parse(
+        await readFile(fixture.manifestPath, "utf8"),
+      );
+      expect(manifest.artifacts.map((entry) => entry.id).sort()).toEqual(
+        artifacts.map((entry) => entry.id).sort(),
+      );
+    } finally {
+      for (const worker of workers) if (worker.exitCode === null) worker.kill();
+      await fixture.testDb.cleanup();
+    }
+  }, 15_000);
+
+  it("recovers publication after the lock-owning process is killed", async () => {
+    const fixture = await setupPublication();
+    const worker = fork(publicationWorker, ["lock", fixture.manifestPath], {
+      execArgv: ["--import", "tsx"],
+    });
+    try {
+      await once(worker, "message");
+      const artifact = await fixture.createArtifact();
+      await expect(fixture.service.publishArtifact(artifact.id)).rejects.toThrow(
+        "busy in another process",
+      );
+      const exited = once(worker, "exit");
+      worker.kill("SIGKILL");
+      await exited;
+      await expect(fixture.service.publishArtifact(artifact.id)).resolves.toMatchObject({
+        id: artifact.id,
+      });
+    } finally {
+      if (worker.exitCode === null && worker.signalCode === null) worker.kill();
+      await fixture.testDb.cleanup();
+    }
+  }, 15_000);
 });

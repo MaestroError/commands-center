@@ -1,4 +1,5 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
 import type { Logger } from "pino";
@@ -51,13 +52,18 @@ export async function readConfigFile<T>(
 
 /**
  * Atomically writes a bucket-B configuration file.  Serialises `data` to
- * indented JSON, writes to a sibling `.tmp` file, then renames over the
+ * indented JSON, writes to a unique sibling temporary file, then renames over the
  * target so the source of truth is never partially written.  Creates the
  * parent directory if it does not exist.
  */
 export async function writeConfigFileAtomic(path: string, data: unknown): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
-  const tmp = `${path}.tmp`;
-  await writeFile(tmp, `${JSON.stringify(data, null, 2)}\n`, "utf8");
-  await rename(tmp, path);
+  const content = `${JSON.stringify(data, null, 2)}\n`;
+  const tmp = `${path}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(tmp, content, "utf8");
+    await rename(tmp, path);
+  } finally {
+    await rm(tmp, { force: true });
+  }
 }
