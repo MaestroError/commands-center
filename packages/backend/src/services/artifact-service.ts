@@ -26,6 +26,7 @@ import { createId, now } from "../db/ids.js";
 import { BadRequestError, ConflictError, NotFoundError } from "../lib/api-error.js";
 import { writeConfigFileAtomic } from "../lib/config-file.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
+import { acquireArtifactPublicationLock } from "./artifact-publication-lock.js";
 import { resolveSpecialistWorkspacePath } from "./specialist-workspace.js";
 
 // A document artifact's resolved location: the shared Documents module
@@ -309,7 +310,9 @@ export function createArtifactService(options: { db: AppDb; config: RuntimeConfi
       publicationTails.set(key, pending);
       await previous;
 
+      let releaseProcessLock: (() => void) | undefined;
       try {
+        releaseProcessLock = await acquireArtifactPublicationLock(key);
         const manifest = await readManifest(options.config);
         const existing = manifest.artifacts.find((entry) => entry.id === artifactId);
 
@@ -365,6 +368,7 @@ export function createArtifactService(options: { db: AppDb; config: RuntimeConfi
 
         return toRegisteredArtifact(row, stored, []);
       } finally {
+        releaseProcessLock?.();
         release();
         if (publicationTails.get(key) === pending) {
           publicationTails.delete(key);

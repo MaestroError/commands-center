@@ -1,3 +1,6 @@
+import { fork } from "node:child_process";
+import { once } from "node:events";
+import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -575,4 +578,67 @@ describe("artifact publication concurrency", () => {
       }
     },
   );
+});
+
+const publicationWorker = fileURLToPath(
+  new URL("../fixtures/artifact-publication-worker.ts", import.meta.url),
+);
+
+describe("cross-process artifact publication", () => {
+  it("preserves publications from independent Node processes", async () => {
+    const fixture = await setupPublication();
+    const workers: ReturnType<typeof fork>[] = [];
+    try {
+      const artifacts = await Promise.all(
+        Array.from({ length: 12 }, () => fixture.createArtifact()),
+      );
+      for (const group of [artifacts.slice(0, 6), artifacts.slice(6)]) {
+        const worker = fork(
+          publicationWorker,
+          ["publish", fixture.testDb.cwd, ...group.map((artifact) => artifact.id)],
+          { execArgv: ["--import", "tsx"] },
+        );
+        workers.push(worker);
+        expect((await once(worker, "message"))[0]).toBe("ready");
+      }
+      const exits = workers.map((worker) => once(worker, "exit"));
+      for (const worker of workers) worker.send("publish");
+      expect(await Promise.all(exits)).toEqual([
+        [0, null],
+        [0, null],
+      ]);
+      const manifest: { artifacts: { id: string }[] } = JSON.parse(
+        await readFile(fixture.manifestPath, "utf8"),
+      );
+      expect(manifest.artifacts.map((entry) => entry.id).sort()).toEqual(
+        artifacts.map((entry) => entry.id).sort(),
+      );
+    } finally {
+      for (const worker of workers) if (worker.exitCode === null) worker.kill();
+      await fixture.testDb.cleanup();
+    }
+  }, 15_000);
+
+  it("recovers publication after the lock-owning process is killed", async () => {
+    const fixture = await setupPublication();
+    const worker = fork(publicationWorker, ["lock", fixture.manifestPath], {
+      execArgv: ["--import", "tsx"],
+    });
+    try {
+      await once(worker, "message");
+      const artifact = await fixture.createArtifact();
+      await expect(fixture.service.publishArtifact(artifact.id)).rejects.toThrow(
+        "busy in another process",
+      );
+      const exited = once(worker, "exit");
+      worker.kill("SIGKILL");
+      await exited;
+      await expect(fixture.service.publishArtifact(artifact.id)).resolves.toMatchObject({
+        id: artifact.id,
+      });
+    } finally {
+      if (worker.exitCode === null && worker.signalCode === null) worker.kill();
+      await fixture.testDb.cleanup();
+    }
+  }, 15_000);
 });

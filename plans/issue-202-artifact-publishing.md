@@ -8,7 +8,7 @@
 
 Publication: the user requested a PR against staging, authorizing the commit and push.
 
-No persistence format changes or migrations. Locking is process-local, matching the application's single-writer runtime. Existing signed links and snapshots retain their behavior.
+No persistence format changes or migrations. Publication uses an in-process queue plus a SQLite lock beside the manifest to coordinate independent server processes. Existing signed links and snapshots retain their behavior.
 
 ## Validation
 
@@ -16,3 +16,14 @@ No persistence format changes or migrations. Locking is process-local, matching 
 - Six regression cases failed against the original implementation; all 30 focused tests passed after restoring the fix.
 - ESLint --fix, formatting, repository typecheck, and git diff checks passed.
 - No frontend appearance changes; browser tests were not run for this filesystem/service fix.
+
+## Review: cross-process publication
+
+The review identified that multiple server processes can open one workspace. The initial single-writer assumption is not enforced.
+
+- [x] Add a dedicated SQLite lock beside the manifest, shared across processes regardless of application database configuration. Keep the lock database disposable; the JSON manifest remains authoritative.
+- [x] Bound contention waits and release the lock on errors and process exit.
+- [x] Exercise independent publishing processes and lock recovery after termination.
+- [x] Run ESLint --fix, typecheck, and tests; prepare the review fix for publication.
+
+Review validation: all 1,716 backend tests passed; 32 focused tests passed; repository typecheck, ESLint --fix, formatting, and diff checks passed. The held-lock regression fails with the cross-process lock disabled.
