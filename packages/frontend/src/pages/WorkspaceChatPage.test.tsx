@@ -288,6 +288,37 @@ describe("WorkspaceChatPage", () => {
     expect(navigateMock).toHaveBeenCalledWith("/chat/planner/conv-1", { replace: true });
   });
 
+  it("replaces a recovered stale conversation URL", () => {
+    mockParams = { agentId: "planner", conversationId: "deleted" };
+    useConversationMock.mockReturnValue(
+      makeConversation({
+        conversation: { id: "current", messages: [] },
+        recoveredMissingConversation: true,
+      }),
+    );
+    useSpecialistCatalogQueryMock.mockReturnValue({ data: { builtInSkills: [] } });
+    render(<WorkspaceChatPage />);
+    expect(navigateMock).toHaveBeenCalledWith("/chat/planner/current", { replace: true });
+  });
+
+  it("repairs a stale URL even when recovery selects the already displayed conversation", () => {
+    mockParams = { agentId: "planner", conversationId: "current" };
+    useConversationMock.mockReturnValue(
+      makeConversation({ conversation: { id: "current", messages: [] } }),
+    );
+    useSpecialistCatalogQueryMock.mockReturnValue({ data: { builtInSkills: [] } });
+    const { rerender } = render(<WorkspaceChatPage />);
+    mockParams = { agentId: "planner", conversationId: "deleted" };
+    useConversationMock.mockReturnValue(
+      makeConversation({
+        conversation: { id: "current", messages: [] },
+        recoveredMissingConversation: true,
+      }),
+    );
+    rerender(<WorkspaceChatPage />);
+    expect(navigateMock).toHaveBeenCalledWith("/chat/planner/current", { replace: true });
+  });
+
   it("navigates with replace false when the conversation switches", () => {
     mockParams = { agentId: "planner", conversationId: "conv-1" };
     useConversationMock.mockReturnValue(

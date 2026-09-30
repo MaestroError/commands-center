@@ -1,9 +1,65 @@
 import type { ChatEvent } from "@cc/shared/schemas";
 
-import { createChatState, mockChatApi } from "./app-fixtures";
+import { createChatState, e2eSpecialist, mockChatApi } from "./app-fixtures";
 import { expect, test } from "./fixtures";
 
 test.describe("workspace chat", { tag: "@chat" }, () => {
+  test("recovers a stale conversation URL across reloads", async ({ page }) => {
+    await mockChatApi(page, createChatState());
+    await page.route("**/api/specialists/agent-chat/conversations/deleted", (route) =>
+      route.fulfill({
+        status: 404,
+        json: { error: { code: "not_found", message: "Conversation not found." } },
+      }),
+    );
+    await page.goto("/chat/planner/deleted");
+    await expect(page).toHaveURL(/\/chat\/planner\/conv-current$/);
+    await expect(page.getByPlaceholder(/Type a message/)).toBeVisible();
+    await page.reload();
+    await expect(page.getByPlaceholder(/Type a message/)).toBeVisible();
+    await expect(page).toHaveURL(/\/chat\/planner\/conv-current$/);
+  });
+
+  test("opens the selected specialist without reusing the previous conversation ID", async ({
+    page,
+    isMobile,
+  }) => {
+    const state = createChatState();
+    await mockChatApi(page, state);
+    const writer = { ...e2eSpecialist, id: "agent-writer", slug: "writer", name: "Writer" };
+    await page.route("**/api/specialists", (route) =>
+      route.fulfill({ json: [e2eSpecialist, writer] }),
+    );
+    await page.route("**/api/specialists/by-slug/writer", (route) =>
+      route.fulfill({ json: writer }),
+    );
+    const writerConversation = { ...state.current, id: "writer-current", agentId: writer.id };
+    const wrongRequests: string[] = [];
+    await page.route("**/api/specialists/agent-writer/conversations**", async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (path.endsWith("/active")) {
+        await route.fulfill({ json: { current: writerConversation, previous: [] } });
+      } else if (path.endsWith("/writer-current")) {
+        await route.fulfill({ json: writerConversation });
+      } else {
+        wrongRequests.push(path);
+        await route.fulfill({
+          status: 404,
+          json: { error: { message: "Conversation not found." } },
+        });
+      }
+    });
+    await page.goto("/chat/writer/writer-current");
+    await expect(page.getByPlaceholder(/Type a message/)).toBeVisible();
+    await page.goto("/chat/planner/conv-current");
+    await expect(page.getByPlaceholder(/Type a message/)).toBeVisible();
+    if (isMobile) await page.getByRole("button", { name: "Open navigation" }).click();
+    await page.getByRole("link", { name: /Writer/ }).click();
+    await expect(page).toHaveURL(/\/chat\/writer\/writer-current$/);
+    await expect(page.getByRole("heading", { name: "Writer", exact: true })).toBeVisible();
+    expect(wrongRequests).toEqual([]);
+  });
+
   test("renders streamed text and tool-call parts from the event stream", async ({ page }) => {
     const state = createChatState({
       events: streamingEvents(),

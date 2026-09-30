@@ -1,3 +1,5 @@
+import { getConversation } from "./api/conversations";
+import type { ApiRequestError } from "./api/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -1321,3 +1323,16 @@ function makeTaskTemplatePayload(overrides: Record<string, unknown> = {}): Recor
     ...overrides,
   };
 }
+
+describe("conversation lookup failures", () => {
+  it("preserves HTTP status for stale conversation recovery", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      makeJsonResponse({ error: { message: "Conversation not found." } }, { status: 404 }),
+    );
+    await expect(getConversation("agent-1", "deleted")).rejects.toMatchObject({
+      name: "ApiRequestError",
+      status: 404,
+      message: "Conversation not found.",
+    } satisfies Partial<ApiRequestError>);
+  });
+});
