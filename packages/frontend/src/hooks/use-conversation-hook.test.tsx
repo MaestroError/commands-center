@@ -11,6 +11,7 @@ import type {
   LiveRequest,
   PendingInteractions,
 } from "@cc/shared/schemas";
+import { queryKeys } from "@/lib/query-keys";
 import { ApiRequestError } from "@/lib/api/client";
 
 vi.mock("@/hooks/use-specialists-query", () => ({
@@ -202,6 +203,65 @@ describe("useConversation", () => {
     vi.mocked(rejectQuestion).mockResolvedValue(undefined);
     vi.mocked(resolveLiveRequest).mockResolvedValue({ ok: true });
     vi.mocked(cancelLiveRequest).mockResolvedValue({ ok: true });
+  });
+
+  it("recovers a missing conversation using the specialist's current conversation", async () => {
+    vi.mocked(getConversation).mockRejectedValue(
+      new ApiRequestError("Conversation not found.", 404),
+    );
+    const { result } = renderHook(() => useConversation("writer", "deleted"), {
+      wrapper: createWrapper(createQueryClient()),
+    });
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    expect(result.current.conversation?.id).toBe("conv-1");
+    expect(result.current.recoveredMissingConversation).toBe(true);
+    expect(getActiveConversation).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([403, 500])("preserves HTTP %s errors without falling back", async (status) => {
+    vi.mocked(getConversation).mockRejectedValue(new ApiRequestError("Unavailable", status));
+    const { result } = renderHook(() => useConversation("writer", "conv-specific"), {
+      wrapper: createWrapper(createQueryClient()),
+    });
+    await waitFor(() => expect(result.current.status).toBe("error"));
+    expect(getActiveConversation).not.toHaveBeenCalled();
+  });
+
+  it("surfaces failure to resolve the current conversation after a stale URL", async () => {
+    vi.mocked(getConversation).mockRejectedValue(new ApiRequestError("Not found", 404));
+    vi.mocked(getActiveConversation).mockRejectedValue(new Error("Engine unavailable"));
+    const { result } = renderHook(() => useConversation("writer", "deleted"), {
+      wrapper: createWrapper(createQueryClient()),
+    });
+    await waitFor(() => expect(result.current.error).toBe("Engine unavailable"));
+  });
+
+  it("waits for a fresh current snapshot instead of exposing a cached conversation", async () => {
+    const client = createQueryClient();
+    client.setQueryData(queryKeys.conversationSnapshot("agent-1"), makeSnapshot());
+    client.setQueryDefaults(queryKeys.conversationSnapshot("agent-1"), { staleTime: 30_000 });
+    const fresh = createDeferred<ConversationSnapshot>();
+    vi.mocked(getActiveConversation).mockReturnValue(fresh.promise);
+    const { result } = renderHook(() => useConversation("writer"), {
+      wrapper: createWrapper(client),
+    });
+    expect(result.current.conversation).toBeNull();
+    act(() => fresh.resolve(makeSnapshot({ current: makeConversation({ id: "fresh-current" }) })));
+    await waitFor(() => expect(result.current.conversation?.id).toBe("fresh-current"));
+  });
+
+  it("does not hydrate a disabled cached snapshot while opening history", async () => {
+    const client = createQueryClient();
+    client.setQueryData(queryKeys.conversationSnapshot("agent-1"), makeSnapshot());
+    const historical = createDeferred<ConversationDetail>();
+    vi.mocked(getConversation).mockReturnValue(historical.promise);
+    const { result } = renderHook(() => useConversation("writer", "history"), {
+      wrapper: createWrapper(client),
+    });
+    expect(result.current.conversation).toBeNull();
+    act(() => historical.resolve(makeConversation({ id: "history" })));
+    await waitFor(() => expect(result.current.conversation?.id).toBe("history"));
+    expect(getActiveConversation).not.toHaveBeenCalled();
   });
 
   it("loads the active conversation for the resolved agent", async () => {

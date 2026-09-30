@@ -45,7 +45,10 @@ export async function requestJson<T>(
   const payload = await readJsonPayload(url, response);
 
   if (!response.ok) {
-    throw new Error(readApiError(payload, response.status, response.statusText));
+    throw new ApiRequestError(
+      readApiError(payload, response.status, response.statusText),
+      response.status,
+    );
   }
 
   return schema.parse(payload);

@@ -58,6 +58,11 @@ const WorkspaceTerminalPane = lazy(() =>
 );
 
 export function WorkspaceChatPage() {
+  const { agentId } = useParams();
+  return <WorkspaceChatSession key={agentId} />;
+}
+
+function WorkspaceChatSession() {
   const { agentId: agentSlug, conversationId: urlConversationId } = useParams<{
     agentId: string;
     conversationId?: string;
@@ -91,13 +96,21 @@ export function WorkspaceChatPage() {
   const prevConvIdRef = useRef<string | undefined>(undefined);
   useEffect(() => {
     const id = conv.conversation?.id;
-    if (!id || !agentSlug) return;
-    if (id === urlConversationId) return;
-    if (id === prevConvIdRef.current) return;
+    if (!id || !agentSlug || conv.status !== "ready") return;
+    const previousId = prevConvIdRef.current;
     prevConvIdRef.current = id;
-    const isInitial = !urlConversationId;
+    if (id === urlConversationId) return;
+    if (id === previousId && !conv.recoveredMissingConversation) return;
+    const isInitial = !urlConversationId || conv.recoveredMissingConversation === true;
     void navigate(`/chat/${agentSlug}/${id}`, { replace: isInitial });
-  }, [conv.conversation?.id, agentSlug, urlConversationId, navigate]);
+  }, [
+    conv.conversation?.id,
+    conv.recoveredMissingConversation,
+    conv.status,
+    agentSlug,
+    urlConversationId,
+    navigate,
+  ]);
 
   const skills = useMemo(() => {
     if (!conv.agent) return undefined;

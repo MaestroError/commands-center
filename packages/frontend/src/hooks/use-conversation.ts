@@ -646,6 +646,7 @@ export type UseConversationReturn = {
   sessionStatus: SessionStatus;
   sendError: string | null;
   conversation: ConversationDetail | null;
+  recoveredMissingConversation: boolean;
   /** Parts keyed by messageID — use this to render message content */
   parts: Record<string, ConversationPart[]>;
   previousConversations: ConversationSummary[];
@@ -725,26 +726,39 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
     queryKey: queryKeys.conversationSnapshot(agent?.id ?? ""),
     queryFn: () => getActiveConversation(agent!.id),
     enabled: !!agent && !conversationId,
+    staleTime: 0,
   });
 
   const specificQuery = useQuery({
     queryKey: queryKeys.conversation(agent?.id ?? "", conversationId ?? ""),
-    queryFn: () => getConversation(agent!.id, conversationId!),
+    queryFn: async () => {
+      try {
+        return await getConversation(agent!.id, conversationId!);
+      } catch (error) {
+        if (!(error instanceof ApiRequestError) || error.status !== 404) throw error;
+        return (await getActiveConversation(agent!.id)).current;
+      }
+    },
     enabled: !!agent && !!conversationId,
   });
 
   // Hydrate state from snapshot
   useEffect(() => {
-    if (snapshotQuery.data) {
+    if (
+      !conversationId &&
+      !snapshotQuery.isFetching &&
+      !snapshotQuery.error &&
+      snapshotQuery.data
+    ) {
       dispatch({ type: "HYDRATE", snapshot: snapshotQuery.data });
     }
-  }, [snapshotQuery.data]);
+  }, [conversationId, snapshotQuery.data, snapshotQuery.isFetching, snapshotQuery.error]);
 
   useEffect(() => {
-    if (specificQuery.data) {
+    if (conversationId && !specificQuery.isFetching && !specificQuery.error && specificQuery.data) {
       dispatch({ type: "HYDRATE_DETAIL", detail: specificQuery.data });
     }
-  }, [specificQuery.data]);
+  }, [conversationId, specificQuery.data, specificQuery.isFetching, specificQuery.error]);
 
   // 3. Manage SSE connection
   const activeConversationId = state.conversation?.id ?? null;
@@ -1268,12 +1282,13 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
   let status: "loading" | "ready" | "error" = "loading";
   let error: string | null = null;
 
+  const conversationQueryError = conversationId ? specificQuery.error : snapshotQuery.error;
   if (agentQuery.error) {
     status = "error";
     error = agentQuery.error.message;
-  } else if (snapshotQuery.error ?? specificQuery.error) {
+  } else if (conversationQueryError) {
     status = "error";
-    error = (snapshotQuery.error ?? specificQuery.error)!.message;
+    error = conversationQueryError.message;
   } else if (state.conversation) {
     status = "ready";
   }
@@ -1291,6 +1306,12 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
     sessionStatus: state.sessionStatus,
     sendError: state.sendError,
     conversation: state.conversation,
+    recoveredMissingConversation: Boolean(
+      conversationId &&
+      specificQuery.data &&
+      specificQuery.data.id !== conversationId &&
+      state.conversation?.id === specificQuery.data.id,
+    ),
     parts: state.parts,
     previousConversations: state.previousConversations,
     pendingPermission: state.pendingPermissions[0] ?? null,
