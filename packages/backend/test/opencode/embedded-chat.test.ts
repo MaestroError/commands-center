@@ -129,7 +129,7 @@ describe("embedded conversation integration", () => {
           test: {
             package: "@opencode/ai/providers/openai-compatible",
             settings: { baseURL: `http://127.0.0.1:${address.port}/v1`, apiKey: "test-only" },
-            models: { test: {} },
+            models: { test: { variants: [{ id: "high", body: { reasoning_effort: "high" } }] } },
           },
         },
       }),
@@ -480,6 +480,29 @@ describe("embedded conversation integration", () => {
   it("preserves previous conversations when starting fresh", async () => {
     const fresh = await service.startFresh("specialist");
     expect(fresh.previous.map((item) => item.id)).toContain(conversation.id);
+  });
+
+  it("sends the selected tier through the embedded SDK to the provider", async () => {
+    await service.sendPrompt(conversation.id, {
+      text: "Tier probe",
+      model: "test/test#high",
+      attachments: [],
+    });
+    expect(JSON.parse(requests.at(-1) ?? "{}")).toMatchObject({ reasoning_effort: "high" });
+  });
+
+  it("clears the previous tier when returning to the default", async () => {
+    await service.sendPrompt(conversation.id, {
+      text: "Tier probe",
+      model: "test/test#high",
+      attachments: [],
+    });
+    await service.sendPrompt(conversation.id, {
+      text: "Default probe",
+      model: "test/test",
+      attachments: [],
+    });
+    expect(JSON.parse(requests.at(-1) ?? "{}")).not.toHaveProperty("reasoning_effort");
   });
 
   it("finds the selected provider model", async () => {

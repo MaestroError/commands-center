@@ -7,7 +7,7 @@ import { ModelSelector } from "./ModelSelector";
 type ProviderEntry = {
   provider: { id: string; name: string };
   connected: boolean;
-  models: Array<{ id: string; name: string }>;
+  models: Array<{ id: string; name: string; variants?: string[]; defaultVariant?: string }>;
 };
 
 type ProvidersQueryResult = {
@@ -227,5 +227,60 @@ describe("ModelSelector", () => {
 
     await user.click(screen.getByRole("button", { name: "outside" }));
     expect(screen.queryByRole("textbox", { name: "Filter models" })).not.toBeInTheDocument();
+  });
+});
+
+describe("model tiers", () => {
+  beforeEach(() => {
+    useProvidersQuery.mockReturnValue({
+      isLoading: false,
+      data: [
+        {
+          provider: { id: "openai", name: "OpenAI" },
+          connected: true,
+          models: [
+            { id: "astra", name: "Astra", variants: ["medium", "high"], defaultVariant: "medium" },
+            { id: "other", name: "Other", variants: ["low"] },
+          ],
+        },
+      ],
+    });
+  });
+
+  it("shows the configured default without forcing an override", () => {
+    render(<ModelSelector value="openai/astra" onChange={vi.fn()} />);
+    expect(screen.getByRole("combobox", { name: "Model tier" })).toHaveTextContent(
+      "Default (medium)",
+    );
+  });
+
+  it("emits the selected OpenCode variant reference", async () => {
+    const onChange = vi.fn();
+    render(<ModelSelector value="openai/astra" onChange={onChange} />);
+    await userEvent.click(screen.getByRole("combobox", { name: "Model tier" }));
+    await userEvent.click(screen.getByRole("option", { name: "high" }));
+    expect(onChange).toHaveBeenCalledWith("openai/astra#high");
+  });
+
+  it("restores an explicit tier from the stored model reference", () => {
+    render(<ModelSelector value="openai/astra#high" onChange={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Select model" })).toHaveTextContent("Astra");
+    expect(screen.getByRole("combobox", { name: "Model tier" })).toHaveTextContent("high");
+  });
+
+  it("clears the tier when selecting another model", async () => {
+    const onChange = vi.fn();
+    render(<ModelSelector value="openai/astra#high" onChange={onChange} />);
+    await userEvent.click(screen.getByRole("button", { name: "Select model" }));
+    await userEvent.click(screen.getByRole("option", { name: "OpenAI / Other" }));
+    expect(onChange).toHaveBeenCalledWith("openai/other");
+  });
+
+  it("returns to the model default", async () => {
+    const onChange = vi.fn();
+    render(<ModelSelector value="openai/astra#high" onChange={onChange} />);
+    await userEvent.click(screen.getByRole("combobox", { name: "Model tier" }));
+    await userEvent.click(screen.getByRole("option", { name: "Default (medium)" }));
+    expect(onChange).toHaveBeenCalledWith("openai/astra");
   });
 });

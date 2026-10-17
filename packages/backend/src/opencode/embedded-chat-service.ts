@@ -80,7 +80,11 @@ export function createEmbeddedChatService(
     await host.sessions.switchModel(
       {
         sessionID: input.sessionID,
-        model: { providerID: input.model.providerID, id: input.model.modelID },
+        model: {
+          providerID: input.model.providerID,
+          id: input.model.modelID,
+          ...(input.model.variant ? { variant: input.model.variant } : {}),
+        },
       },
       { signal: input.signal },
     );
@@ -211,7 +215,13 @@ export function createEmbeddedChatService(
       const slash = input.model.indexOf("/");
       await prepare({
         ...input,
-        model: { providerID: input.model.slice(0, slash), modelID: input.model.slice(slash + 1) },
+        model: {
+          providerID: input.model.slice(0, slash),
+          modelID: input.model.slice(slash + 1).split("#")[0]!,
+          ...(input.model.includes("#")
+            ? { variant: input.model.slice(input.model.indexOf("#") + 1) }
+            : {}),
+        },
       });
       await host.sessions.command(
         {

@@ -74,6 +74,7 @@ export type CreateOpenCodeSessionOptions = {
 type SessionModel = {
   providerID: string;
   modelID: string;
+  variant?: string;
 };
 
 export type OpenCodeService = {

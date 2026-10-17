@@ -1,3 +1,4 @@
+import { providerModelSchema } from "@cc/shared/schemas";
 import type {
   ProviderModel,
   ProviderStatus,
@@ -38,11 +39,12 @@ function flattenModels(providerId: string, models: Record<string, unknown>): Pro
     .map(([id, value]) => {
       const name = readModelName(value);
 
-      return {
+      return providerModelSchema.parse({
+        ...(value && typeof value === "object" ? value : {}),
         id,
         name,
         providerId,
-      };
+      });
     })
     .sort((left, right) => left.name.localeCompare(right.name));
 }

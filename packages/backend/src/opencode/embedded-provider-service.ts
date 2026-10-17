@@ -1,4 +1,8 @@
-import { providerStatusListSchema, type ProviderAuthMethod } from "@cc/shared/schemas";
+import {
+  providerModelSchema,
+  providerStatusListSchema,
+  type ProviderAuthMethod,
+} from "@cc/shared/schemas";
 
 import { BadRequestError } from "../lib/api-error.js";
 import type { ProviderService } from "../services/provider-service.js";
@@ -82,11 +86,13 @@ export function createEmbeddedProviderService(
               return mapped ? [mapped] : [];
             }) ?? [],
           models: Object.entries(provider.models)
-            .map(([id, value]) => ({
-              id,
-              providerId: provider.id,
-              name: (value as { name: string }).name,
-            }))
+            .map(([id, value]) =>
+              providerModelSchema.parse({
+                id,
+                providerId: provider.id,
+                ...(value && typeof value === "object" ? value : {}),
+              }),
+            )
             .sort((a, b) => a.name.localeCompare(b.name)),
         };
       }),

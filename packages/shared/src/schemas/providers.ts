@@ -4,6 +4,8 @@ export const providerModelSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
   providerId: z.string().min(1),
+  variants: z.array(z.string().min(1)).optional(),
+  defaultVariant: z.string().optional(),
 });
 
 export const providerSchema = z.object({
