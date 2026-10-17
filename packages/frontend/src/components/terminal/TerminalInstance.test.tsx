@@ -38,7 +38,7 @@ type MockTerminalInstance = {
 
 const session: TerminalSession = {
   id: "term-1",
-  backend: "opencode",
+  backend: "local",
   cwd: "/workspace",
   createdAt: 1,
 };
@@ -168,6 +168,16 @@ describe("TerminalInstance", () => {
 
     expect(onExit).toHaveBeenCalled();
     expect(window.localStorage.removeItem).toHaveBeenCalledWith("cc.global-terminal.buffer.term-1");
+  });
+
+  it("preserves JSON output from the local shell", async () => {
+    const socket = createSocket();
+    vi.mocked(connectTerminalWebSocket).mockReturnValue(socket as never);
+    render(<TerminalInstance session={session} onResize={vi.fn()} onExit={vi.fn()} />);
+    await waitForTerminalReady();
+    socket.onmessage?.(new MessageEvent("message", { data: '{"cursor":123}' }));
+    await vi.advanceTimersByTimeAsync(50);
+    expect(getLastTerminal().write).toHaveBeenCalledWith('{"cursor":123}', expect.any(Function));
   });
 
   it("debounces resize reporting", async () => {

@@ -22,7 +22,7 @@ describe("useTerminalSessions", () => {
   it("creates a session and makes it active", async () => {
     vi.mocked(createTerminalSession).mockResolvedValue({
       id: "term-1",
-      backend: "opencode",
+      backend: "local",
       cwd: "/workspace",
       createdAt: 1,
     });
@@ -41,8 +41,8 @@ describe("useTerminalSessions", () => {
     vi.mocked(closeTerminalSession).mockResolvedValue(undefined);
 
     const initialSessions: TerminalSession[] = [
-      { id: "term-1", backend: "opencode", cwd: "/a", createdAt: 1 },
-      { id: "term-2", backend: "opencode", cwd: "/b", createdAt: 2 },
+      { id: "term-1", backend: "local", cwd: "/a", createdAt: 1 },
+      { id: "term-2", backend: "local", cwd: "/b", createdAt: 2 },
     ];
     const { result } = renderHook(() => useTerminalSessions(initialSessions, "term-2"));
 
@@ -62,7 +62,7 @@ describe("useTerminalSessions", () => {
 
     act(() => {
       rerender({
-        sessions: [{ id: "term-9", backend: "opencode", cwd: "/tmp", createdAt: 9 }],
+        sessions: [{ id: "term-9", backend: "local", cwd: "/tmp", createdAt: 9 }],
       });
     });
 
@@ -90,8 +90,8 @@ describe("useTerminalSessions", () => {
     );
 
     const initialSessions: TerminalSession[] = [
-      { id: "term-1", backend: "opencode", cwd: "/a", createdAt: 1 },
-      { id: "term-2", backend: "opencode", cwd: "/b", createdAt: 2 },
+      { id: "term-1", backend: "local", cwd: "/a", createdAt: 1 },
+      { id: "term-2", backend: "local", cwd: "/b", createdAt: 2 },
     ];
 
     const { result } = renderHook(() => useTerminalSessions(initialSessions));
@@ -112,14 +112,14 @@ describe("useTerminalSessions", () => {
       {
         initialProps: {
           sessions: [
-            { id: "term-1", backend: "opencode", cwd: "/a", createdAt: 1 },
-            { id: "term-2", backend: "opencode", cwd: "/b", createdAt: 2 },
+            { id: "term-1", backend: "local", cwd: "/a", createdAt: 1 },
+            { id: "term-2", backend: "local", cwd: "/b", createdAt: 2 },
           ] as TerminalSession[],
         },
       },
     );
 
-    rerender({ sessions: [{ id: "term-2", backend: "opencode", cwd: "/b", createdAt: 2 }] });
+    rerender({ sessions: [{ id: "term-2", backend: "local", cwd: "/b", createdAt: 2 }] });
 
     await vi.waitFor(() => {
       expect(window.localStorage.removeItem).toHaveBeenCalledWith(

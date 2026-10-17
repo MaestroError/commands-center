@@ -20,6 +20,7 @@ export default tseslint.config(
           allowDefaultProject: [
             "eslint.config.ts",
             "playwright.config.ts",
+            "playwright.embedded.config.ts",
             "packages/*/vitest.config.ts",
             "packages/*/drizzle.config.ts",
             "packages/*/build.ts",
@@ -110,6 +111,7 @@ export default tseslint.config(
     files: [
       "eslint.config.ts",
       "playwright.config.ts",
+      "playwright.embedded.config.ts",
       "**/vitest.config.ts",
       "**/drizzle.config.ts",
       "**/build.ts",

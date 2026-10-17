@@ -52,8 +52,8 @@ vi.mock("./TerminalInstance", () => ({
 }));
 
 const sessions: TerminalSession[] = [
-  { id: "term-1", backend: "opencode", cwd: "/tmp/one", createdAt: 1 },
-  { id: "term-2", backend: "opencode", cwd: "/tmp/two", createdAt: 2 },
+  { id: "term-1", backend: "local", cwd: "/tmp/one", createdAt: 1 },
+  { id: "term-2", backend: "local", cwd: "/tmp/two", createdAt: 2 },
 ];
 
 function makeController(overrides: Partial<UseTerminalSessions> = {}): UseTerminalSessions {

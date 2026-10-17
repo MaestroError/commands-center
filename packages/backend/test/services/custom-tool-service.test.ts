@@ -37,7 +37,7 @@ describe("createCustomToolService", () => {
       await writeFile(
         join(created.tool.directoryPath, created.tool.entryFile),
         (await readFile(join(created.tool.directoryPath, created.tool.entryFile), "utf8")).replace(
-          "TODO: implement this tool.",
+          "Implement this tool.",
           "updated global implementation",
         ),
         "utf8",
@@ -53,7 +53,7 @@ describe("createCustomToolService", () => {
             join(agentWorkspacePath, ".opencode", "tools", created.tool.slug, "tool.ts"),
             "utf8",
           )
-        ).replace("TODO: implement this tool.", "locally modified agent implementation"),
+        ).replace("Implement this tool.", "locally modified agent implementation"),
         "utf8",
       );
 

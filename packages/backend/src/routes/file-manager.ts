@@ -33,7 +33,10 @@ import {
 } from "../services/file-manager-service.js";
 import { createFileManagerPreferencesService } from "../services/file-manager-preferences-service.js";
 
-export function registerFileManagerRoutes(server: AppServer, context: RuntimeContext): void {
+export function registerFileManagerRoutes(
+  server: AppServer,
+  context: Pick<RuntimeContext, "config">,
+): void {
   const app = server.withTypeProvider<ZodTypeProvider>();
   const fileManagerService = createFileManagerService({ config: context.config });
   const preferencesService = createFileManagerPreferencesService({ config: context.config });

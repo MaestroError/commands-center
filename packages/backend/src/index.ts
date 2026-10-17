@@ -21,14 +21,11 @@ export {
   OPENCODE_WORKSPACE_CONTRACT,
   parseRulesMarkdown,
   parseSkillFrontmatter,
-  renderOpenCodeWorkspace,
-  validateOpenCodeWorkspace,
   validateSkillDirectory,
   writeOpenCodeWorkspace,
   type OpenCodeWorkspaceInput,
 } from "./opencode/workspace-contract.js";
 export {
-  createOpenCodeOrchestrator,
   type EngineState,
   type EngineStatus,
   type OpenCodeOrchestrator,
@@ -52,11 +49,7 @@ export {
 } from "./lib/claim-code-command.js";
 export { generateOwnerClaimCode, isActiveClaimCode } from "./lib/owner-claim-code.js";
 export { commonErrorResponses } from "./lib/route.js";
-export {
-  createOpenCodeClient,
-  createScopedOpenCodeClient,
-  type OpencodeClient,
-} from "./lib/opencode-client.js";
+
 export { createHealthService, type HealthService } from "./services/health-service.js";
 export { readPackageInfo, type PackageInfo } from "./lib/package-info.js";
 export {
@@ -65,13 +58,13 @@ export {
   detectInstallMode,
   type SystemVersionService,
 } from "./services/system-version-service.js";
-export { createOpenCodeService, type OpenCodeService } from "./services/opencode-service.js";
+export { type OpenCodeService } from "./services/opencode-service.js";
 export {
   createOwnerAccessService,
   OwnerAccessError,
   type OwnerAccessService,
 } from "./services/owner-access-service.js";
-export { createProviderService, type ProviderService } from "./services/provider-service.js";
+export { type ProviderService } from "./services/provider-service.js";
 export { createSchedulerService, type SchedulerService } from "./services/scheduler-service.js";
 export {
   createDrainController,
@@ -79,7 +72,6 @@ export {
   type DrainHandlers,
 } from "./lib/drain-protocol.js";
 export { createLogger, flushLogger } from "./lib/logger.js";
-export { resolveOpencodeBinary, type OpenCodeBinary } from "./lib/opencode-binary.js";
 export { bootstrapRuntimePaths, bootstrapWorkspaceRoot } from "./lib/runtime-paths.js";
 export {
   getStartupLogContext,

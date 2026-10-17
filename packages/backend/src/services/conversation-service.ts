@@ -51,10 +51,10 @@ import { OpenCodeRequestError } from "./opencode-service.js";
 import type {
   OpenCodePendingPermission,
   OpenCodePendingQuestion,
-  OpenCodeService,
   OpenCodeSessionPermissionRule,
   OpenCodeTaskSessionStatus,
 } from "./opencode-service.js";
+import type { ConversationEngine } from "./conversation-engine.js";
 import type { SessionArchiveService } from "./session-archive-service.js";
 import type { SessionArchiveSettingsService } from "./session-archive-settings-service.js";
 import type { InteractiveChatWatchdogService } from "./interactive-chat-watchdog-service.js";
@@ -142,7 +142,7 @@ const WATCHDOG_RECOVERY_RETRY_DELAYS_MS = [500, 1_000, 2_000] as const;
 export function createConversationService(options: {
   db: AppDb;
   config: RuntimeConfig;
-  opencodeService: OpenCodeService;
+  opencodeService: ConversationEngine;
   logger?: Logger;
   archiveService?: SessionArchiveService;
   archiveSettingsService?: SessionArchiveSettingsService;

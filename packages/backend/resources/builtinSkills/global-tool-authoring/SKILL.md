@@ -56,54 +56,44 @@ CommandsCenter global tools use this structure:
 
 ## OpenCode Tool File Contract
 
-Custom tools are TypeScript or JavaScript files that export a tool definition. Prefer TypeScript and the `tool()` helper:
+Custom tools export native v2 plugins. Preserve the factory when editing the generated scaffold:
 
 ```typescript
-import { tool } from "@opencode-ai/plugin";
-
-export default tool({
-  description: "Draft release notes from recent git history.",
-  args: {
-    since: tool.schema.string().describe("Git revision, tag, or date to start from"),
-    includeBreakingChanges: tool.schema
-      .boolean()
-      .describe("Whether to call out possible breaking changes"),
-  },
-  async execute(args, context) {
-    return `Drafting release notes since ${args.since} in ${context.directory}`;
-  },
-});
-```
-
-- Use one default export per tool.
-- The default export creates a tool named after the file used by OpenCode after CommandsCenter copies it to a specialist.
-- OpenCode also supports multiple named exports from one file, named `<filename>_<exportName>`, but CommandsCenter tools should use one default export per tool unless the user explicitly asks otherwise.
-- Custom tools can override built-in OpenCode tools if they use the same name. Avoid built-in names such as `bash`, `read`, `write`, `edit`, `grep`, `glob`, `webfetch`, `task`, `todo`, `skill`, or `apply_patch` unless the user explicitly wants an override.
-
-## Arguments
-
-- Define arguments in `args` using `tool.schema`, which is Zod exposed by OpenCode.
-- Every argument should have a `.describe(...)` string that tells the model when and how to fill it.
-- Keep names camelCase, specific, and stable. Prefer `repositoryPath`, `ticketId`, or `includeDrafts` over vague names like `input` or `data`.
-- Use the narrowest practical schema: `string`, `number`, `boolean`, `array`, `object`, `enum`, optional fields, and defaults when useful.
-- For no-argument tools, use `args: {}`.
-- Validate external data at the boundary. The `args` schema is the boundary for model-provided input.
-
-You may import Zod directly if needed:
-
-```typescript
+import type { Plugin } from "@opencode/plugin";
 import { z } from "zod";
 
-export default {
-  description: "Look up a ticket by ID.",
-  args: {
-    ticketId: z.string().min(1).describe("Ticket identifier, for example CC-123"),
-  },
-  async execute(args) {
-    return `Ticket: ${args.ticketId}`;
-  },
-};
+export function createToolPlugin(name: string): Plugin.Plugin {
+  return {
+    id: "cc.custom." + name,
+    async setup(context) {
+      await context.tool.transform((editor) => {
+        editor.add({
+          name,
+          description: "Draft release notes from recent git history.",
+          input: z.object({
+            since: z.string().describe("Git revision, tag, or date to start from"),
+          }),
+          options: { namespace: "cc_custom", codemode: false },
+          async execute(args, call) {
+            call.signal.throwIfAborted();
+            return {
+              content: `Drafting notes since ${args.since} in ${context.location.directory}`,
+            };
+          },
+        });
+      });
+    },
+  };
+}
+
+export default createToolPlugin("release-helper");
 ```
+
+- Export `createToolPlugin(name)` and a default plugin. CC's copied entry wrapper calls the factory with the assigned slug.
+- Define arguments with `input` using Zod or JSON Schema. Describe each argument; use an empty object schema for no arguments.
+- Return `{ content: "..." }`, serializing structured results into readable text when needed.
+- Use the `cc_custom` namespace so CC's custom-tool permission hook applies.
+- Avoid built-in tool names such as `shell`, `read`, `patch`, `grep`, `glob`, `webfetch`, `subagent` and `skill`.
 
 ## Secrets And Environment
 
@@ -118,11 +108,10 @@ export default {
 
 The `execute(args, context)` function receives OpenCode session context.
 
-- Use `context.directory` for the current session working directory.
-- Use `context.worktree` for the git worktree root.
-- Other useful fields include `context.agent`, `context.sessionID`, and `context.messageID`.
+- Capture the specialist directory from plugin setup: `context.location.directory`.
+- The execute callback receives `call.sessionID`, `call.messageID`, `call.agent`, `call.id` and cancellation `call.signal`.
 - Avoid absolute paths that point outside the CommandsCenter workspace unless the user explicitly requested them.
-- Keep outputs concise and useful for the model. Return strings or JSON-serializable data that summarizes the result.
+- Keep outputs concise and useful for the model. Return a result object with a concise `content` string.
 
 ## Dependencies And Helper Code
 
@@ -160,7 +149,7 @@ return await response.text();
 - Tool slug and file names should be kebab-case: `release-helper`, `ticket-lookup`, `sync-linear-issue`.
 - Exported JavaScript identifiers, helper functions, and argument names should be camelCase.
 - The user-facing `name` in CC metadata can use title case with spaces.
-- The OpenCode callable name comes from the top-level copied `.opencode/tools/<name>.ts` filename, so renaming files changes the tool name.
+- The callable name is `cc_custom_<slug>`; keep the factory name argument when editing copied tools.
 - Check for duplicate global tool names before creating a tool when the catalog is available.
 
 ## Testing Workflow

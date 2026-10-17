@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const terminalBackendTypeSchema = z.literal("opencode");
+export const terminalBackendTypeSchema = z.literal("local");
 
 export const terminalCreateInputSchema = z.object({
   backend: terminalBackendTypeSchema.optional(),

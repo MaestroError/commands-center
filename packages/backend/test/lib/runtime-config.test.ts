@@ -77,12 +77,7 @@ describe("loadRuntimeConfig", () => {
         host: "0.0.0.0",
         port: 3000,
       },
-      opencode: {
-        host: "127.0.0.1",
-        port: 4100,
-        maxRestarts: 3,
-        baseUrl: "http://127.0.0.1:4100",
-      },
+      engine: "embedded",
       paths: {
         dataDir: "/tmp/project/.cc/data",
         workspaceDir: "/tmp/project/.cc/workspace",
@@ -92,10 +87,6 @@ describe("loadRuntimeConfig", () => {
       },
       timeouts: {
         opencodeRequestMs: 30000,
-        opencodeStartupMs: 30000,
-        opencodeShutdownMs: 15000,
-        opencodeHealthPollMs: 2000,
-        opencodeRestartWindowMs: 60000,
         mcpAuthMs: 90000,
         mcpStdioMs: 120000,
         drainMs: 15000,
@@ -108,7 +99,6 @@ describe("loadRuntimeConfig", () => {
         docker: false,
       },
       logLevel: "info",
-      opencodePathConfigured: true,
       secretKeyConfigured: true,
       tasks: {
         maxTasks: undefined,
@@ -357,72 +347,5 @@ describe("loadRuntimeConfig", () => {
     });
 
     expect(config.security.trustProxy).toBe(true);
-  });
-
-  it("leaves opencode.stateDir undefined when CC_OPENCODE_STATE_DIR is unset", () => {
-    const config = loadRuntimeConfig({
-      cwd: "/tmp/project",
-      env: { NODE_ENV: "test" },
-    });
-
-    expect(config.opencode.stateDir).toBeUndefined();
-  });
-
-  it("keeps an absolute CC_OPENCODE_STATE_DIR as-is", () => {
-    const config = loadRuntimeConfig({
-      cwd: "/tmp/project",
-      env: { NODE_ENV: "test", CC_OPENCODE_STATE_DIR: "/workspace/.cc/opencode" },
-    });
-
-    expect(config.opencode.stateDir).toBe("/workspace/.cc/opencode");
-  });
-
-  it("resolves a relative CC_OPENCODE_STATE_DIR against cwd", () => {
-    const config = loadRuntimeConfig({
-      cwd: "/tmp/project",
-      env: { NODE_ENV: "test", CC_OPENCODE_STATE_DIR: ".cc/opencode" },
-    });
-
-    expect(config.opencode.stateDir).toBe("/tmp/project/.cc/opencode");
-  });
-
-  it("uses a persistent workspace npm cache in Docker", () => {
-    const config = loadRuntimeConfig({
-      cwd: "/tmp/project",
-      env: { NODE_ENV: "test", CC_DOCKER: "true" },
-    });
-
-    expect(config.opencode.npmCacheDir).toBe("/workspace/.cc/npm-cache");
-  });
-
-  it("prefers an explicit npm cache path over the Docker default", () => {
-    const config = loadRuntimeConfig({
-      cwd: "/tmp/project",
-      env: {
-        NODE_ENV: "test",
-        CC_DOCKER: "true",
-        CC_NPM_CACHE_DIR: "/var/cache/commandscenter/npm",
-      },
-    });
-
-    expect(config.opencode.npmCacheDir).toBe("/var/cache/commandscenter/npm");
-  });
-
-  it("resolves a relative npm cache path against cwd", () => {
-    const config = loadRuntimeConfig({
-      cwd: "/tmp/project",
-      env: { NODE_ENV: "test", CC_NPM_CACHE_DIR: ".cc/npm-cache" },
-    });
-
-    expect(config.opencode.npmCacheDir).toBe("/tmp/project/.cc/npm-cache");
-  });
-
-  it("preserves npm native cache behavior outside Docker", () => {
-    const config = loadRuntimeConfig({
-      cwd: "/tmp/project",
-      env: { NODE_ENV: "test" },
-    });
-
-    expect(config.opencode.npmCacheDir).toBeUndefined();
   });
 });

@@ -1,6 +1,6 @@
 ---
 name: self-tool-authoring
-description: Create or revise OpenCode custom tools only for this specialist inside its own workspace. Use when the user wants this specialist to add a private local tool, improve its own .opencode/tools code, or capture a repeated tool behavior that should not become a global CommandsCenter custom tool.
+description: Create or revise OpenCode custom tools only for this specialist inside its own workspace. Use when the user wants this specialist to add a private local tool, improve its own .opencode/plugins code, or capture a repeated tool behavior that should not become a global CommandsCenter custom tool.
 compatibility: opencode
 metadata:
   category: workflow
@@ -13,8 +13,8 @@ Use this skill when creating or updating a specialist-local OpenCode tool for th
 
 ## Scope
 
-- Create specialist-local tools under `.opencode/tools/` in this specialist's workspace.
-- Treat `.opencode/tools/` as private to this specialist. Other specialists will not receive these tools automatically.
+- Create specialist-local tools under `.opencode/plugins/` in this specialist's workspace.
+- Treat `.opencode/plugins/` as private to this specialist. Other specialists will not receive these tools automatically.
 - Use `global-tool-authoring` instead when the user wants a reusable CommandsCenter global tool that can be enabled for one or more specialists.
 - Do not edit `.cc/workspace/custom-tools/` when the user asks for a self-tool.
 - Do not create or edit `cc-tool.json` or `.cc-tool-copy.json` metadata for self-tools. Those files belong to CommandsCenter's global tool copy flow.
@@ -36,14 +36,14 @@ If the current conversation already contains the tool behavior, extract the answ
 Use a single top-level TypeScript or JavaScript file for the callable tool:
 
 ```text
-.opencode/tools/
+.opencode/plugins/
   release-helper.ts
 ```
 
 Use a same-name support directory only when helper files are needed:
 
 ```text
-.opencode/tools/
+.opencode/plugins/
   release-helper.ts
   release-helper/
     fixtures/
@@ -51,36 +51,50 @@ Use a same-name support directory only when helper files are needed:
 ```
 
 - Tool filenames should be lowercase kebab-case.
-- The OpenCode callable name comes from the top-level file name.
+- The callable name is `cc_custom_` plus the name registered by the plugin.
 - Prefer TypeScript unless the local workspace clearly uses JavaScript.
 - Keep helper files next to the tool so the specialist workspace remains self-contained.
 
 ## OpenCode tool contract
 
-Prefer the `tool()` helper:
+Use a native v2 plugin:
 
 ```typescript
-import { tool } from "@opencode-ai/plugin";
+import type { Plugin } from "@opencode/plugin";
+import { z } from "zod";
 
-export default tool({
-  description: "Draft release notes from recent git history.",
-  args: {
-    since: tool.schema.string().describe("Git revision, tag, or date to start from"),
-    includeBreakingChanges: tool.schema
-      .boolean()
-      .describe("Whether to call out possible breaking changes"),
-  },
-  async execute(args, context) {
-    return `Drafting release notes since ${args.since} in ${context.directory}`;
-  },
-});
+export function createToolPlugin(name: string): Plugin.Plugin {
+  return {
+    id: "cc.custom." + name,
+    async setup(context) {
+      await context.tool.transform((editor) => {
+        editor.add({
+          name,
+          description: "Draft release notes from recent git history.",
+          input: z.object({
+            since: z.string().describe("Git revision, tag, or date to start from"),
+          }),
+          options: { namespace: "cc_custom", codemode: false },
+          async execute(args, call) {
+            call.signal.throwIfAborted();
+            return {
+              content: `Drafting notes since ${args.since} in ${context.location.directory}`,
+            };
+          },
+        });
+      });
+    },
+  };
+}
+
+export default createToolPlugin("release-helper");
 ```
 
-- Use one default export per local tool unless the user explicitly asks for multiple exports.
-- Define arguments in `args` using `tool.schema`, which is Zod exposed by OpenCode.
-- Every argument should have a `.describe(...)` string that tells the model when and how to fill it.
-- Use `args: {}` for no-argument tools.
-- Return strings or JSON-serializable values that are concise and useful to the model.
+- Export the plugin as default. Its registered name determines the callable tool name.
+- Define arguments with `input` using Zod or JSON Schema. Describe each argument; use an empty object schema for no arguments.
+- Return `{ content: "..." }`, serializing structured results into readable text when needed.
+- Use the `cc_custom` namespace so CC's custom-tool permission hook applies.
+- Avoid built-in tool names such as `shell`, `read`, `patch`, `grep`, `glob`, `webfetch`, `subagent` and `skill`.
 
 ## Argument design
 
@@ -102,16 +116,15 @@ export default tool({
 
 The `execute(args, context)` function receives OpenCode session context.
 
-- Use `context.directory` for the current session working directory.
-- Use `context.worktree` for the git worktree root.
-- Other useful fields include `context.agent`, `context.sessionID`, and `context.messageID`.
+- Capture `context.location.directory` during plugin setup for the specialist directory.
+- The execute callback receives `call.agent`, `call.sessionID`, `call.messageID`, `call.id` and cancellation `call.signal`.
 - Avoid absolute paths outside this specialist's workspace unless the user explicitly requested a machine-local dependency.
 
 ## Dependencies and helper code
 
 - Prefer Node built-ins and dependencies already available to the CommandsCenter/OpenCode runtime.
 - Do not introduce dependency installation steps for self-tools unless the user explicitly accepts the portability tradeoff.
-- If a helper script is useful, keep it inside the same-name support directory under `.opencode/tools/`.
+- If a helper script is useful, keep it inside the same-name support directory under `.opencode/plugins/`.
 - If you need to run another process, use safe argument passing from JavaScript APIs. Do not build shell commands by concatenating untrusted model arguments.
 - For HTTP tools, prefer `fetch`, validate required URL parts, and return a compact response with status and relevant body fields.
 
@@ -145,7 +158,7 @@ return await response.text();
 
 Before finishing a new or revised self-tool:
 
-- Confirm the tool lives under `.opencode/tools/`, not `.cc/workspace/custom-tools/`.
+- Confirm the tool lives under `.opencode/plugins/`, not `.cc/workspace/custom-tools/`.
 - Confirm no CommandsCenter metadata files were created for it.
 - Confirm argument schemas are narrow, described, and safe for model-provided input.
 - Confirm secrets are referenced through environment variables, not written into source.
@@ -154,7 +167,7 @@ Before finishing a new or revised self-tool:
 
 ## Next steps after authoring
 
-When the self-tool is ready, tell the user it is available only to this specialist because it lives under this specialist's `.opencode/tools/` folder. If OpenCode does not notice the new tool immediately, suggest restarting or refreshing this specialist's OpenCode session. If the user wants the same tool for other specialists, suggest creating a global CommandsCenter tool with `global-tool-authoring` and enabling it from the CommandsCenter Tools page.
+When the self-tool is ready, tell the user it is available only to this specialist because it lives under this specialist's `.opencode/plugins/` folder. If OpenCode does not notice the new tool immediately, suggest using CC’s engine reload. If the user wants the same tool for other specialists, suggest creating a global CommandsCenter tool with `global-tool-authoring` and enabling it from the CommandsCenter Tools page.
 
 ## Output style
 

@@ -47,6 +47,7 @@ export async function prepareWorkspace(options: {
   config: RuntimeConfig;
   workspacePath: string;
   input: SpecialistWorkspaceInput;
+  render?: Parameters<typeof writeOpenCodeWorkspace>[0]["render"];
   skillRoot?: string;
   workspaceSkillRoot?: string;
   /** Whether to (re)write AGENTS.md. Defaults to true. */
@@ -58,6 +59,7 @@ export async function prepareWorkspace(options: {
   await writeOpenCodeWorkspace({
     workspacePath: options.workspacePath,
     input: options.input,
+    render: options.render,
     skillRoot: options.skillRoot ?? getBuiltInSkillRoot(options.config),
     workspaceSkillRoot: options.workspaceSkillRoot ?? getWorkspaceSkillRoot(options.config),
     writeRules: options.writeRules,

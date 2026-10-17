@@ -4,7 +4,7 @@ import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import type { AppServer } from "../lib/fastify-zod.js";
 import type { RuntimeContext } from "../lib/start-server-runtime.js";
 import { createCcManagedMcpServerRegistry } from "../mcp/cc-managed/server-registry.js";
-import { createCcManagedMcpService } from "../mcp/cc-managed/service.js";
+import { createCcManagedMcpService, type CcManagedMcpService } from "../mcp/cc-managed/service.js";
 import { createSpecialistService } from "../services/specialist-service.js";
 import { createConversationService } from "../services/conversation-service.js";
 import { createCustomToolActionService } from "../services/custom-tool-action-service.js";
@@ -19,27 +19,30 @@ const paramsSchema = z.object({
 });
 
 export function registerCcManagedMcpRoutes(server: AppServer, context: RuntimeContext): void {
-  const app = server.withTypeProvider<ZodTypeProvider>();
-  const customToolService = createCustomToolService({
-    config: context.config,
-    db: context.database.db,
-    opencodeService: context.opencodeService,
-    listAgents: async () => {
-      const agents = await agentService.list();
-      return agents.map((agent) => ({
-        id: agent.id,
-        slug: agent.slug,
-        name: agent.name,
-        workspacePath: agent.workspacePath,
-      }));
-    },
-  });
-  const agentService = createSpecialistService({
-    db: context.database.db,
-    config: context.config,
-    opencodeService: context.opencodeService,
-    customToolService,
-  });
+  const customToolService: ReturnType<typeof createCustomToolService> =
+    context.workspaceServices?.customTools ??
+    createCustomToolService({
+      config: context.config,
+      db: context.database.db,
+      opencodeService: context.opencodeService,
+      listAgents: async () => {
+        const agents = await agentService.list();
+        return agents.map((agent) => ({
+          id: agent.id,
+          slug: agent.slug,
+          name: agent.name,
+          workspacePath: agent.workspacePath,
+        }));
+      },
+    });
+  const agentService =
+    context.workspaceServices?.specialists ??
+    createSpecialistService({
+      db: context.database.db,
+      config: context.config,
+      opencodeService: context.opencodeService,
+      customToolService,
+    });
   const conversationService = createConversationService({
     db: context.database.db,
     config: context.config,
@@ -66,10 +69,12 @@ export function registerCcManagedMcpRoutes(server: AppServer, context: RuntimeCo
       archiveService: context.sessionArchiveService,
       archiveSettingsService: context.sessionArchiveSettingsService,
     });
-  const customToolActionService = createCustomToolActionService({
-    customToolService,
-    agentService,
-  });
+  const customToolActionService =
+    context.workspaceServices?.customToolActions ??
+    createCustomToolActionService({
+      customToolService,
+      agentService,
+    });
   const registry = createCcManagedMcpServerRegistry({
     db: context.database.db,
     config: context.config,
@@ -94,6 +99,14 @@ export function registerCcManagedMcpRoutes(server: AppServer, context: RuntimeCo
     registry,
   });
 
+  registerCcManagedMcpServiceRoutes(server, service);
+}
+
+export function registerCcManagedMcpServiceRoutes(
+  server: AppServer,
+  service: CcManagedMcpService,
+): void {
+  const app = server.withTypeProvider<ZodTypeProvider>();
   server.addHook("onClose", async () => {
     await service.close();
   });

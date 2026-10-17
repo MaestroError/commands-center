@@ -88,7 +88,7 @@ export function registerActivityRoutes(server: AppServer, context: RuntimeContex
       }
 
       await context.secretService.set(secretKey, request.body.value);
-      void context.orchestrator?.restart("secret updated");
+      await context.orchestrator?.restart("secret updated");
       return service.archive(activity.id);
     },
   );

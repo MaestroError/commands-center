@@ -11,7 +11,14 @@
     },
     "packages/cli": {
       "entry": ["src/bin.ts"],
-      "ignoreDependencies": ["better-sqlite3", "opencode-ai"]
+      "ignoreDependencies": [
+        "better-sqlite3",
+        "node-pty",
+        "@vscode/ripgrep",
+        "@opencode/sdk",
+        "pino-pretty",
+        "pino"
+      ]
     },
     "packages/backend": {
       "ignoreDependencies": ["pino-pretty"]

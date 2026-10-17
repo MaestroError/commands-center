@@ -15,7 +15,7 @@ import {
 } from "@cc/shared/schemas";
 
 import type { AppServer } from "../lib/fastify-zod.js";
-import type { RuntimeContext } from "../lib/start-server-runtime.js";
+import type { ConversationRouteContext } from "./conversation-context.js";
 import { createArtifactService } from "../services/artifact-service.js";
 import { createConversationService } from "../services/conversation-service.js";
 
@@ -36,7 +36,10 @@ const agentConversationParamsSchema = agentIdParamsSchema.extend({
   conversationId: z.string().min(1),
 });
 
-export function registerConversationRoutes(server: AppServer, context: RuntimeContext): void {
+export function registerConversationRoutes(
+  server: AppServer,
+  context: ConversationRouteContext,
+): void {
   const app = server.withTypeProvider<ZodTypeProvider>();
   const service = createConversationService({
     db: context.database.db,

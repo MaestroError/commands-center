@@ -569,6 +569,7 @@ export function ChatComposer({
           </button>
           <input
             ref={fileInputRef}
+            data-testid="chat-attachment-input"
             type="file"
             multiple
             className="hidden"
@@ -667,6 +668,7 @@ export function ChatComposer({
 
         <div className="flex items-start gap-2">
           <textarea
+            data-testid="chat-message-input"
             ref={textareaRef}
             className={`flex-1 resize-none border-0 bg-transparent p-0 text-sm leading-6 max-h-40 text-text-primary outline-none placeholder:text-text-secondary ${
               mode === "shell" ? "font-mono pl-14" : ""
@@ -695,6 +697,7 @@ export function ChatComposer({
               type="button"
               className="shrink-0"
               disabled={disabled || (!text.trim() && mentionedFiles.length === 0 && !selectedSkill)}
+              data-testid="chat-send"
               onClick={handleSend}
             >
               Send

@@ -14,40 +14,60 @@ import type { AppServer } from "../lib/fastify-zod.js";
 import type { RuntimeContext } from "../lib/start-server-runtime.js";
 import { ConflictError } from "../lib/api-error.js";
 import { createSpecialistService } from "../services/specialist-service.js";
-import { createCustomToolActionService } from "../services/custom-tool-action-service.js";
-import { createCustomToolService } from "../services/custom-tool-service.js";
+import {
+  createCustomToolActionService,
+  type CustomToolActionService,
+} from "../services/custom-tool-action-service.js";
+import {
+  createCustomToolService,
+  type CustomToolService,
+} from "../services/custom-tool-service.js";
 
 const customToolSlugParamsSchema = z.object({
   slug: z.string().min(1),
 });
 
 export function registerCustomToolRoutes(server: AppServer, context: RuntimeContext): void {
-  const app = server.withTypeProvider<ZodTypeProvider>();
-  const customToolService = createCustomToolService({
-    config: context.config,
-    db: context.database.db,
-    opencodeService: context.opencodeService,
-    listAgents: async () => {
-      const agents = await agentService.list();
-      return agents.map((agent) => ({
-        id: agent.id,
-        slug: agent.slug,
-        name: agent.name,
-        workspacePath: agent.workspacePath,
-      }));
-    },
-  });
-  const agentService = createSpecialistService({
-    db: context.database.db,
-    config: context.config,
-    opencodeService: context.opencodeService,
-    customToolService,
-  });
-  const customToolActionService = createCustomToolActionService({
-    customToolService,
-    agentService,
-  });
+  const customToolService: ReturnType<typeof createCustomToolService> =
+    context.workspaceServices?.customTools ??
+    createCustomToolService({
+      config: context.config,
+      db: context.database.db,
+      opencodeService: context.opencodeService,
+      listAgents: async () => {
+        const agents = await agentService.list();
+        return agents.map((agent) => ({
+          id: agent.id,
+          slug: agent.slug,
+          name: agent.name,
+          workspacePath: agent.workspacePath,
+        }));
+      },
+    });
+  const agentService =
+    context.workspaceServices?.specialists ??
+    createSpecialistService({
+      db: context.database.db,
+      config: context.config,
+      opencodeService: context.opencodeService,
+      customToolService,
+    });
+  const customToolActionService =
+    context.workspaceServices?.customToolActions ??
+    createCustomToolActionService({
+      customToolService,
+      agentService,
+    });
 
+  registerCustomToolServiceRoutes(server, customToolService, customToolActionService);
+}
+
+export function registerCustomToolServiceRoutes(
+  server: AppServer,
+  customToolService: CustomToolService,
+  customToolActionService: CustomToolActionService,
+): void {
+  const app = server.withTypeProvider<ZodTypeProvider>();
   app.get(
     "/api/custom-tools",
     {

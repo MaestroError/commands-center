@@ -144,9 +144,9 @@ describe("cc-managed MCP routes", () => {
       const config = JSON.parse(
         await readFile(join(agent.workspacePath, "opencode.jsonc"), "utf8"),
       ) as {
-        mcp: Record<string, { url: string; headers: Record<string, string> }>;
+        mcp: { servers: Record<string, { url: string; headers: Record<string, string> }> };
       };
-      const ccToolManagement = config.mcp["cc_app"];
+      const ccToolManagement = config.mcp.servers["cc_app"];
 
       expect(ccToolManagement).toBeDefined();
       expect(ccToolManagement?.url).toContain("/api/mcp/cc/cc-app/specialists/writer");

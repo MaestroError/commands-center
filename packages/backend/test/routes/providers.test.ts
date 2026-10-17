@@ -1,136 +1,71 @@
-import { describe, expect, it, vi } from "vitest";
+import Fastify from "fastify";
+import pino from "pino";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { configureFastifyZod, type AppServer } from "../../src/lib/fastify-zod.js";
+import { registerProviderServiceRoutes } from "../../src/routes/providers.js";
+import type { ProviderService } from "../../src/services/provider-service.js";
 
-import { createLogger } from "../../src/lib/logger";
-import { createSchedulerService } from "../../src/services/scheduler-service";
-import { createSecretService } from "../../src/services/secret-service";
-import { createApiTokenService } from "../../src/services/api-token-service";
-import { createServer } from "../../src/server";
-import type { OpenCodeService } from "../../src/services/opencode-service";
-import { createTestDatabase } from "../helpers/db";
-
-describe("provider routes", () => {
-  it("lists providers and supports connect flows", async () => {
-    const testDb = await createTestDatabase();
-    const opencodeService = createMockOpenCodeService();
-    const server = await createServer({
-      config: testDb.config,
-      logger: createLogger(testDb.config),
-      database: testDb.client,
-      apiTokenService: createApiTokenService({ db: testDb.client.db }),
-      orchestrator: createOrchestrator(),
-      opencodeService,
-      openCodeEventService: { subscribe: () => {} },
-      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
-      scheduler: createSchedulerService(),
-    });
-
-    try {
-      const listed = await server.inject({
-        method: "GET",
-        url: "/api/providers",
-      });
-      const apiKey = await server.inject({
-        method: "PUT",
-        url: "/api/providers/openai/api-key",
-        payload: { apiKey: "secret" },
-      });
-      const oauthStart = await server.inject({
-        method: "POST",
-        url: "/api/providers/openai/oauth/start",
-        payload: { method: 0 },
-      });
-      const oauthComplete = await server.inject({
-        method: "POST",
-        url: "/api/providers/openai/oauth/complete",
-        payload: { method: 0, code: "done" },
-      });
-      const disconnected = await server.inject({
-        method: "DELETE",
-        url: "/api/providers/openai",
-      });
-
-      expect(listed.statusCode).toBe(200);
-      expect(listed.json()).toMatchObject([
-        {
-          provider: { id: "openai" },
-          connected: true,
-        },
-      ]);
-      expect(apiKey.json()).toEqual({ success: true });
-      expect(oauthStart.json()).toEqual({
-        url: "https://provider.example/authorize",
-        method: "auto",
-        instructions: "Finish login in the opened browser window.",
-      });
-      expect(oauthComplete.json()).toEqual({
-        connected: true,
-        pending: false,
-        message: "Connected openai",
-      });
-      expect(disconnected.json()).toEqual({ success: true });
-    } finally {
-      await server.close();
-      await testDb.cleanup();
-    }
-  });
+const servers: AppServer[] = [];
+afterEach(async () => {
+  await Promise.all(servers.splice(0).map((server) => server.close()));
 });
-
-function createOrchestrator() {
-  return {
-    start: () => Promise.resolve(),
-    stop: () => Promise.resolve(),
-    restart: () => Promise.resolve(),
-    refreshHealth: () => Promise.resolve(true),
-    getStatus: () => ({
-      state: "healthy" as const,
-      healthy: true,
-      url: "http://127.0.0.1:4100",
-      workspaceDir: "/tmp/workspace",
-      restartCount: 0,
-      maxRestarts: 3,
-    }),
-  };
-}
-
-function createMockOpenCodeService(): OpenCodeService {
-  return {
-    dispose: vi.fn(() => Promise.resolve()),
-    disposeGlobal: vi.fn(() => Promise.resolve()),
-
-    listProviders: vi.fn(() =>
-      Promise.resolve({
-        all: [
-          {
-            id: "openai",
-            name: "OpenAI",
-            source: "api",
-            env: ["OPENAI_API_KEY"],
-            models: { "openai/gpt-4.1": { name: "GPT-4.1" } },
-          },
-        ],
-        default: { openai: "openai/gpt-4.1" },
-        connected: ["openai"],
-      }),
-    ),
-
-    listAuthMethods: vi.fn(() =>
-      Promise.resolve({
-        openai: [{ type: "oauth", label: "Browser OAuth" }],
-      }),
-    ),
-
+function fixture() {
+  const service = {
+    list: vi.fn(() => Promise.resolve([])),
+    listModels: vi.fn(() => Promise.resolve([])),
     setApiKey: vi.fn(() => Promise.resolve(true)),
-
     startOauth: vi.fn(() =>
       Promise.resolve({
         url: "https://provider.example/authorize",
-        method: "auto",
-        instructions: "Finish login in the opened browser window.",
+        method: "auto" as const,
+        instructions: "Authorize",
       }),
     ),
-
-    completeOauth: vi.fn(() => Promise.resolve(true)),
-
-    disconnectProvider: vi.fn(() => Promise.resolve(true)),
-  } as unknown as OpenCodeService;
+    completeOauth: vi.fn(() => Promise.resolve({ connected: false, pending: true })),
+    disconnect: vi.fn(() => Promise.resolve(true)),
+  } satisfies ProviderService;
+  const server = Fastify({ loggerInstance: pino({ level: "silent" }) });
+  configureFastifyZod(server);
+  registerProviderServiceRoutes(server, service);
+  servers.push(server);
+  return { server, service };
 }
+describe("provider routes with injected SDK service", () => {
+  it("lists provider status", async () => {
+    const { server } = fixture();
+    const response = await server.inject({ method: "GET", url: "/api/providers" });
+    expect(response.json()).toEqual([]);
+  });
+  it("passes an API key to the provider service", async () => {
+    const { server, service } = fixture();
+    await server.inject({
+      method: "PUT",
+      url: "/api/providers/test/api-key",
+      payload: { apiKey: "fixture-key" },
+    });
+    expect(service.setApiKey).toHaveBeenCalledWith("test", "fixture-key");
+  });
+  it("returns the authorization URL", async () => {
+    const { server } = fixture();
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/providers/test/oauth/start",
+      payload: { method: 0 },
+    });
+    expect(response.json().url).toBe("https://provider.example/authorize");
+  });
+  it("preserves pending OAuth status", async () => {
+    const { server } = fixture();
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/providers/test/oauth/complete",
+      payload: { method: 0 },
+    });
+    expect(response.json()).toEqual({ connected: false, pending: true });
+  });
+  it("disconnects the selected provider", async () => {
+    const { server, service } = fixture();
+    await server.inject({ method: "DELETE", url: "/api/providers/test" });
+    expect(service.disconnect).toHaveBeenCalledWith("test");
+  });
+});

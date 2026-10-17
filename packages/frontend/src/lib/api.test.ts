@@ -1146,7 +1146,7 @@ describe("additional request wrapper coverage", () => {
         sessions: [
           {
             id: "term-1",
-            backend: "opencode",
+            backend: "local",
             cwd: "/tmp/project",
             createdAt: 1710000000,
           },
@@ -1157,7 +1157,7 @@ describe("additional request wrapper coverage", () => {
     await expect(listTerminalSessions()).resolves.toEqual([
       {
         id: "term-1",
-        backend: "opencode",
+        backend: "local",
         cwd: "/tmp/project",
         createdAt: 1710000000,
       },

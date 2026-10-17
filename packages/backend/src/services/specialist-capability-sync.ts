@@ -1,3 +1,4 @@
+import { writeEmbeddedSpecialistWorkspace } from "../opencode/embedded-specialist-workspace.js";
 import { eq } from "drizzle-orm";
 
 import {
@@ -5,6 +6,7 @@ import {
   type SpecialistCapabilitySelection,
 } from "@cc/shared/schemas";
 
+import { writeSpecialistFile } from "./specialist-file.js";
 import { now } from "../db/ids.js";
 import { agents } from "../db/schema/index.js";
 import type { AppDb } from "../db/client.js";
@@ -18,7 +20,7 @@ import { createCcManagedMcpWorkspaceEntryService } from "../mcp/cc-managed/works
 import {
   getBuiltInSkillRoot,
   getWorkspaceSkillRoot,
-  prepareWorkspace,
+  type prepareWorkspace,
   resolveSpecialistWorkspacePath,
 } from "./specialist-workspace.js";
 import { createCustomToolService } from "./custom-tool-service.js";
@@ -130,20 +132,23 @@ export function setMcpServerAssignment(
 export async function rewriteAgentsForMcpChange(options: {
   db: AppDb;
   config: RuntimeConfig;
-  opencodeService: OpenCodeService;
+  opencodeService: Pick<OpenCodeService, "dispose">;
+  prepareWorkspace?: typeof prepareWorkspace;
   transform: (
     capabilities: SpecialistCapabilitySelection,
     specialistId: string,
   ) => SpecialistCapabilitySelection;
   activeOnly?: boolean;
 }): Promise<number> {
-  const registry = createCcManagedMcpServerRegistry({
-    customToolService: createCustomToolService({
-      config: options.config,
-      db: options.db,
-      opencodeService: options.opencodeService,
-    }),
+  const customToolService = createCustomToolService({
+    config: options.config,
+    db: options.db,
+    opencodeService: options.opencodeService,
   });
+  const registry = createCcManagedMcpServerRegistry({ customToolService });
+  const prepare: typeof prepareWorkspace =
+    options.prepareWorkspace ??
+    ((input) => writeEmbeddedSpecialistWorkspace({ ...input, db: options.db, customToolService }));
   const appMcpWorkspaceEntryService = createCcManagedMcpWorkspaceEntryService({
     config: options.config,
     authTokenService: createCcManagedMcpAuthTokenService({
@@ -177,7 +182,7 @@ export async function rewriteAgentsForMcpChange(options: {
       capabilities: nextCapabilities,
     });
 
-    await prepareWorkspace({
+    await prepare({
       config: options.config,
       workspacePath,
       input: {
@@ -199,11 +204,29 @@ export async function rewriteAgentsForMcpChange(options: {
       await options.opencodeService.dispose(workspacePath).catch(() => {});
     }
 
+    const updatedAt = now();
+    await writeSpecialistFile(
+      options.config,
+      row.slug,
+      row.status === "archived" ? "archived" : "active",
+      {
+        id: row.id,
+        name: row.name,
+        role: row.role,
+        instructions: row.instructions,
+        defaultModel: row.default_model,
+        iconPath: row.icon_path ?? undefined,
+        capabilities: nextCapabilities,
+        createdAt: row.created_at.toISOString(),
+        updatedAt: updatedAt.toISOString(),
+      },
+    );
+
     await options.db
       .update(agents)
       .set({
         capabilities_json: JSON.stringify(nextCapabilities),
-        updated_at: now(),
+        updated_at: updatedAt,
       })
       .where(eq(agents.id, row.id));
 

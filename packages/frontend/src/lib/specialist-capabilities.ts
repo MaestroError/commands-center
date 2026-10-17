@@ -39,12 +39,13 @@ export function setMcpServerEnabled(
   enabled: boolean,
 ): SpecialistCapabilitySelection {
   if (enabled) {
+    const selection = getMcpServerSelection(capabilities, serverName);
     return {
       ...capabilities,
       mcpServers: upsertMcpServerSelection(capabilities.mcpServers ?? [], {
         name: serverName,
         enabled: true,
-        action: getMcpServerSelection(capabilities, serverName)?.action ?? "allow",
+        action: selection?.action === "ask" ? "ask" : "allow",
       }),
     };
   }

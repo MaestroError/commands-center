@@ -35,6 +35,30 @@ describe("GlobalSearchPalette", () => {
     vi.restoreAllMocks();
   });
 
+  it("shows newly indexed files without changing the search query", async () => {
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+    vi.mocked(searchWorkspaceFiles).mockResolvedValue({
+      nameMatches: [],
+      contentMatches: [],
+      documentMatches: [],
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<GlobalSearchPalette onClose={vi.fn()} open />, ["/"]);
+    await user.type(screen.getByRole("textbox", { name: "Search resources" }), "fresh");
+    await waitFor(() => expect(searchWorkspaceFiles).toHaveBeenCalledWith("fresh"));
+
+    vi.mocked(searchWorkspaceFiles).mockResolvedValue({
+      nameMatches: [{ path: "fresh.txt" }],
+      contentMatches: [],
+      documentMatches: [],
+    });
+
+    expect(
+      await screen.findByTestId("global-search-result-file:fresh.txt", {}, { timeout: 3_000 }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Search resources" })).toHaveValue("fresh");
+  });
+
   it("exposes the existing Global search dialog name", () => {
     renderWithProviders(<GlobalSearchPalette onClose={vi.fn()} open />, ["/"]);
 

@@ -7,13 +7,6 @@ const DEFAULT_HOST = "0.0.0.0";
 const DEFAULT_WORKSPACE_DIR = ".cc/workspace";
 const DEFAULT_DATA_DIR = ".cc/data";
 const DEFAULT_OPENCODE_TIMEOUT_MS = 30_000;
-const DEFAULT_OPENCODE_STARTUP_TIMEOUT_MS = 30_000;
-const DEFAULT_OPENCODE_SHUTDOWN_TIMEOUT_MS = 15_000;
-const DEFAULT_OPENCODE_HEALTH_POLL_MS = 2_000;
-const DEFAULT_OPENCODE_HOST = "127.0.0.1";
-const DEFAULT_OPENCODE_PORT = 4100;
-const DEFAULT_OPENCODE_MAX_RESTARTS = 3;
-const DEFAULT_OPENCODE_RESTART_WINDOW_MS = 60_000;
 const DEFAULT_MCP_AUTH_TIMEOUT_MS = 90_000;
 const DEFAULT_MCP_STDIO_TIMEOUT_MS = 120_000;
 const DEFAULT_DRAIN_TIMEOUT_MS = 15_000;
@@ -105,28 +98,6 @@ const envSchema = z.object({
   CC_WORKSPACE_DIR: z.string().trim().optional(),
   CC_DATA_DIR: z.string().trim().optional(),
   CC_OPENCODE_TIMEOUT_MS: positiveInteger("CC_OPENCODE_TIMEOUT_MS", DEFAULT_OPENCODE_TIMEOUT_MS),
-  CC_OPENCODE_STARTUP_TIMEOUT_MS: positiveInteger(
-    "CC_OPENCODE_STARTUP_TIMEOUT_MS",
-    DEFAULT_OPENCODE_STARTUP_TIMEOUT_MS,
-  ),
-  CC_OPENCODE_SHUTDOWN_TIMEOUT_MS: positiveInteger(
-    "CC_OPENCODE_SHUTDOWN_TIMEOUT_MS",
-    DEFAULT_OPENCODE_SHUTDOWN_TIMEOUT_MS,
-  ),
-  CC_OPENCODE_HEALTH_POLL_MS: positiveInteger(
-    "CC_OPENCODE_HEALTH_POLL_MS",
-    DEFAULT_OPENCODE_HEALTH_POLL_MS,
-  ),
-  CC_OPENCODE_HOST: z.string().trim().optional().default(DEFAULT_OPENCODE_HOST),
-  CC_OPENCODE_PORT: positiveInteger("CC_OPENCODE_PORT", DEFAULT_OPENCODE_PORT),
-  CC_OPENCODE_MAX_RESTARTS: positiveInteger(
-    "CC_OPENCODE_MAX_RESTARTS",
-    DEFAULT_OPENCODE_MAX_RESTARTS,
-  ),
-  CC_OPENCODE_RESTART_WINDOW_MS: positiveInteger(
-    "CC_OPENCODE_RESTART_WINDOW_MS",
-    DEFAULT_OPENCODE_RESTART_WINDOW_MS,
-  ),
   CC_MCP_AUTH_TIMEOUT_MS: positiveInteger("CC_MCP_AUTH_TIMEOUT_MS", DEFAULT_MCP_AUTH_TIMEOUT_MS),
   CC_MCP_STDIO_TIMEOUT_MS: positiveInteger("CC_MCP_STDIO_TIMEOUT_MS", DEFAULT_MCP_STDIO_TIMEOUT_MS),
   CC_DRAIN_TIMEOUT_MS: positiveInteger("CC_DRAIN_TIMEOUT_MS", DEFAULT_DRAIN_TIMEOUT_MS),
@@ -142,9 +113,6 @@ const envSchema = z.object({
   ),
   CC_ALLOWED_ORIGINS: z.string().trim().optional(),
   CC_TRUST_PROXY: booleanString(false),
-  CC_OPENCODE_PATH: z.string().trim().optional(),
-  CC_OPENCODE_STATE_DIR: z.string().trim().optional(),
-  CC_NPM_CACHE_DIR: z.string().trim().optional(),
   CC_SECRET_KEY: z.string().trim().optional().default(DEFAULT_SECRET_KEY),
   CC_MAX_TASKS: optionalLimit("CC_MAX_TASKS"),
 });
@@ -179,27 +147,9 @@ export type RuntimeConfig = {
   };
   timeouts: {
     opencodeRequestMs: number;
-    opencodeStartupMs: number;
-    opencodeShutdownMs: number;
-    opencodeHealthPollMs: number;
-    opencodeRestartWindowMs: number;
     mcpAuthMs: number;
     mcpStdioMs: number;
     drainMs: number;
-  };
-  opencode: {
-    host: string;
-    port: number;
-    maxRestarts: number;
-    baseUrl: string;
-    /**
-     * When set, CommandsCenter redirects the managed `opencode serve` child's XDG
-     * base directories under this root so OpenCode global state (auth, sessions,
-     * db, caches) persists across container rebuilds. Undefined means OpenCode
-     * uses its default `$HOME`-derived XDG paths. See `opencode-env.ts`.
-     */
-    stateDir?: string;
-    npmCacheDir?: string;
   };
   updates: {
     enabled: boolean;
@@ -215,7 +165,6 @@ export type RuntimeConfig = {
     allowedOrigins: string[];
     trustProxy: boolean;
   };
-  opencodePath?: string;
   secretKey: string;
   tasks: {
     maxTasks?: number;
@@ -259,20 +208,6 @@ export function loadRuntimeConfig(options?: {
       : resolve(cwd, parsedEnv.data.CC_DATA_DIR)
     : resolve(cwd, DEFAULT_DATA_DIR);
 
-  const opencodeStateDir = parsedEnv.data.CC_OPENCODE_STATE_DIR
-    ? isAbsolute(parsedEnv.data.CC_OPENCODE_STATE_DIR)
-      ? parsedEnv.data.CC_OPENCODE_STATE_DIR
-      : resolve(cwd, parsedEnv.data.CC_OPENCODE_STATE_DIR)
-    : undefined;
-  let npmCacheDir: string | undefined;
-  if (parsedEnv.data.CC_NPM_CACHE_DIR) {
-    npmCacheDir = isAbsolute(parsedEnv.data.CC_NPM_CACHE_DIR)
-      ? parsedEnv.data.CC_NPM_CACHE_DIR
-      : resolve(cwd, parsedEnv.data.CC_NPM_CACHE_DIR);
-  } else if (parsedEnv.data.CC_DOCKER) {
-    npmCacheDir = "/workspace/.cc/npm-cache";
-  }
-
   const resolvedHost = options?.overrides?.host ?? parsedEnv.data.CC_HOST;
   const resolvedPort = options?.overrides?.port ?? parsedEnv.data.CC_PORT;
   const originHostname = ["0.0.0.0", "::"].includes(resolvedHost) ? "localhost" : resolvedHost;
@@ -310,21 +245,9 @@ export function loadRuntimeConfig(options?: {
     },
     timeouts: {
       opencodeRequestMs: parsedEnv.data.CC_OPENCODE_TIMEOUT_MS,
-      opencodeStartupMs: parsedEnv.data.CC_OPENCODE_STARTUP_TIMEOUT_MS,
-      opencodeShutdownMs: parsedEnv.data.CC_OPENCODE_SHUTDOWN_TIMEOUT_MS,
-      opencodeHealthPollMs: parsedEnv.data.CC_OPENCODE_HEALTH_POLL_MS,
-      opencodeRestartWindowMs: parsedEnv.data.CC_OPENCODE_RESTART_WINDOW_MS,
       mcpAuthMs: parsedEnv.data.CC_MCP_AUTH_TIMEOUT_MS,
       mcpStdioMs: parsedEnv.data.CC_MCP_STDIO_TIMEOUT_MS,
       drainMs: parsedEnv.data.CC_DRAIN_TIMEOUT_MS,
-    },
-    opencode: {
-      host: parsedEnv.data.CC_OPENCODE_HOST,
-      port: parsedEnv.data.CC_OPENCODE_PORT,
-      maxRestarts: parsedEnv.data.CC_OPENCODE_MAX_RESTARTS,
-      baseUrl: `http://${parsedEnv.data.CC_OPENCODE_HOST}:${String(parsedEnv.data.CC_OPENCODE_PORT)}`,
-      stateDir: opencodeStateDir,
-      npmCacheDir,
     },
     updates: {
       enabled: parsedEnv.data.CC_UPDATE_CHECK,
@@ -340,7 +263,6 @@ export function loadRuntimeConfig(options?: {
       allowedOrigins: parseAllowedOrigins(parsedEnv.data.CC_ALLOWED_ORIGINS),
       trustProxy: parsedEnv.data.CC_TRUST_PROXY,
     },
-    opencodePath: parsedEnv.data.CC_OPENCODE_PATH || undefined,
     secretKey: parsedEnv.data.CC_SECRET_KEY,
     tasks: {
       maxTasks: parsedEnv.data.CC_MAX_TASKS,
@@ -399,7 +321,7 @@ export function getStartupLogContext(config: RuntimeConfig): Record<string, unkn
   return {
     nodeEnv: config.nodeEnv,
     server: config.server,
-    opencode: config.opencode,
+    engine: "embedded",
     paths: {
       dataDir: config.paths.dataDir,
       workspaceDir: config.paths.workspaceDir,
@@ -416,7 +338,6 @@ export function getStartupLogContext(config: RuntimeConfig): Record<string, unkn
       docker: config.updates.docker,
     },
     logLevel: config.logLevel,
-    opencodePathConfigured: config.opencodePath !== undefined,
     secretKeyConfigured: config.secretKey.trim().length > 0,
     tasks: config.tasks,
     firstRun: {

@@ -35,7 +35,10 @@ import {
   type OwnerAccessService,
 } from "../services/owner-access-service.js";
 
-export function registerOwnerAuthRoutes(server: AppServer, context: RuntimeContext): void {
+export function registerOwnerAuthRoutes(
+  server: AppServer,
+  context: Pick<RuntimeContext, "config" | "logger" | "ownerAccessService">,
+): void {
   const app = server.withTypeProvider<ZodTypeProvider>();
   const service = getOwnerAccessService(context);
 
@@ -227,7 +230,7 @@ export function registerOwnerAuthRoutes(server: AppServer, context: RuntimeConte
 
 function setAuthenticatedCookies(
   reply: FastifyReply,
-  context: RuntimeContext,
+  context: Pick<RuntimeContext, "config" | "logger" | "ownerAccessService">,
   sessionId: string,
   rememberBrowser?: boolean,
 ): void {
@@ -241,7 +244,9 @@ function setAuthenticatedCookies(
   ]);
 }
 
-function getOwnerAccessService(context: RuntimeContext): OwnerAccessService {
+function getOwnerAccessService(
+  context: Pick<RuntimeContext, "config" | "logger" | "ownerAccessService">,
+): OwnerAccessService {
   return (
     context.ownerAccessService ??
     createOwnerAccessService({ config: context.config, logger: context.logger })

@@ -20,8 +20,11 @@ import {
 import type { AppServer } from "../lib/fastify-zod.js";
 import type { RuntimeContext } from "../lib/start-server-runtime.js";
 import { NotFoundError } from "../lib/api-error.js";
-import { createSpecialistService } from "../services/specialist-service.js";
-import { createCustomToolService } from "../services/custom-tool-service.js";
+import { createSpecialistService, type SpecialistService } from "../services/specialist-service.js";
+import {
+  createCustomToolService,
+  type CustomToolService,
+} from "../services/custom-tool-service.js";
 import {
   createFileManagerService,
   resolveFileManagerRoot,
@@ -40,28 +43,41 @@ const listAgentsQuerySchema = z.object({
 });
 
 export function registerSpecialistRoutes(server: AppServer, context: RuntimeContext): void {
+  const customToolService: ReturnType<typeof createCustomToolService> =
+    context.workspaceServices?.customTools ??
+    createCustomToolService({
+      config: context.config,
+      db: context.database.db,
+      opencodeService: context.opencodeService,
+      listAgents: async () => {
+        const agents = await service.list();
+        return agents.map((agent) => ({
+          id: agent.id,
+          slug: agent.slug,
+          name: agent.name,
+          workspacePath: agent.workspacePath,
+        }));
+      },
+    });
+  const service =
+    context.workspaceServices?.specialists ??
+    createSpecialistService({
+      db: context.database.db,
+      config: context.config,
+      opencodeService: context.opencodeService,
+      customToolService,
+    });
+  registerSpecialistManagementRoutes(server, context, service, customToolService);
+  registerSpecialistWorkspaceRoutes(server, context, service);
+}
+
+export function registerSpecialistManagementRoutes(
+  server: AppServer,
+  context: { opencodeService: Pick<RuntimeContext["opencodeService"], "dispose"> },
+  service: SpecialistService,
+  customToolService: CustomToolService,
+): void {
   const app = server.withTypeProvider<ZodTypeProvider>();
-  const customToolService = createCustomToolService({
-    config: context.config,
-    db: context.database.db,
-    opencodeService: context.opencodeService,
-    listAgents: async () => {
-      const agents = await service.list();
-      return agents.map((agent) => ({
-        id: agent.id,
-        slug: agent.slug,
-        name: agent.name,
-        workspacePath: agent.workspacePath,
-      }));
-    },
-  });
-  const service = createSpecialistService({
-    db: context.database.db,
-    config: context.config,
-    opencodeService: context.opencodeService,
-    customToolService,
-  });
-  const fileManagerService = createFileManagerService({ config: context.config });
 
   async function requireAgent(id: string) {
     const agent = await service.get(id);
@@ -262,6 +278,24 @@ export function registerSpecialistRoutes(server: AppServer, context: RuntimeCont
       return reply.send();
     },
   );
+}
+
+export function registerSpecialistWorkspaceRoutes(
+  server: AppServer,
+  context: Pick<RuntimeContext, "config" | "workspaceWatchService"> & {
+    opencodeService: Pick<
+      RuntimeContext["opencodeService"],
+      "findText" | "findFiles" | "readFile" | "getFileStatus"
+    >;
+  },
+  service: SpecialistService,
+): void {
+  const app = server.withTypeProvider<ZodTypeProvider>();
+  async function requireAgent(id: string) {
+    const agent = await service.get(id);
+    if (!agent) throw new NotFoundError("Specialist not found.");
+    return agent;
+  }
 
   app.get(
     "/api/specialists/:id/workspace/find",
@@ -297,35 +331,7 @@ export function registerSpecialistRoutes(server: AppServer, context: RuntimeCont
     },
   );
 
-  app.get(
-    "/api/specialists/:id/workspace/file",
-    {
-      schema: {
-        params: agentIdParamsSchema,
-        querystring: opencodeFileListQuerySchema,
-        response: {
-          200: opencodeFileListResultSchema,
-        },
-      },
-    },
-    async (request) => {
-      const agent = await requireAgent(request.params.id);
-      const root = resolveFileManagerRoot({ kind: "workspace", config: context.config });
-      const listing = await fileManagerService.listDirectory(root, {
-        path: joinSpecialistWorkspacePath(agent.slug, request.query.path),
-      });
-
-      return listing.nodes.map((node) => ({
-        name: node.name,
-        path: trimSpecialistWorkspacePrefix(agent.slug, node.path),
-        absolute: node.absolutePath,
-        type: node.type,
-        ignored: false,
-        isCritical: node.isCritical,
-        criticalReason: node.criticalReason,
-      }));
-    },
-  );
+  registerSpecialistFileListRoute(server, context, service);
 
   app.get(
     "/api/specialists/:id/workspace/file/content",
@@ -380,6 +386,8 @@ export function registerSpecialistRoutes(server: AppServer, context: RuntimeCont
         "X-Accel-Buffering": "no",
       });
 
+      raw.flushHeaders();
+
       const abortController = new AbortController();
 
       request.raw.on("close", () => {
@@ -409,6 +417,49 @@ export function registerSpecialistRoutes(server: AppServer, context: RuntimeCont
           }
         },
       });
+    },
+  );
+}
+
+export function registerSpecialistFileListRoute(
+  server: AppServer,
+  context: Pick<RuntimeContext, "config">,
+  service: Pick<SpecialistService, "get">,
+): void {
+  const app = server.withTypeProvider<ZodTypeProvider>();
+  const fileManagerService = createFileManagerService({ config: context.config });
+  async function requireAgent(id: string) {
+    const agent = await service.get(id);
+    if (!agent) throw new NotFoundError("Specialist not found.");
+    return agent;
+  }
+  app.get(
+    "/api/specialists/:id/workspace/file",
+    {
+      schema: {
+        params: agentIdParamsSchema,
+        querystring: opencodeFileListQuerySchema,
+        response: {
+          200: opencodeFileListResultSchema,
+        },
+      },
+    },
+    async (request) => {
+      const agent = await requireAgent(request.params.id);
+      const root = resolveFileManagerRoot({ kind: "workspace", config: context.config });
+      const listing = await fileManagerService.listDirectory(root, {
+        path: joinSpecialistWorkspacePath(agent.slug, request.query.path),
+      });
+
+      return listing.nodes.map((node) => ({
+        name: node.name,
+        path: trimSpecialistWorkspacePrefix(agent.slug, node.path),
+        absolute: node.absolutePath,
+        type: node.type,
+        ignored: false,
+        isCritical: node.isCritical,
+        criticalReason: node.criticalReason,
+      }));
     },
   );
 }

@@ -1,3 +1,7 @@
+import {
+  renderEmbeddedToolTemplate,
+  renderEmbeddedToolEntry,
+} from "../opencode/embedded-custom-tools.js";
 import { createHash } from "node:crypto";
 import { mkdir, readdir, readFile, rm, stat, writeFile, copyFile, cp } from "node:fs/promises";
 import { basename, extname, join, relative } from "node:path";
@@ -87,13 +91,21 @@ export type CustomToolService = ReturnType<typeof createCustomToolService>;
 export function createCustomToolService(options: {
   config: RuntimeConfig;
   db: AppDb;
-  opencodeService: OpenCodeService;
+  opencodeService: Pick<OpenCodeService, "dispose">;
+  onWorkspaceChanged?: (workspacePath: string) => Promise<void>;
+  renderTemplate?: (name: string, description: string) => string;
+  renderEntryWrapper?: (slug: string, entryFile: string) => string;
   listAgents?: () => Promise<
     Array<{ id: string; slug: string; name: string; workspacePath: string }>
   >;
 }) {
   function getGlobalToolDirectoryPath(slug: string): string {
     return join(options.config.paths.subdirectories.tools, slug);
+  }
+
+  async function workspaceChanged(workspacePath: string): Promise<void> {
+    if (options.onWorkspaceChanged) await options.onWorkspaceChanged(workspacePath);
+    else await options.opencodeService.dispose(workspacePath).catch(() => {});
   }
 
   return {
@@ -128,7 +140,11 @@ export function createCustomToolService(options: {
       const timestamp = new Date().toISOString();
 
       await mkdir(directoryPath, { recursive: true });
-      await writeFile(entryPath, renderToolTemplate(parsed.name, parsed.description), "utf8");
+      await writeFile(
+        entryPath,
+        (options.renderTemplate ?? renderEmbeddedToolTemplate)(parsed.name, parsed.description),
+        "utf8",
+      );
 
       const fingerprint = await computeToolSnapshotFingerprint({
         entryPath,
@@ -195,7 +211,7 @@ export function createCustomToolService(options: {
           destinationName: parsed.destinationName,
           overwrite: parsed.overwrite,
         });
-        await options.opencodeService.dispose(agent.workspacePath).catch(() => {});
+        await workspaceChanged(agent.workspacePath);
         copied.push({ agentId: agent.id, agentSlug: agent.slug, overwritten });
       }
 
@@ -241,7 +257,7 @@ export function createCustomToolService(options: {
         overwrite: parsed.overwrite,
         move: true,
       });
-      await options.opencodeService.dispose(input.agent.workspacePath).catch(() => {});
+      await workspaceChanged(input.agent.workspacePath);
       return result;
     },
 
@@ -324,6 +340,7 @@ export function createCustomToolService(options: {
       }
 
       await removeAgentToolSnapshot(input.workspacePath, agentTool.slug);
+      await options.onWorkspaceChanged?.(input.workspacePath);
     },
   };
 
@@ -686,7 +703,10 @@ export function createCustomToolService(options: {
 
     await writeFile(
       targetEntryPath,
-      renderAgentEntryWrapper(destinationSlug, input.source.entryFile),
+      (options.renderEntryWrapper ?? renderEmbeddedToolEntry)(
+        destinationSlug,
+        input.source.entryFile,
+      ),
       "utf8",
     );
 
@@ -851,27 +871,6 @@ export function createCustomToolService(options: {
 
     await options.db.insert(custom_tools).values({ id: tool.id, ...payload });
   }
-}
-
-function renderToolTemplate(name: string, description: string): string {
-  return [
-    'import { tool } from "@opencode-ai/plugin";',
-    "",
-    "export default tool({",
-    `  description: ${JSON.stringify(description || `TODO: describe ${name.trim()}.`)},`,
-    "  args: {},",
-    "  async execute() {",
-    '    return "TODO: implement this tool.";',
-    "  },",
-    "});",
-    "",
-  ].join("\n");
-}
-
-function renderAgentEntryWrapper(slug: string, entryFile: string): string {
-  const specifier = `./${slug}/${entryFile.replace(/\.(ts|js)$/u, "")}`;
-
-  return [`export { default } from ${JSON.stringify(specifier)};`, ""].join("\n");
 }
 
 function getAgentToolStatus(input: {

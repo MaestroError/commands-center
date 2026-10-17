@@ -9,18 +9,20 @@ import {
 
 import type { AppServer } from "../lib/fastify-zod.js";
 import type { RuntimeContext } from "../lib/start-server-runtime.js";
-import { createProviderService } from "../services/provider-service.js";
+import type { ProviderService } from "../services/provider-service.js";
 
 const providerIdParamsSchema = z.object({
   providerId: z.string().trim().min(1),
 });
 
 export function registerProviderRoutes(server: AppServer, context: RuntimeContext): void {
+  if (context.embeddedRuntime) {
+    registerProviderServiceRoutes(server, context.embeddedRuntime.providers);
+  }
+}
+
+export function registerProviderServiceRoutes(server: AppServer, service: ProviderService): void {
   const app = server.withTypeProvider<ZodTypeProvider>();
-  const service = createProviderService({
-    config: context.config,
-    opencodeService: context.opencodeService,
-  });
 
   app.get("/api/providers", async () => service.list());
 

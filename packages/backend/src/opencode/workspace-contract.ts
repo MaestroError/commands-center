@@ -1,3 +1,4 @@
+import { renderEmbeddedWorkspace } from "./embedded-workspace-config.js";
 import { randomUUID } from "node:crypto";
 import { cp, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
@@ -7,36 +8,10 @@ import { z } from "zod";
 import type { SpecialistCapabilitySelection, BuiltInSkill } from "@cc/shared/schemas";
 import { normalizeBuiltInSkillSlug } from "../lib/builtin-skill-aliases.js";
 
-const OPENCODE_CONFIG_SCHEMA_URL = "https://opencode.ai/config.json";
 const SKILL_NAME_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const MANAGED_SKILLS_MANIFEST_FILE = ".cc-managed.json";
 const MANAGED_SKILL_STAGING_PREFIX = ".cc-staging-";
 const MANAGED_SKILL_BACKUP_PREFIX = ".cc-backup-";
-const TASK_RUN_TOOL_PERMISSION_DENIES = {
-  cc_default_set_task_result: "deny",
-  cc_default_add_task_artifact: "deny",
-  cc_default_mark_needs_human_review: "deny",
-} as const;
-
-const permissionActionSchema = z.enum(["allow", "ask", "deny"]);
-const permissionRuleSchema = z.record(z.string().min(1), permissionActionSchema);
-const workspaceMcpEnabledSchema = z.object({ enabled: z.boolean() }).strict();
-const workspaceOpenAiProviderSchema = z
-  .object({
-    options: z.object({ headerTimeout: z.literal(60_000) }).strict(),
-  })
-  .strict();
-const workspaceRemoteMcpSchema = z
-  .object({
-    type: z.literal("remote"),
-    url: z.string().trim().url(),
-    enabled: z.boolean(),
-    oauth: z.union([z.boolean(), z.object({}).passthrough()]).optional(),
-    headers: z.record(z.string().min(1), z.string()).optional(),
-    timeout: z.number().int().positive().optional(),
-  })
-  .strict();
-
 const skillFrontmatterSchema = z
   .object({
     name: z.string().min(1).max(64).regex(SKILL_NAME_PATTERN),
@@ -64,20 +39,6 @@ const managedSkillsManifestSchema = z
   })
   .strict();
 
-const workspaceConfigSchema = z
-  .object({
-    $schema: z.literal(OPENCODE_CONFIG_SCHEMA_URL),
-    model: z.string().trim().min(1),
-    provider: z.object({ openai: workspaceOpenAiProviderSchema }).strict(),
-    mcp: z
-      .record(z.string().min(1), z.union([workspaceMcpEnabledSchema, workspaceRemoteMcpSchema]))
-      .default({}),
-    permission: z
-      .record(z.string().min(1), z.union([permissionActionSchema, permissionRuleSchema]))
-      .default({}),
-  })
-  .strict();
-
 const workspaceRulesSchema = z.object({
   title: z.string().trim().min(1),
   role: z.string().trim().min(1),
@@ -102,7 +63,7 @@ export const OPENCODE_WORKSPACE_CONTRACT = {
     config: {
       relativePath: "opencode.jsonc",
       description: "Project-local OpenCode config merged above global config.",
-      schemaUrl: OPENCODE_CONFIG_SCHEMA_URL,
+      schemaUrl: "https://opencode.ai/config.json",
       docs: [
         "https://opencode.ai/docs/config/",
         "https://opencode.ai/docs/models/",
@@ -125,7 +86,17 @@ export type OpenCodeWorkspaceInput = {
   instructions: string;
   defaultModel: string;
   capabilities: SpecialistCapabilitySelection;
-  appMcpEntries?: Record<string, z.infer<typeof workspaceRemoteMcpSchema>>;
+  appMcpEntries?: Record<
+    string,
+    {
+      type: "remote";
+      url: string;
+      enabled: boolean;
+      oauth?: false;
+      headers?: Record<string, string>;
+      timeout?: number;
+    }
+  >;
 };
 
 export type ManagedSkillSource = z.infer<typeof managedSkillSourceSchema>;
@@ -178,31 +149,10 @@ export async function listBuiltInSkills(root: string): Promise<BuiltInSkill[]> {
   }
 }
 
-export async function isManagedSkillsManifestCurrent(options: {
-  workspacePath: string;
-  input: OpenCodeWorkspaceInput;
-}): Promise<boolean> {
-  const manifest = await readManagedSkillsManifest(
-    getOpenCodeWorkspacePaths(options.workspacePath).skillsDir,
-  );
-
-  if (!manifest) {
-    return false;
-  }
-
-  const desiredSkills = resolveDesiredManagedSkillSelections(options.input);
-
-  return (
-    desiredSkills.every((skill, index) => {
-      const current = manifest.skills[index];
-      return current?.slug === skill.slug && current.source === skill.source;
-    }) && manifest.skills.length === desiredSkills.length
-  );
-}
-
 export async function writeOpenCodeWorkspace(options: {
   workspacePath: string;
   input: OpenCodeWorkspaceInput;
+  render?: (input: OpenCodeWorkspaceInput) => { rulesMarkdown: string; configJsonc: string };
   skillRoot: string;
   workspaceSkillRoot: string;
   /**
@@ -225,9 +175,11 @@ export async function writeOpenCodeWorkspace(options: {
   onMissingSkill?: (skill: MissingManagedSkill) => void;
 }): Promise<void> {
   const paths = getOpenCodeWorkspacePaths(options.workspacePath);
-  const rendered = renderOpenCodeWorkspace(options.input);
+  const rendered = options.render
+    ? options.render(options.input)
+    : renderEmbeddedWorkspace(options.input, {});
 
-  validateOpenCodeWorkspace(rendered);
+  parseRulesMarkdown(rendered.rulesMarkdown);
 
   const desiredSkills = resolveDesiredManagedSkills({
     input: options.input,
@@ -257,72 +209,24 @@ export async function writeOpenCodeWorkspace(options: {
   await writeFile(paths.configFile, rendered.configJsonc, "utf8");
 }
 
-export function renderOpenCodeWorkspace(input: OpenCodeWorkspaceInput): {
-  rulesMarkdown: string;
-  configJsonc: string;
-  config: z.infer<typeof workspaceConfigSchema>;
-} {
+export function renderOpenCodeRules(
+  input: Pick<OpenCodeWorkspaceInput, "name" | "role" | "instructions">,
+): string {
   const rules = workspaceRulesSchema.parse({
     title: input.name,
     role: input.role,
     instructions: input.instructions,
   });
-  const config = workspaceConfigSchema.parse({
-    $schema: OPENCODE_CONFIG_SCHEMA_URL,
-    model: input.defaultModel,
-    provider: {
-      openai: {
-        options: { headerTimeout: 60_000 },
-      },
-    },
-    mcp: {
-      ...Object.fromEntries(
-        (input.capabilities.mcpServers ?? []).map((server) => [
-          server.name,
-          { enabled: server.enabled },
-        ]),
-      ),
-      ...(input.appMcpEntries ?? {}),
-    },
-    permission: {
-      ...TASK_RUN_TOOL_PERMISSION_DENIES,
-      ...Object.fromEntries([
-        ...(input.capabilities.mcpServers ?? [])
-          .filter((server) => server.enabled !== false)
-          .map((server) => [`${server.name}_*`, server.action] as const),
-        ...(input.capabilities.toolPermissions ?? []).map(
-          (rule) => [rule.pattern, rule.action] as const,
-        ),
-      ]),
-    },
-  });
-
-  return {
-    rulesMarkdown: [
-      `# ${rules.title}`,
-      "",
-      `- Role: ${rules.role}`,
-      "",
-      "## Instructions",
-      "",
-      rules.instructions,
-      "",
-    ].join("\n"),
-    configJsonc: `${JSON.stringify(config, null, 2)}\n`,
-    config,
-  };
-}
-
-export function validateOpenCodeWorkspace(rendered: {
-  rulesMarkdown: string;
-  configJsonc: string;
-}): void {
-  parseRulesMarkdown(rendered.rulesMarkdown);
-  workspaceConfigSchema.parse(JSON.parse(rendered.configJsonc));
-}
-
-export function isOpenCodeWorkspaceConfigValid(config: unknown): boolean {
-  return workspaceConfigSchema.safeParse(config).success;
+  return [
+    `# ${rules.title}`,
+    "",
+    `- Role: ${rules.role}`,
+    "",
+    "## Instructions",
+    "",
+    rules.instructions,
+    "",
+  ].join("\n");
 }
 
 export function parseRulesMarkdown(markdown: string): z.infer<typeof workspaceRulesSchema> {

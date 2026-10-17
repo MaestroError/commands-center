@@ -34,15 +34,13 @@ pnpm dev
 
 This starts both the backend (port 3000) and frontend (port 5173) dev servers.
 
-The backend manages a single persistent `opencode serve` engine process in the background.
+The backend runs one embedded OpenCode v2 SDK host in the CC process.
 
 ### OpenCode Engine
 
-```bash
-opencode serve --hostname=127.0.0.1 --port=4096
-```
-
-In CommandsCenter this command is started and monitored by the backend orchestrator.
+CC starts the pinned `@opencode/sdk` automatically. No separate `opencode serve`
+process or engine port is needed. Restarting the engine reloads configuration and
+secrets in the embedded host.
 
 ## Production Usage
 
@@ -80,9 +78,15 @@ CC_SECRET_KEY=replace-with-a-long-random-secret
 
 SQLite is stored at `$CC_DATA_DIR/cc.db` (default: `~/.cc/data/cc.db`). Set `CC_DATA_DIR` to move disposable runtime data to a different location. PostgreSQL primary mode is not part of the current runtime.
 
-Set `CC_OPENCODE_STATE_DIR` to persist the managed OpenCode engine's global state (provider connections, MCP auth, sessions, and its SQLite db). When set, CommandsCenter redirects the `opencode serve` child's XDG data/config/cache/state directories under that root; leave it empty to use OpenCode's default `$HOME`-derived paths (`~/.local/share/opencode`, etc.). Docker deployments default it to `/workspace/.cc/opencode` so connections survive container rebuilds. Note that CommandsCenter terminals and task runs are children of the OpenCode process, so tools launched inside them (e.g. `gh`) also see the redirected XDG paths.
+The embedded engine stores its database, credentials, configuration and caches
+under `<workspace>/.cc/opencode-v2/`. Its npm cache lives inside that directory and
+is inherited by engine-launched MCP processes. Old daemon state/cache overrides
+are not used by v2. Changing the active workspace requires restarting CC.
+Interactive terminals are owned by CC through `node-pty`; browser disconnects
+preserve the shell, while deleting a terminal or stopping CC terminates it.
 
-Local/stdio MCP servers use a 120-second timeout by default. Set `CC_MCP_STDIO_TIMEOUT_MS` to a positive millisecond value to override the initialization, discovery, and request timeout. Docker deployments also default npm's cache to `/workspace/.cc/npm-cache`, so cold `npx -y <package>` downloads are reused after container recreation when `/workspace` is mounted. Set `CC_NPM_CACHE_DIR` to override that location; non-Docker installs leave npm's native cache unchanged when it is unset. Restart CommandsCenter or the container after changing either value.
+Local/stdio MCP servers use a 120-second timeout by default. Set
+`CC_MCP_STDIO_TIMEOUT_MS` to override it. Restart CC after changing the value.
 
 ### Global NPM Install
 
@@ -423,10 +427,10 @@ docker run -d --name commandscenter \
 The image already sets `NODE_ENV`, `CC_HOST`, `CC_PORT`, and the workspace/data
 paths as defaults ([`Dockerfile`](Dockerfile)). Direct access needs the volume
 mount and `CC_PUBLIC_ORIGIN`; a public-domain reverse-proxy deployment must also
-set `CC_TRUST_PROXY=true`. With `CC_DOCKER=true`, npm packages downloaded by
-`npx` are cached under `/workspace/.cc/npm-cache` on the same volume. Override
-that path with `CC_NPM_CACHE_DIR` and the 120-second local MCP timeout with
-`CC_MCP_STDIO_TIMEOUT_MS`, then restart the container to apply either change.
+set `CC_TRUST_PROXY=true`. The embedded SDK keeps npm's cache under
+`<workspace>/.cc/opencode-v2/npm-cache`, alongside its isolated engine state.
+The local MCP timeout remains configurable with `CC_MCP_STDIO_TIMEOUT_MS`
+(default 120 seconds).
 
 The suggested Playwright and Mermaid MCPs require the Full image in Docker. Playwright explicitly
 selects Chromium and runs headlessly because Docker has no display server; the Full image supplies

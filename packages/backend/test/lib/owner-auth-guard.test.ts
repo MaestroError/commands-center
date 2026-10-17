@@ -52,6 +52,54 @@ describe("owner auth guard", () => {
     expect(isPublicRoute("POST", "/api/mcp/cc/cc-app/specialists/writer")).toBe(true);
   });
 
+  it.each([
+    {
+      name: "missing shutdown key",
+      method: "POST" as const,
+      url: "/api/system/shutdown",
+      key: undefined,
+    },
+    {
+      name: "incorrect shutdown key",
+      method: "POST" as const,
+      url: "/api/system/shutdown",
+      key: "wrong-key",
+    },
+    {
+      name: "shutdown key on another endpoint",
+      method: "POST" as const,
+      url: "/api/system/update",
+      key: "valid",
+    },
+    {
+      name: "shutdown key with another method",
+      method: "GET" as const,
+      url: "/api/system/shutdown",
+      key: "valid",
+    },
+  ])("rejects $name without an owner session", async ({ method, url, key }) => {
+    const testDb = await createTestDatabase();
+    const ownerAccessService = createOwnerAccessService({ config: testDb.config });
+    const server = await createAuthServer(testDb, ownerAccessService, {
+      ...testDb.config,
+      nodeEnv: "production",
+    });
+    try {
+      await claimWorkspace(ownerAccessService);
+      const response = await server.inject({
+        method,
+        url,
+        headers: key
+          ? { "x-cc-shutdown-key": key === "valid" ? testDb.config.secretKey : key }
+          : {},
+      });
+      expect(response.statusCode).toBe(401);
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
   it("rejects protected API requests without an owner session", async () => {
     const testDb = await createTestDatabase();
     const ownerAccessService = createOwnerAccessService({ config: testDb.config });
@@ -379,13 +427,6 @@ describe("owner auth guard", () => {
     });
     const ownerAccessService = createOwnerAccessService({ config: productionConfig });
     const server = await createAuthServer(testDb, ownerAccessService, productionConfig);
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ id: "pty-123", backend: "opencode", cwd: "/tmp" }), {
-        status: 201,
-        headers: { "Content-Type": "application/json" },
-      }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
 
     try {
       const { cookie, csrfToken } = await createAuthenticatedCookie(
@@ -404,9 +445,7 @@ describe("owner auth guard", () => {
       });
 
       expect(response.statusCode).toBe(201);
-      expect(fetchMock).toHaveBeenCalled();
     } finally {
-      vi.unstubAllGlobals();
       await server.close();
       await testDb.cleanup();
     }

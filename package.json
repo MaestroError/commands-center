@@ -30,7 +30,9 @@
     "check:node-versions": "node scripts/check-node-version-consistency.mjs",
     "design-system:audit": "node scripts/design-system-audit.mjs && node --test scripts/design-system-audit.test.mjs",
     "release:check": "pnpm check:node-versions && pnpm design-system:audit && pnpm typecheck && pnpm lint && pnpm knip && pnpm --filter commandscenter test && pnpm build:cli",
-    "prepare": "husky"
+    "prepare": "husky",
+    "test:e2e:embedded": "pnpm --filter @cc/frontend build && playwright test --config playwright.embedded.config.ts",
+    "dev:embedded-preview": "pnpm --filter @cc/frontend build && pnpm --filter @cc/backend exec tsx test/e2e/embedded-server.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
@@ -51,24 +53,30 @@
   },
   "pnpm": {
     "overrides": {
-      "fast-uri": "3.1.6",
       "browserslist": "4.28.7",
       "ip-address": "10.3.1",
       "esbuild": "^0.28.1",
       "vite>esbuild": "^0.25.0",
       "hono": "^4.12.25",
       "brace-expansion@1.1.13": "1.1.18",
-      "brace-expansion@5.0.5": "5.0.9",
+      "brace-expansion@5.0.5": "5.0.11",
       "find-my-way@<9.7.0": "9.7.0",
       "postcss@<8.5.18": "8.5.18",
       "js-yaml@4.1.1": "4.3.1",
-      "nanoid@<3.3.18": "3.3.18"
+      "nanoid@<3.3.18": "3.3.18",
+      "proxy-addr@<2.0.8": "2.0.8",
+      "source-map-js@<1.2.2": "1.2.2",
+      "vue@<3.5.42": "3.5.42",
+      "prosemirror-view@<1.42.3": "1.42.3",
+      "@modelcontextprotocol/client@2.0.0": "2.2.0",
+      "@modelcontextprotocol/core@2.0.0": "2.2.0",
+      "fast-uri@>=3.0.0 <3.1.7": "3.1.7"
     },
     "onlyBuiltDependencies": [
+      "node-pty",
       "better-sqlite3",
       "esbuild",
-      "fsevents",
-      "opencode-ai"
+      "fsevents"
     ],
     "auditConfig": {
       "ignoreGhsas": [

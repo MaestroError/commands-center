@@ -21,11 +21,13 @@ const workspaceSkillSlugParamsSchema = z.object({
 export function registerWorkspaceSkillRoutes(server: AppServer, context: RuntimeContext): void {
   const app = server.withTypeProvider<ZodTypeProvider>();
   const workspaceSkillService = createWorkspaceSkillService({ config: context.config });
-  const agentService = createSpecialistService({
-    db: context.database.db,
-    config: context.config,
-    opencodeService: context.opencodeService,
-  });
+  const agentService =
+    context.workspaceServices?.specialists ??
+    createSpecialistService({
+      db: context.database.db,
+      config: context.config,
+      opencodeService: context.opencodeService,
+    });
 
   app.get(
     "/api/workspace-skills",

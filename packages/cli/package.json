@@ -1,6 +1,6 @@
 {
   "name": "commandscenter",
-  "version": "0.28.2",
+  "version": "1.0.0",
   "type": "module",
   "description": "Single-user AI specialist management — install, run, done.",
   "license": "Apache-2.0",
@@ -40,15 +40,19 @@
   },
   "dependencies": {
     "@fastify/static": "^10.1.1",
+    "@opencode/sdk": "2.0.27",
+    "@vscode/ripgrep": "1.18.0",
     "better-sqlite3": "^12.0.0",
-    "fastify": "^5.8.5",
-    "opencode-ai": "~1.18.23"
+    "fastify": "^5.12.2",
+    "node-pty": "1.2.0-beta.14",
+    "pino-pretty": "^13.0.0",
+    "pino": "^9.6.0"
   },
   "devDependencies": {
     "@cc/backend": "workspace:*",
     "@types/node": "^22.0.0",
     "esbuild": "^0.28.1",
-    "typescript": "catalog:",
-    "tsx": "^4.19.0"
+    "tsx": "^4.19.0",
+    "typescript": "catalog:"
   }
 }

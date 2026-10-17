@@ -50,7 +50,7 @@ function TerminalTab(props: {
     props.onClose(props.session.id);
   };
 
-  const backendLabel = props.session.backend === "opencode" ? "OC" : "Root";
+  const backendLabel = "Local";
 
   return (
     <button

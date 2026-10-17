@@ -12,7 +12,12 @@ import { resolveFileManagerRoot } from "../services/file-manager-service.js";
 
 const MAX_SEARCH_RESULTS = 20;
 
-export function registerSearchRoutes(server: AppServer, context: RuntimeContext): void {
+export function registerSearchRoutes(
+  server: AppServer,
+  context: Pick<RuntimeContext, "config" | "database"> & {
+    opencodeService: Pick<RuntimeContext["opencodeService"], "findFiles" | "findText">;
+  },
+): void {
   const app = server.withTypeProvider<ZodTypeProvider>();
   const documentService = createDocumentService({
     db: context.database.db,

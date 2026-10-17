@@ -10,7 +10,7 @@ import {
 describe("terminal schemas", () => {
   describe("terminalBackendTypeSchema", () => {
     it("parses valid backend types", () => {
-      expect(terminalBackendTypeSchema.parse("opencode")).toBe("opencode");
+      expect(terminalBackendTypeSchema.parse("local")).toBe("local");
     });
 
     it("rejects invalid backend types", () => {
@@ -22,7 +22,7 @@ describe("terminal schemas", () => {
   describe("terminalCreateInputSchema", () => {
     it("parses valid input with all fields", () => {
       const input = {
-        backend: "opencode",
+        backend: "local",
         cwd: "/home/user",
         shell: "/bin/zsh",
       };
@@ -38,7 +38,7 @@ describe("terminal schemas", () => {
     });
 
     it("parses valid input with only backend", () => {
-      const input = { backend: "opencode" };
+      const input = { backend: "local" };
       expect(terminalCreateInputSchema.parse(input)).toEqual(input);
     });
 
@@ -62,7 +62,7 @@ describe("terminal schemas", () => {
     it("parses valid session", () => {
       const session = {
         id: "session-123",
-        backend: "opencode",
+        backend: "local",
         cwd: "/home/user",
         createdAt: 1700000000000,
       };
@@ -71,7 +71,7 @@ describe("terminal schemas", () => {
 
     it("rejects missing id", () => {
       const session = {
-        backend: "opencode",
+        backend: "local",
         cwd: "/home",
         createdAt: 1700000000000,
       };
@@ -90,7 +90,7 @@ describe("terminal schemas", () => {
     it("rejects missing createdAt", () => {
       const session = {
         id: "session-123",
-        backend: "opencode",
+        backend: "local",
         cwd: "/home",
       };
       expect(() => terminalSessionSchema.parse(session)).toThrow();
@@ -109,7 +109,7 @@ describe("terminal schemas", () => {
     it("rejects invalid createdAt type", () => {
       const session = {
         id: "session-123",
-        backend: "opencode",
+        backend: "local",
         cwd: "/home",
         createdAt: "1700000000000",
       };
@@ -123,13 +123,13 @@ describe("terminal schemas", () => {
         sessions: [
           {
             id: "session-1",
-            backend: "opencode",
+            backend: "local",
             cwd: "/home/user",
             createdAt: 1700000000000,
           },
           {
             id: "session-2",
-            backend: "opencode",
+            backend: "local",
             cwd: "/workspace",
             createdAt: 1700000000001,
           },

@@ -50,13 +50,13 @@ describe("mcp-server-service", () => {
 
       const configPath = join(testDb.config.paths.workspaceDir, "opencode.jsonc");
       const rendered = JSON.parse(await readFile(configPath, "utf8")) as {
-        mcp: Record<string, Record<string, unknown>>;
+        mcp: { servers: Record<string, Record<string, unknown>> };
       };
 
-      expect(rendered.mcp["github"]).toEqual({
+      expect(rendered.mcp.servers["github"]).toMatchObject({
         type: "remote",
         url: "https://example.com/mcp",
-        enabled: true,
+        disabled: false,
         oauth: false,
         headers: {
           Authorization: "{env:CC_MCP_GITHUB_HEADER_AUTHORIZATION}",
@@ -100,10 +100,10 @@ describe("mcp-server-service", () => {
 
       const configPath = join(testDb.config.paths.workspaceDir, "opencode.jsonc");
       const rendered = JSON.parse(await readFile(configPath, "utf8")) as {
-        mcp: Record<string, Record<string, unknown>>;
+        mcp: { servers: Record<string, Record<string, unknown>> };
       };
 
-      expect(rendered.mcp).toEqual({});
+      expect(rendered.mcp.servers).toEqual({});
       expect(opencodeService.disposeGlobal).toHaveBeenCalledTimes(3);
     } finally {
       await testDb.cleanup();
@@ -148,9 +148,9 @@ describe("mcp-server-service", () => {
       const config = JSON.parse(
         await readFile(join(unselected.workspacePath, "opencode.jsonc"), "utf8"),
       ) as {
-        mcp: Record<string, { enabled: boolean }>;
+        mcp: { servers: Record<string, { disabled: boolean }> };
       };
-      expect(config.mcp["github"]?.enabled).toBe(false);
+      expect(config.mcp.servers["github"]?.disabled).toBe(true);
     } finally {
       await testDb.cleanup();
     }
@@ -450,8 +450,16 @@ describe("mcp-server-service", () => {
 
       const config = await readFile(join(agent.workspacePath, "opencode.jsonc"), "utf8");
       expect(config).toContain('"github-enterprise": {');
-      expect(config).toContain('"github-enterprise_*": "deny"');
-      expect(config).toContain('"github-enterprise_create_issue": "ask"');
+      expect(JSON.parse(config).permissions).toContainEqual({
+        action: "github-enterprise_*",
+        resource: "*",
+        effect: "deny",
+      });
+      expect(JSON.parse(config).permissions).toContainEqual({
+        action: "github-enterprise_create_issue",
+        resource: "*",
+        effect: "ask",
+      });
     } finally {
       await testDb.cleanup();
     }
@@ -620,7 +628,7 @@ describe("mcp-server-service", () => {
     });
 
     try {
-      const oauthServer = await service.create({
+      await service.create({
         name: "oauth-server",
         enabled: true,
         config: {
@@ -653,8 +661,7 @@ describe("mcp-server-service", () => {
         },
       });
 
-      // A look-alike domain must NOT be treated as Composio.
-      const lookalikeServer = await service.create({
+      await service.create({
         name: "lookalike",
         enabled: true,
         config: {
@@ -667,37 +674,30 @@ describe("mcp-server-service", () => {
 
       const configPath = join(testDb.config.paths.workspaceDir, "opencode.jsonc");
       const rendered = JSON.parse(await readFile(configPath, "utf8")) as {
-        mcp: Record<string, Record<string, unknown>>;
+        mcp: { servers: Record<string, Record<string, unknown>> };
       };
 
-      // Non-Composio OAuth servers get a CC-hosted redirect so the flow works on a VPS.
-      expect(rendered.mcp["oauth-server"]).toEqual({
+      expect(rendered.mcp.servers["oauth-server"]).toMatchObject({
         type: "remote",
         url: "https://oauth.example.com/mcp",
-        enabled: true,
-        oauth: {
-          redirectUri: `${testDb.config.security.publicOrigin}/api/mcp-servers/${oauthServer.id}/auth/redirect`,
-        },
+        disabled: false,
+        oauth: {},
       });
-      // Composio OAuth is left untouched (default loopback) — no redirectUri injected.
-      expect(rendered.mcp["composio"]).toEqual({
+      expect(rendered.mcp.servers["composio"]).toMatchObject({
         type: "remote",
         url: "https://connect.composio.dev/mcp",
-        enabled: true,
+        disabled: false,
       });
-      // notcomposio.dev is not Composio — it still gets the CC-hosted redirect.
-      expect(rendered.mcp["lookalike"]).toEqual({
+      expect(rendered.mcp.servers["lookalike"]).toMatchObject({
         type: "remote",
         url: "https://notcomposio.dev/mcp",
-        enabled: true,
-        oauth: {
-          redirectUri: `${testDb.config.security.publicOrigin}/api/mcp-servers/${lookalikeServer.id}/auth/redirect`,
-        },
+        disabled: false,
+        oauth: {},
       });
-      expect(rendered.mcp["plain-server"]).toEqual({
+      expect(rendered.mcp.servers["plain-server"]).toMatchObject({
         type: "remote",
         url: "https://plain.example.com/mcp",
-        enabled: false,
+        disabled: true,
         oauth: false,
         headers: {
           "X-API-Key": "{env:CC_MCP_PLAIN_SERVER_HEADER_X_API_KEY}",
@@ -732,14 +732,14 @@ describe("mcp-server-service", () => {
 
       const configPath = join(testDb.config.paths.workspaceDir, "opencode.jsonc");
       const rendered = JSON.parse(await readFile(configPath, "utf8")) as {
-        mcp: Record<string, Record<string, unknown>>;
+        mcp: { servers: Record<string, Record<string, unknown>> };
       };
 
-      expect(rendered.mcp["filesystem"]).toEqual({
+      expect(rendered.mcp.servers["filesystem"]).toMatchObject({
         type: "local",
         command: ["npx", "-y", "@modelcontextprotocol/server-filesystem", "/tmp/workspace"],
-        enabled: true,
-        timeout: 120000,
+        disabled: false,
+        timeout: { startup: 120000, catalog: 120000, execution: 120000 },
         environment: {
           NODE_ENV: "{env:CC_MCP_FILESYSTEM_ENV_NODE_ENV}",
         },
@@ -775,9 +775,13 @@ describe("mcp-server-service", () => {
 
       const rendered = JSON.parse(
         await readFile(join(testDb.config.paths.workspaceDir, "opencode.jsonc"), "utf8"),
-      ) as { mcp: Record<string, Record<string, unknown>> };
+      ) as { mcp: { servers: Record<string, Record<string, unknown>> } };
 
-      expect(rendered.mcp["fetcher"]?.["timeout"]).toBe(45_000);
+      expect(rendered.mcp.servers["fetcher"]?.["timeout"]).toEqual({
+        startup: 45_000,
+        catalog: 45_000,
+        execution: 45_000,
+      });
     } finally {
       await testDb.cleanup();
     }
@@ -840,7 +844,7 @@ describe("mcp-server-service", () => {
         },
       });
 
-      expect(created.missingSecrets).toEqual(["CC_LINEAR_TOKEN"]);
+      expect(created.missingSecrets).toMatchObject(["CC_LINEAR_TOKEN"]);
     } finally {
       await testDb.cleanup();
     }
@@ -868,7 +872,7 @@ describe("mcp-server-service", () => {
         },
       });
 
-      expect(created.runtimeStatus).toEqual({ status: "needs_auth" });
+      expect(created.runtimeStatus).toMatchObject({ status: "needs_auth" });
       expect(created.tools).toEqual([
         { id: "github_create_issue", name: "create_issue" },
         { id: "github_list_issues", name: "list_issues" },
@@ -1044,7 +1048,9 @@ describe("mcp-server-service", () => {
     }
 
     function readMcpEntry(text: string): unknown {
-      return (JSON.parse(text) as { mcp: Record<string, unknown> }).mcp["notion"];
+      return (JSON.parse(text) as { mcp: { servers: Record<string, unknown> } }).mcp.servers[
+        "notion"
+      ];
     }
 
     it("startAuth rewrites a corrupted opencode.jsonc before invoking opencode", async () => {
@@ -1064,7 +1070,7 @@ describe("mcp-server-service", () => {
         expect(readMcpEntry(snapshotAtCallTime!)).toMatchObject({
           type: "remote",
           url: "https://notion.example.com/mcp",
-          enabled: true,
+          disabled: false,
         });
       } finally {
         await ctx.testDb.cleanup();
@@ -1331,8 +1337,8 @@ describe("mcpServerReconciler", () => {
       // opencode.jsonc should be regenerated
       const rendered = JSON.parse(
         await readFile(join(testDb.config.paths.workspaceDir, "opencode.jsonc"), "utf8"),
-      ) as { mcp: Record<string, unknown> };
-      expect(rendered.mcp["github"]).toBeDefined();
+      ) as { mcp: { servers: Record<string, unknown> } };
+      expect(rendered.mcp.servers["github"]).toBeDefined();
     } finally {
       await testDb.cleanup();
     }

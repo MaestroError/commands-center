@@ -5,7 +5,7 @@ import { z } from "zod";
 import type { AppDb } from "../../../../../db/client.js";
 import type { RuntimeConfig } from "../../../../../lib/runtime-config.js";
 import type { LiveRequestService } from "../../../../../services/live-request-service.js";
-import type { OpenCodeService } from "../../../../../services/opencode-service.js";
+import type { ConversationEngine } from "../../../../../services/conversation-engine.js";
 import { createConversationService } from "../../../../../services/conversation-service.js";
 
 const showFileToUserInputSchema = z.object({
@@ -33,7 +33,7 @@ export const showFileToUserToolMetadata = {
 export function createShowFileToUserDefinition(options: {
   db: AppDb;
   config: RuntimeConfig;
-  opencodeService: OpenCodeService;
+  opencodeService: ConversationEngine;
   liveRequestService: LiveRequestService;
 }) {
   return {

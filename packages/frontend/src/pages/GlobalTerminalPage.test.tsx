@@ -12,7 +12,7 @@ vi.mock("@/lib/api", () => ({
   listTerminalSessions: vi.fn().mockResolvedValue([
     {
       id: "term-1",
-      backend: "opencode",
+      backend: "local",
       cwd: "/home/user",
       createdAt: Date.now(),
     },
@@ -24,7 +24,7 @@ vi.mock("@/hooks/use-terminal-sessions", () => ({
     sessions: [
       {
         id: "term-1",
-        backend: "opencode",
+        backend: "local",
         cwd: "/home/user",
         createdAt: Date.now(),
       },
@@ -32,7 +32,7 @@ vi.mock("@/hooks/use-terminal-sessions", () => ({
     activeId: "term-1",
     activeSession: {
       id: "term-1",
-      backend: "opencode",
+      backend: "local",
       cwd: "/home/user",
       createdAt: Date.now(),
     } as TerminalSession,
@@ -110,7 +110,7 @@ describe("GlobalTerminalPage", () => {
       expect(useTerminalSessionsMock).toHaveBeenCalledWith([
         {
           id: "term-1",
-          backend: "opencode",
+          backend: "local",
           cwd: "/home/user",
           createdAt: expect.any(Number),
         },

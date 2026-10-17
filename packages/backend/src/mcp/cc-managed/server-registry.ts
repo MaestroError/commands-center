@@ -15,7 +15,7 @@ import type { CustomToolActionService } from "../../services/custom-tool-action-
 import type { CustomToolService } from "../../services/custom-tool-service.js";
 import type { SpecialistService } from "../../services/specialist-service.js";
 import type { LiveRequestService } from "../../services/live-request-service.js";
-import type { OpenCodeService } from "../../services/opencode-service.js";
+import type { ConversationEngine } from "../../services/conversation-engine.js";
 import type { ActivityService } from "../../services/activity-service.js";
 import type { SecretService } from "../../services/secret-service.js";
 import type { TaskExecutionService } from "../../services/task-execution-service.js";
@@ -196,7 +196,7 @@ export type CcManagedMcpServerDefinition = {
 export function createCcManagedMcpServerRegistry(options: {
   db?: AppDb;
   config?: RuntimeConfig;
-  opencodeService?: OpenCodeService;
+  opencodeService?: ConversationEngine;
   agentService?: SpecialistService;
   customToolService: CustomToolService;
   customToolActionService?: CustomToolActionService;

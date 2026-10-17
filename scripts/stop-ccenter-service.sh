@@ -13,19 +13,17 @@ main() {
   require_dependencies
   require_env_file
 
-  local app_host app_port app_request_host app_health_url app_shutdown_url opencode_port secret_key
+  local app_host app_port app_request_host app_health_url app_shutdown_url secret_key
   app_host="$(read_env_value "CC_HOST" "0.0.0.0")"
   app_port="$(read_env_value "CC_PORT" "3000")"
   app_request_host="$(resolve_request_host "$app_host")"
   app_health_url="http://$app_request_host:$app_port/api/health"
   app_shutdown_url="http://$app_request_host:$app_port/api/system/shutdown"
-  opencode_port="$(read_env_value "CC_OPENCODE_PORT" "4100")"
   secret_key="$(read_env_value "CC_SECRET_KEY" "")"
 
   info "Using env file: $ENV_FILE"
 
   stop_commandscenter_runtime "$app_port" "$app_health_url" "$app_shutdown_url" "$secret_key"
-  stop_orphaned_opencode "$opencode_port"
 }
 
 parse_args() {
@@ -246,26 +244,6 @@ terminate_by_port() {
   fi
 
   fail "$label is still listening on port $port after SIGTERM."
-}
-
-stop_orphaned_opencode() {
-  local opencode_port opencode_pids
-  opencode_port="$1"
-  opencode_pids="$(find_listening_pids "$opencode_port")"
-
-  if [[ -z "$opencode_pids" ]]; then
-    info "OpenCode port $opencode_port is not occupied."
-    return
-  fi
-
-  info "OpenCode port $opencode_port is occupied by PID(s): $(join_lines "$opencode_pids")"
-
-  if wait_for_port_to_clear "$opencode_port" "OpenCode"; then
-    info "OpenCode stopped during runtime drain."
-    return
-  fi
-
-  terminate_by_port "$opencode_port" "OpenCode"
 }
 
 join_lines() {

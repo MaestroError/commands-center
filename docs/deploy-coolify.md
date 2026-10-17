@@ -112,23 +112,14 @@ redeploys. Add explicit storage:
 
 Without this, every redeploy wipes the secret key, database, owner auth, and all tasks.
 
-The image also sets `CC_OPENCODE_STATE_DIR=/workspace/.cc/opencode`, so the OpenCode engine's
-global state — provider connections, MCP auth, sessions, and its SQLite db — lands on this same
-volume and survives redeploys. Without the volume (or if you clear `CC_OPENCODE_STATE_DIR`), you
-must reconnect providers after every rebuild.
+The embedded SDK stores its database, provider/MCP authentication and caches under
+`<CC_WORKSPACE_DIR>/.cc/opencode-v2/`. Keep the configured workspace on the persistent
+volume. CC supervises the SDK in its own process; no separate OpenCode service or
+port is needed.
 
-CommandsCenter also uses `/workspace/.cc/npm-cache` as npm's cache in Docker. Packages downloaded
-by cold `npx -y <package>` MCP launches are therefore reused after redeploys. Local/stdio MCPs get
-120 seconds by default for initialization, discovery, and requests. Override these installation-wide
-defaults with `CC_NPM_CACHE_DIR` and `CC_MCP_STDIO_TIMEOUT_MS`, then redeploy the container. No
-suggested MCP packages are preinstalled.
-
-> **Migrating an existing deployment.** If you already have a running instance from before this
-> variable existed, its OpenCode state lives at `~/.local/share/opencode` inside the old container
-> and is not on the volume. Provider connections will need to be re-added once after upgrading to
-> the image that sets `CC_OPENCODE_STATE_DIR`. To preserve them instead, copy the old state onto
-> the volume before the first restart:
-> `mkdir -p /workspace/.cc/opencode/data && cp -a /home/node/.local/share/opencode /workspace/.cc/opencode/data/`.
+The npm cache lives at `<CC_WORKSPACE_DIR>/.cc/opencode-v2/npm-cache`. Local/stdio MCPs
+have a 120-second default timeout, configurable with `CC_MCP_STDIO_TIMEOUT_MS`.
+Old daemon state is not migrated; reconnect providers and MCPs after switching to v2.
 
 ## 5. Health check (recommended)
 

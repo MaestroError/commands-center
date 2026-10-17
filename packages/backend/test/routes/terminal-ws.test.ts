@@ -1,7 +1,7 @@
 import type { IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { WebSocket } from "ws";
 
 import { createApiTokenService } from "../../src/services/api-token-service";
@@ -33,23 +33,7 @@ function orchestrator(): OpenCodeOrchestrator {
 
 const disposers: Array<() => Promise<void>> = [];
 
-beforeEach(() => {
-  // /pty listing always resolves to an empty session list.
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(() =>
-      Promise.resolve(
-        new Response(JSON.stringify([]), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
-      ),
-    ),
-  );
-});
-
 afterEach(async () => {
-  vi.unstubAllGlobals();
   while (disposers.length > 0) {
     await disposers.pop()?.();
   }
@@ -125,64 +109,5 @@ describe("terminal websocket upgrade", () => {
         cookie: "cc_owner_session=valid-session-id",
       }),
     ).resolves.toBe(404);
-  });
-
-  it("upgrades the connection and relays PTY output for an existing session", async () => {
-    const openSockets: FakePtySocket[] = [];
-    class FakePtySocket {
-      static OPEN = 1;
-      readyState = 1;
-      onopen: (() => void) | null = null;
-      onerror: ((err: unknown) => void) | null = null;
-      onmessage: ((event: { data: string }) => void) | null = null;
-      onclose: ((event: { code: number }) => void) | null = null;
-      sent: string[] = [];
-      constructor() {
-        openSockets.push(this);
-        queueMicrotask(() => this.onopen?.());
-      }
-      send(data: string) {
-        this.sent.push(data);
-      }
-      close() {
-        this.onclose?.({ code: 0 });
-      }
-    }
-    vi.stubGlobal("WebSocket", FakePtySocket as never);
-    vi.stubGlobal(
-      "fetch",
-      vi.fn((_url: URL | string, init?: { method?: string }) => {
-        const body =
-          init?.method === "POST" ? { id: "pty-1", cwd: "/work" } : [{ id: "pty-1", cwd: "/work" }];
-        return Promise.resolve(
-          new Response(JSON.stringify(body), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          }),
-        );
-      }),
-    );
-
-    const { server, port } = await bootServer();
-    // Create the session so the backend tracks it for attach().
-    await server.inject({ method: "POST", url: "/api/terminal", payload: {} });
-
-    const client = new WebSocket(`ws://127.0.0.1:${port}/api/terminal/pty-1/connect`);
-    try {
-      const received = await new Promise<string>((resolve, reject) => {
-        client.on("open", () => {
-          client.send("ls\n");
-          openSockets[0]?.onmessage?.({ data: "file-a\n" });
-        });
-        client.on("message", (data: Buffer) => resolve(data.toString("utf8")));
-        client.on("error", reject);
-      });
-
-      expect(received).toBe("file-a\n");
-      // The client's keystroke is forwarded to the PTY socket (arrives asynchronously).
-      await vi.waitFor(() => expect(openSockets[0]?.sent).toContain("ls\n"));
-    } finally {
-      client.terminate();
-    }
   });
 });

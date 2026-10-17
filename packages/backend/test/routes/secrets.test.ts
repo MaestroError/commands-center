@@ -42,6 +42,25 @@ describe("secret routes", () => {
     }
   });
 
+  it("reports an engine reload failure when saving a secret", async () => {
+    const testDb = await createTestDatabase();
+    const orchestrator = createMockOrchestrator();
+    orchestrator.restart.mockRejectedValue(new Error("reload failed"));
+    const secretService = createSecretService({ db: testDb.client.db, config: testDb.config });
+    const server = await createRouteServer({ testDb, orchestrator, secretService });
+    try {
+      const response = await server.inject({
+        method: "PUT",
+        url: "/api/secrets/CC_API_TOKEN",
+        payload: { value: "test-token" },
+      });
+      expect(response.statusCode).toBe(500);
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
   it("stores non-empty secrets and restarts the orchestrator", async () => {
     const testDb = await createTestDatabase();
     const orchestrator = createMockOrchestrator();

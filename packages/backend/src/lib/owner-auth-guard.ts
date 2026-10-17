@@ -34,11 +34,19 @@ declare module "fastify" {
 }
 
 export function registerOwnerAuthGuard(
-  context: RuntimeContext,
+  context: Pick<RuntimeContext, "config" | "ownerAccessService" | "apiTokenService">,
 ): (request: FastifyRequest, reply: FastifyReply) => Promise<void> {
   return async (request, reply) => {
     const pathname = getPathname(request.url);
     const method = request.method.toUpperCase();
+
+    if (
+      method === "POST" &&
+      pathname === "/api/system/shutdown" &&
+      request.headers["x-cc-shutdown-key"] === context.config.secretKey
+    ) {
+      return;
+    }
 
     if (
       method === "GET" &&
@@ -94,7 +102,7 @@ export function registerOwnerAuthGuard(
 }
 
 async function validatePublicApiBearer(
-  context: RuntimeContext,
+  context: Pick<RuntimeContext, "config" | "ownerAccessService" | "apiTokenService">,
   request: FastifyRequest,
   reply: FastifyReply,
   method: string,
@@ -148,7 +156,10 @@ function readBearerToken(value: string | string[] | undefined): string | undefin
   return match?.[1]?.trim();
 }
 
-export function validateOriginForMutation(context: RuntimeContext, request: FastifyRequest): void {
+export function validateOriginForMutation(
+  context: Pick<RuntimeContext, "config" | "ownerAccessService" | "apiTokenService">,
+  request: FastifyRequest,
+): void {
   if (!MUTATING_METHODS.has(request.method.toUpperCase())) {
     return;
   }
@@ -174,7 +185,7 @@ function getPathname(url: string): string {
 }
 
 async function handleBrowserNavigation(options: {
-  context: RuntimeContext;
+  context: Pick<RuntimeContext, "config" | "ownerAccessService" | "apiTokenService">;
   request: FastifyRequest;
   reply: FastifyReply;
   pathname: string;

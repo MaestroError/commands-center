@@ -83,6 +83,15 @@ describe("specialist-capabilities", () => {
     expect(disabled.toolPermissions).toEqual([{ pattern: "github_read", action: "allow" }]);
   });
 
+  it("re-enables a disabled MCP without retaining its deny permission", () => {
+    const capabilities = makeCapabilities({
+      mcpServers: [{ name: "filesystem", enabled: false, action: "deny" }],
+    });
+    expect(setMcpServerEnabled(capabilities, "filesystem", true).mcpServers).toEqual([
+      { name: "filesystem", enabled: true, action: "allow" },
+    ]);
+  });
+
   it("maps normal MCP actions to none, disabled, and explicit actions", () => {
     const capabilities = makeCapabilities({
       mcpServers: [

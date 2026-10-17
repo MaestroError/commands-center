@@ -1,0 +1,130 @@
+import { z } from "zod";
+
+import { renderOpenCodeRules, type OpenCodeWorkspaceInput } from "./workspace-contract.js";
+
+const timeoutSchema = z
+  .object({
+    startup: z.number().int().positive().optional(),
+    catalog: z.number().int().positive().optional(),
+    execution: z.number().int().positive().optional(),
+  })
+  .strict();
+const serverOptions = {
+  disabled: z.boolean().optional(),
+  timeout: timeoutSchema.optional(),
+};
+const serverSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      ...serverOptions,
+      type: z.literal("local"),
+      command: z.array(z.string()).min(1),
+      cwd: z.string().optional(),
+      environment: z.record(z.string(), z.string()).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      ...serverOptions,
+      type: z.literal("remote"),
+      url: z.string().url(),
+      headers: z.record(z.string(), z.string()).optional(),
+      oauth: z
+        .union([
+          z.literal(false),
+          z
+            .object({
+              client_id: z.string().optional(),
+              client_secret: z.string().optional(),
+              scope: z.string().optional(),
+              callback_port: z.number().int().min(1).max(65535).optional(),
+              redirect_uri: z.string().url().optional(),
+              auth_server_metadata_url: z.string().url().optional(),
+            })
+            .strict(),
+        ])
+        .optional(),
+    })
+    .strict(),
+]);
+export type EmbeddedMcpServerConfig = z.infer<typeof serverSchema>;
+
+type Permission = { action: string; resource: string; effect: "allow" | "ask" | "deny" };
+
+export function renderEmbeddedWorkspace(
+  input: OpenCodeWorkspaceInput,
+  definitions: Record<string, EmbeddedMcpServerConfig>,
+  plugins: string[] = [],
+): { rulesMarkdown: string; configJsonc: string } {
+  const selected = [
+    ...(input.capabilities.mcpServers ?? []),
+    ...Object.entries(input.appMcpEntries ?? {}).map(([name, entry]) => ({
+      name,
+      enabled: entry.enabled,
+      action: "allow" as const,
+      ...input.capabilities.appMcpServers?.find((server) => server.name === name),
+    })),
+    ...(input.capabilities.appMcpServers ?? []).filter(
+      (server) => !Object.hasOwn(input.appMcpEntries ?? {}, server.name),
+    ),
+  ];
+  const servers = Object.fromEntries(
+    Object.entries(definitions).map(([name, definition]) => {
+      const server = serverSchema.parse(definition);
+      const selection = selected.find((item) => item.name === name);
+      return [
+        name,
+        {
+          ...server,
+          disabled: server.disabled === true || !selection || selection.enabled === false,
+          codemode: false,
+        },
+      ];
+    }),
+  );
+  for (const server of selected) {
+    if (server.enabled !== false && !Object.hasOwn(servers, server.name)) {
+      throw new Error(`Missing MCP definition for specialist server '${server.name}'.`);
+    }
+  }
+  const permissions: Permission[] = [
+    ...selected
+      .filter((server) => server.enabled !== false)
+      .map((server) => ({
+        action: `${server.name.replace(/[^a-zA-Z0-9_-]/g, "_")}_*`,
+        resource: "*",
+        effect: server.action,
+      })),
+    ...[
+      ...(input.capabilities.toolPermissions ?? []),
+      ...(input.capabilities.appToolPermissions ?? []),
+    ].map((rule) => ({
+      action: rule.pattern,
+      resource: "*",
+      effect: rule.action,
+    })),
+    ...[
+      "cc_default_set_task_result",
+      "cc_default_add_task_artifact",
+      "cc_default_mark_needs_human_review",
+    ].map((action) => ({
+      action,
+      resource: "*",
+      effect: "deny" as const,
+    })),
+  ];
+  return {
+    rulesMarkdown: renderOpenCodeRules(input),
+    configJsonc: `${JSON.stringify(
+      {
+        model: input.defaultModel,
+        providers: { openai: { settings: { headerTimeout: 60_000 } } },
+        mcp: { servers },
+        permissions,
+        plugins,
+      },
+      null,
+      2,
+    )}\n`,
+  };
+}

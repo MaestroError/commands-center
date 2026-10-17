@@ -3,7 +3,6 @@ import { describe, expect, it, vi } from "vitest";
 import {
   logOwnerClaimStartupInstructions,
   logPublicBindingGuidance,
-  startOpenCodeEngineBestEffort,
 } from "../../src/lib/start-server-runtime";
 import { loadRuntimeConfig } from "../../src/lib/runtime-config";
 
@@ -118,127 +117,6 @@ describe("startup public binding guidance", () => {
     );
 
     expect(logger.warn).not.toHaveBeenCalled();
-  });
-});
-
-describe("best-effort OpenCode startup", () => {
-  it("runs recovery after OpenCode starts successfully", async () => {
-    const logger = createLoggerMock();
-    const onStarted = vi.fn().mockResolvedValue(undefined);
-    const orchestrator = {
-      start: vi.fn().mockResolvedValue(undefined),
-      getStatus: vi.fn(),
-    };
-
-    const handle = startOpenCodeEngineBestEffort({
-      orchestrator,
-      logger: logger as never,
-      retryDelayMs: 1,
-      onStarted,
-    });
-
-    try {
-      await vi.waitFor(() => expect(onStarted).toHaveBeenCalledOnce());
-      expect(orchestrator.start).toHaveBeenCalledOnce();
-    } finally {
-      handle.dispose();
-    }
-  });
-
-  it("does not retry OpenCode when recovery fails", async () => {
-    const logger = createLoggerMock();
-    const recoveryError = new Error("recovery failed");
-    const orchestrator = {
-      start: vi.fn().mockResolvedValue(undefined),
-      getStatus: vi.fn(),
-    };
-
-    const handle = startOpenCodeEngineBestEffort({
-      orchestrator,
-      logger: logger as never,
-      retryDelayMs: 1,
-      onStarted: vi.fn().mockRejectedValue(recoveryError),
-    });
-
-    try {
-      await vi.waitFor(() =>
-        expect(logger.warn).toHaveBeenCalledWith(
-          { err: recoveryError },
-          "opencode startup recovery failed",
-        ),
-      );
-      expect(orchestrator.start).toHaveBeenCalledOnce();
-    } finally {
-      handle.dispose();
-    }
-  });
-
-  it("keeps CommandsCenter startup non-blocking when OpenCode start fails", async () => {
-    const logger = createLoggerMock();
-    const orchestrator = {
-      start: vi.fn().mockRejectedValue(new Error("OpenCode did not become healthy.")),
-      getStatus: vi.fn(() => ({
-        state: "unhealthy" as const,
-        healthy: false,
-        url: "http://127.0.0.1:4100",
-        workspaceDir: "/tmp/project/.cc/workspace",
-        restartCount: 3,
-        maxRestarts: 3,
-      })),
-    };
-
-    const handle = startOpenCodeEngineBestEffort({
-      orchestrator,
-      logger: logger as never,
-      retryDelayMs: 1,
-    });
-
-    try {
-      await vi.waitFor(() => expect(logger.error).toHaveBeenCalled());
-
-      expect(orchestrator.start).toHaveBeenCalledOnce();
-      expect(logger.error).toHaveBeenCalledWith(
-        expect.objectContaining({
-          err: expect.any(Error),
-          engineState: "unhealthy",
-        }),
-        "opencode startup failed; CommandsCenter will continue running in degraded mode",
-      );
-    } finally {
-      handle.dispose();
-    }
-  });
-
-  it("retries failed OpenCode startup within the configured restart budget", async () => {
-    const logger = createLoggerMock();
-    const orchestrator = {
-      start: vi.fn().mockRejectedValueOnce(new Error("OpenCode did not become healthy.")),
-      getStatus: vi.fn(() => ({
-        state: "unhealthy" as const,
-        healthy: false,
-        url: "http://127.0.0.1:4100",
-        workspaceDir: "/tmp/project/.cc/workspace",
-        restartCount: 0,
-        maxRestarts: 3,
-      })),
-    };
-
-    const handle = startOpenCodeEngineBestEffort({
-      orchestrator,
-      logger: logger as never,
-      retryDelayMs: 1,
-    });
-
-    try {
-      await vi.waitFor(() => expect(orchestrator.start).toHaveBeenCalledTimes(2));
-
-      expect(logger.error).toHaveBeenCalledWith(
-        expect.objectContaining({ retryAttempts: 0 }),
-        "opencode startup failed; CommandsCenter will continue running in degraded mode",
-      );
-    } finally {
-      handle.dispose();
-    }
   });
 });
 

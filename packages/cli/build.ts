@@ -23,7 +23,15 @@ await build({
   target: "node22",
   format: "esm",
   outfile: resolve(distDir, "bin.mjs"),
-  external: ["better-sqlite3", "pino-pretty", "fsevents"],
+  external: [
+    "@vscode/ripgrep",
+    "node-pty",
+    "@opencode/sdk",
+    "better-sqlite3",
+    "pino",
+    "pino-pretty",
+    "fsevents",
+  ],
   banner: {
     js: [
       "#!/usr/bin/env node",

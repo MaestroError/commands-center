@@ -1,0 +1,158 @@
+import { mkdir, realpath } from "node:fs/promises";
+import { join } from "node:path";
+import { setTimeout } from "node:timers/promises";
+
+import type { OpenCode } from "@opencode/sdk";
+import { requestEmbeddedToolPermission } from "./embedded-tool-permission.js";
+
+import {
+  buildNpmCacheEnv,
+  buildOpenCodeStateEnv,
+  ensureNpmCacheDir,
+  ensureOpenCodeStateDirs,
+} from "./opencode-env.js";
+
+export type EmbeddedTool = { id: string; name: string; description: string; permission: string };
+export type EmbeddedOpenCodeHost = OpenCode.Interface & {
+  listTools(directory: string, signal?: AbortSignal): Promise<EmbeddedTool[]>;
+  reload(environment?: Record<string, string>): Promise<void>;
+};
+
+export type EmbeddedOpenCodeHostOptions = {
+  workspaceDirectory: string;
+  sdkOptions?: Pick<OpenCode.CreateOptions, "fs" | "models" | "log">;
+  environment?: Record<string, string>;
+};
+
+let boundWorkspace: string | undefined;
+let hostActive = false;
+
+export async function createEmbeddedOpenCodeHost({
+  workspaceDirectory,
+  sdkOptions,
+  environment = {},
+}: EmbeddedOpenCodeHostOptions): Promise<EmbeddedOpenCodeHost> {
+  await mkdir(workspaceDirectory, { recursive: true });
+  const workspace = await realpath(workspaceDirectory);
+  if (boundWorkspace !== undefined && boundWorkspace !== workspace) {
+    throw new Error("The embedded OpenCode workspace cannot change within a process");
+  }
+  if (hostActive) {
+    throw new Error("An embedded OpenCode host is already active");
+  }
+  boundWorkspace = workspace;
+  hostActive = true;
+
+  const original = new Map<string, string | undefined>();
+  let injected: NodeJS.ProcessEnv = {};
+  function replaceEnvironment(next: NodeJS.ProcessEnv): void {
+    for (const key of new Set([...Object.keys(injected), ...Object.keys(next)])) {
+      if (!original.has(key)) original.set(key, process.env[key]);
+      const value = key in next ? next[key] : original.get(key);
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    injected = next;
+  }
+
+  try {
+    const stateDirectory = join(workspace, ".cc", "opencode-v2");
+    const npmCacheDirectory = join(stateDirectory, "npm-cache");
+    await ensureOpenCodeStateDirs(stateDirectory);
+    await ensureNpmCacheDir(npmCacheDirectory);
+    const stateEnv = {
+      ...buildOpenCodeStateEnv(stateDirectory),
+      ...buildNpmCacheEnv(npmCacheDirectory),
+    };
+    replaceEnvironment({ ...environment, ...stateEnv });
+
+    const { OpenCode } = await import("@opencode/sdk");
+    const readers = new Map<string, (signal?: AbortSignal) => Promise<EmbeddedTool[]>>();
+    const host = await OpenCode.create({
+      plugins: [
+        {
+          id: "cc.tool-catalog",
+          async setup(context) {
+            const directory = await realpath(context.location.directory);
+            let initialized = false;
+            const read = async (signal?: AbortSignal): Promise<EmbeddedTool[]> => {
+              if (!initialized) {
+                // SDK 2.0.27 publishes connected status before its 100ms MCP catalog debounce.
+                await setTimeout(200, undefined, { signal });
+                await context.tool.reload();
+                initialized = true;
+              }
+              return (await context.tool.list()).map((tool) => ({
+                id: tool.id,
+                name: tool.name,
+                description: tool.description,
+                permission: tool.options?.permission ?? tool.id,
+              }));
+            };
+            readers.set(directory, read);
+            await context.tool.hook("execute.before", async (event) => {
+              if (!event.tool.startsWith("cc_custom_")) return;
+              await requestEmbeddedToolPermission(host, {
+                sessionID: event.sessionID,
+                agent: event.agent,
+                action: event.tool,
+                resources: ["*"],
+                source: { type: "tool", messageID: event.messageID, id: event.id },
+              });
+            });
+            return () => {
+              if (readers.get(directory) === read) readers.delete(directory);
+            };
+          },
+        },
+      ],
+      ...sdkOptions,
+      database: { path: join(stateDirectory, "engine.db") },
+      config: { directory: join(stateDirectory, "config", "opencode"), project: true },
+      events: { persist: true },
+    });
+    let closing: Promise<void> | undefined;
+    let pending = Promise.resolve();
+    const close = (): Promise<void> => {
+      closing ??= pending
+        .then(() => host.close())
+        .then(() => {
+          replaceEnvironment({});
+          hostActive = false;
+        });
+      return closing;
+    };
+    return {
+      ...host,
+      close,
+      [Symbol.asyncDispose]: close,
+      reload(nextEnvironment) {
+        if (closing) return Promise.reject(new Error("Embedded OpenCode host is closing"));
+        const operation = pending.then(async () => {
+          environment = nextEnvironment ?? environment;
+          replaceEnvironment({ ...environment, ...stateEnv });
+          await host.location.reload();
+        });
+        pending = operation.catch(() => undefined);
+        return operation;
+      },
+      async listTools(directory, signal) {
+        const location = { directory };
+        await host.model.list({ location }, { signal });
+        const servers = await host.mcp.list({ location }, { signal });
+        await Promise.all(
+          servers.data
+            .filter((server) => server.status.status === "pending")
+            .map((server) => host.mcp.connect({ location, server: server.name }, { signal })),
+        );
+        const read = readers.get(await realpath(directory));
+        if (!read) throw new Error("OpenCode tool catalog is not initialized.");
+        return read(signal);
+      },
+    };
+  } catch (error) {
+    replaceEnvironment({});
+    hostActive = false;
+    throw error;
+  }
+}

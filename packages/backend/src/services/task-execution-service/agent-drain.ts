@@ -4,7 +4,6 @@
 import type { AgentDrainDeferral, TaskRunDeferConfig } from "../task-execution-service.js";
 import type { TaskExecutionServiceOptions } from "./context.js";
 import type { TaskRun } from "@cc/shared/schemas";
-import type { OpenCodeOrchestrator } from "../../orchestrator/opencode-orchestrator.js";
 
 export interface TaskAgentDrainContext {
   options: TaskExecutionServiceOptions;
@@ -66,7 +65,7 @@ export function createAgentDrainQueue(ctx: TaskAgentDrainContext) {
 
   function scheduleDeferredAgentDrain(
     run: TaskRun,
-    status: ReturnType<OpenCodeOrchestrator["getStatus"]>,
+    status: ReturnType<NonNullable<TaskExecutionServiceOptions["orchestrator"]>["getStatus"]>,
   ): void {
     const existing = agentDrainDeferrals.get(run.agentId);
 

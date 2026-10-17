@@ -44,6 +44,7 @@ export function LoginPage() {
           <label className="grid gap-2 text-sm font-medium text-text-primary">
             Password
             <PasswordInput
+              data-testid="owner-login-password"
               autoComplete="current-password"
               autoFocus
               onChange={(event) => setPassword(event.target.value)}
@@ -61,7 +62,12 @@ export function LoginPage() {
             Remember this browser
           </label>
           {error ? <p className="text-sm text-danger">{error}</p> : null}
-          <Button className="justify-center" disabled={submitting} type="submit">
+          <Button
+            data-testid="owner-login-submit"
+            className="justify-center"
+            disabled={submitting}
+            type="submit"
+          >
             {submitting ? "Signing in..." : "Sign in"}
           </Button>
         </form>

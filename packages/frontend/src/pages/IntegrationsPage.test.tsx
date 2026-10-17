@@ -1216,6 +1216,61 @@ describe("IntegrationsPage", () => {
     });
   });
 
+  it("re-enables a disabled specialist assignment from the MCP edit modal", async () => {
+    updateMutateAsync.mockResolvedValue({ name: "github" });
+    vi.mocked(useMcpServersQuery).mockReturnValue({
+      data: [
+        {
+          id: "mcp-1",
+          name: "github",
+          enabled: true,
+          config: {
+            url: "https://example.com/mcp",
+            transport: "streamable-http",
+            authMethod: "oauth",
+            headers: [],
+          },
+          runtimeStatus: { status: "connected" },
+          tools: [],
+          createdAt: "2026-04-22T10:00:00.000Z",
+          updatedAt: "2026-04-22T10:00:00.000Z",
+        },
+      ],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    } as never);
+
+    const specialists = vi.mocked(useSpecialistsQuery)().data!;
+    vi.mocked(useSpecialistsQuery).mockReturnValue({
+      data: specialists.map((specialist) => ({
+        ...specialist,
+        capabilities: {
+          ...specialist.capabilities,
+          mcpServers: [{ name: "github", enabled: false, action: "deny" }],
+        },
+      })),
+      isLoading: false,
+      error: null,
+    } as never);
+    render(<IntegrationsPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    fireEvent.click(screen.getByRole("button", { name: /Enable for specialists/i }));
+    fireEvent.click(screen.getByLabelText("Writer"));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => {
+      expect(updateSpecialistMutateAsync).toHaveBeenCalledWith({
+        id: "agent-1",
+        input: {
+          capabilities: expect.objectContaining({
+            mcpServers: [{ name: "github", enabled: true, action: "allow" }],
+          }),
+        },
+      });
+    });
+  });
+
   it("removes an MCP server after confirmation", async () => {
     removeMutateAsync.mockResolvedValue(undefined);
     vi.mocked(useMcpServersQuery).mockReturnValue({

@@ -2,7 +2,7 @@ import { expect, test, type Page, type Route } from "../fixtures";
 
 type TerminalSession = {
   id: string;
-  backend: "opencode";
+  backend: "local";
   cwd: string;
   createdAt: number;
 };
@@ -211,7 +211,7 @@ async function mockTerminalApi(page: Page): Promise<void> {
     if (method === "POST") {
       const next: TerminalSession = {
         id: `term-${state.nextId}`,
-        backend: "opencode",
+        backend: "local",
         cwd: `/workspace/term-${state.nextId}`,
         createdAt: Date.now() + state.nextId,
       };

@@ -33,10 +33,6 @@ function getTerminalBufferSnapshotKey(sessionId: string) {
   return `cc.global-terminal.buffer.${sessionId}`;
 }
 
-function stripTerminalControlFrames(text: string) {
-  return text.replace(/\{\s*"cursor"\s*:\s*\d+\s*\}/g, "");
-}
-
 export function TerminalInstance(props: Props) {
   const { session, onResize, onExit } = props;
   const { resolvedColorMode } = useTheme();
@@ -98,12 +94,11 @@ export function TerminalInstance(props: Props) {
     };
 
     const queueOutput = (terminal: XTermInstance, data: string) => {
-      const sanitized = stripTerminalControlFrames(data);
-      if (!sanitized) {
+      if (!data) {
         return;
       }
 
-      pendingOutput.push(sanitized);
+      pendingOutput.push(data);
       if (outputFlushTimeout !== null) {
         return;
       }

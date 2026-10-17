@@ -37,7 +37,7 @@ export type TaskPermissionService = ReturnType<typeof createTaskPermissionServic
 export function createTaskPermissionService(options: {
   db: AppDb;
   config: RuntimeConfig;
-  opencodeService: OpenCodeService;
+  opencodeService: Pick<OpenCodeService, "dispose">;
   customToolService?: CustomToolService;
 }) {
   const registry = createCcManagedMcpServerRegistry({

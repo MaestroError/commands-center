@@ -2,7 +2,7 @@
 
 **CommandsCenter (`cc`)** is a single-user, workspace-centric application for creating, managing, and interacting with isolated AI specialists through persistent direct chat. The operator installs it, runs it, and is the sole user — there is no multi-tenancy. Access is protected by a single-owner claim flow (one-time claim code → owner password), not user accounts.
 
-**The app is the orchestrator; OpenCode is the engine.** CommandsCenter creates and manages OpenCode workspaces, routes all chat, prompt execution, tool calls, and terminal sessions through a single `opencode serve` process, and adds its own tools on top via app-managed MCP servers. Refer to OpenCode documentation for workspace configuration format, to `AGENTS.md` for conventions, skill file structure, and MCP permission rules.
+**The app is the orchestrator; OpenCode is the engine.** CommandsCenter creates and manages OpenCode workspaces, routes chat, prompt execution and tool calls through the embedded OpenCode v2 SDK, owns terminal sessions through `node-pty`, and adds its own tools on top via app-managed MCP servers. Refer to OpenCode documentation for workspace configuration format, to `AGENTS.md` for conventions, skill file structure, and MCP permission rules.
 
 ## What is a Specialist
 
@@ -51,23 +51,23 @@ Task-based orchestration on top of the existing board: specialists (groups) assi
 
 # Architecture decisions
 
-## 1. Single-process engine orchestrator
+## 1. Embedded engine lifecycle
 
-One persistent `opencode serve` daemon serves all specialist workspaces; the orchestrator spawns it, polls its health endpoint, and restarts it within a budget when it crashes.
+CC creates one embedded OpenCode v2 SDK host and routes sessions to specialist workspaces.
+Startup waits for initialization; startup failures clean up acquired resources. Shutdown
+stops scheduling and drains CC before closing the SDK. Configuration changes currently
+reload location services inside the host.
 
-- **Zero-latency interactions** — no per-message engine startup penalty; state and caches stay warm.
-- **Single-process simplicity** — no per-specialist child processes, port allocation, or reverse proxying; workspace routing happens per request.
-- **Degraded mode** — the HTTP API stays up even when the engine fails to start; engine startup is best-effort with retries, so the UI can always report status.
+## 2. Packaged SDK
 
-Skill discovery loads at workspace initialization, not hot-reload: when skills change for an existing workspace, the app disposes that workspace instance (engine restart is the fallback).
-
-## 2. "Universal local" binary management
-
-`opencode-ai` is a standard npm `dependency`, resolved from `node_modules` in every deployment target (Docker, global npm install, bare metal). This gives batteries-included installation and total version authority — the orchestrator depends on specific engine API behavior, so the version is locked and upgraded deliberately. Power users can point `CC_OPENCODE_PATH` at a custom binary.
+`@opencode/sdk` is pinned as a runtime dependency. It stays external to the esbuild
+bundle so native dependencies and package assets resolve from the installed package
+tree. No OpenCode executable, daemon port or custom binary override is required.
+Engine state and npm caches live under the active workspace's `.cc/opencode-v2/`.
 
 ## 3. App-provided tools via CC-managed MCP servers
 
-The app exposes its own MCP servers where app-provided tools (task management, artifacts, specialist management, custom-tool management) and user-configured custom tools are registered dynamically per specialist. Tool **auth** is global (delegated to OpenCode's provider and MCP auth flows); tool **access** is per specialist, expressed in each workspace's `opencode.jsonc` `permission` object with glob rules and `allow` / `ask` / `deny` values. Composio integration is deliberately shallow: MCP mode only, no SDK coupling.
+The app exposes its own MCP servers where app-provided tools (task management, artifacts, specialist management, custom-tool management) and user-configured custom tools are registered dynamically per specialist. Tool **auth** is global (delegated to OpenCode's provider and MCP auth flows); tool **access** is per specialist, expressed in each workspace's `opencode.jsonc` `permissions` array with action/resource rules and `allow` / `ask` / `deny` values. Composio integration is deliberately shallow: MCP mode only, no SDK coupling.
 
 ## 4. Owner access model
 

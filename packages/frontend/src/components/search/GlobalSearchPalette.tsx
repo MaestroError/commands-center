@@ -121,6 +121,7 @@ export function GlobalSearchPalette(props: GlobalSearchPaletteProps) {
     queryKey: ["global-search-files", deferredQuery],
     queryFn: () => searchWorkspaceFiles(deferredQuery),
     enabled: props.open && deferredQuery.length > 0,
+    refetchInterval: 2_000,
   });
 
   const agentResults = useMemo(() => {
@@ -266,6 +267,7 @@ export function GlobalSearchPalette(props: GlobalSearchPaletteProps) {
           <div className="flex items-center gap-3 rounded-xl border border-border bg-surface-elevated px-3 py-2">
             <Search className="h-4 w-4 shrink-0 text-text-secondary" />
             <input
+              data-testid="global-search-input"
               aria-label="Search resources"
               autoFocus
               className="flex-1 bg-transparent text-sm text-text-primary outline-none placeholder:text-text-secondary"
@@ -327,7 +329,12 @@ function ResultRow(props: { result: PaletteResult }) {
 
   return (
     <div className="flex items-center gap-3 px-4 py-3 transition hover:bg-surface-elevated/70">
-      <button className="min-w-0 flex-1 text-left" onClick={result.primaryAction} type="button">
+      <button
+        data-testid={`global-search-result-${result.id}`}
+        className="min-w-0 flex-1 text-left"
+        onClick={result.primaryAction}
+        type="button"
+      >
         <div className="flex items-start gap-3">
           <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border bg-surface text-text-secondary">
             {result.markerIcon}

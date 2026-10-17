@@ -14,6 +14,7 @@
 - Before writing a filesystem migration, always check `skills/write-filesystem-migration/SKILL.md` to learn how.
 - Plans should be persisted as .md files under the "plans/" directory.
 - Never git commit without explicitly asking the user.
+- Until v1.0.0 releases, use `codex/opencode-v2-migration` as the development integration base: create feature/fix branches from it and merge back into it. Migration implementation is complete; release blockers are tracked separately in `plans/v1-release-security-audit.md`.
 
 ---
 
@@ -48,19 +49,20 @@ These are the chosen technologies. Do not introduce alternatives without explici
 
 ### Backend
 
-| Concern      | Technology                                                     |
-| ------------ | -------------------------------------------------------------- |
-| Runtime      | Node.js (LTS)                                                  |
-| Framework    | Fastify with `fastify-type-provider-zod`                       |
-| Validation   | Zod 4 (all system boundaries)                                  |
-| ORM          | Drizzle ORM (SQL-first, zero-dependency)                       |
-| Database     | SQLite via `better-sqlite3`                                    |
-| WebSockets   | `ws` (terminal streams, real-time events)                      |
-| PTY          | `node-pty` (pseudo-terminal for shells)                        |
-| Logging      | Pino (structured JSON, correlation IDs)                        |
-| AI engine    | `opencode-ai` (npm dependency, single `opencode serve` daemon) |
-| MCP          | `@modelcontextprotocol/sdk` (stdio + SSE transports)           |
-| Integrations | Composio (`composio-core`) for managed OAuth                   |
+| Concern      | Technology                                                       |
+| ------------ | ---------------------------------------------------------------- |
+| Runtime      | Node.js (LTS)                                                    |
+| Framework    | Fastify with `fastify-type-provider-zod`                         |
+| Validation   | Zod 4 (all system boundaries)                                    |
+| ORM          | Drizzle ORM (SQL-first, zero-dependency)                         |
+| Database     | SQLite via `better-sqlite3`                                      |
+| WebSockets   | `ws` (terminal streams, real-time events)                        |
+| PTY          | `node-pty` (CC-owned shells; independent of OpenCode)            |
+| Logging      | Pino (structured JSON, correlation IDs)                          |
+| AI engine    | `@opencode/sdk@2.0.27` (one embedded host per process/workspace) |
+| Text search  | `@vscode/ripgrep` (bundled platform binary; external to esbuild) |
+| MCP          | `@modelcontextprotocol/sdk` (stdio + SSE transports)             |
+| Integrations | Composio (`composio-core`) for managed OAuth                     |
 
 ### Scheduling
 
@@ -70,11 +72,11 @@ These are the chosen technologies. Do not introduce alternatives without explici
 
 ### CLI Distribution
 
-| Concern        | Technology                                                   |
-| -------------- | ------------------------------------------------------------ |
-| Package name   | `commandscenter` (binary: `ccenter`)                         |
-| Bundler        | esbuild (single-file ESM output, `better-sqlite3` external)  |
-| Static serving | `@fastify/static` (serves pre-built React app, SPA fallback) |
+| Concern        | Technology                                                                                   |
+| -------------- | -------------------------------------------------------------------------------------------- |
+| Package name   | `commandscenter` (binary: `ccenter`)                                                         |
+| Bundler        | esbuild (single-file ESM output, `better-sqlite3`, `node-pty`, and `@opencode/sdk` external) |
+| Static serving | `@fastify/static` (serves pre-built React app, SPA fallback)                                 |
 
 The CLI bundles backend + frontend into `packages/cli/dist/`. The backend exposes a `createServer()` factory; the CLI entry point (`bin.ts`) creates the server, registers static file serving, and calls `listen()`.
 

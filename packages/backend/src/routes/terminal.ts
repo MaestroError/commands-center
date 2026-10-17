@@ -14,23 +14,34 @@ import {
   terminalSessionResponseSchema,
 } from "@cc/shared/schemas";
 import { NotFoundError } from "../lib/api-error.js";
-import { createTerminalBackendFactory } from "../services/terminal-backend.js";
+import {
+  createNodePtyBackend,
+  type NodePtyBackend,
+} from "../services/terminal/node-pty-backend.js";
 
-export function registerTerminalRoutes(server: AppServer, context: RuntimeContext): void {
+type TerminalContext = Pick<RuntimeContext, "config" | "logger" | "ownerAccessService">;
+
+export function registerTerminalRoutes(server: AppServer, context: TerminalContext): void {
   const app = server.withTypeProvider<ZodTypeProvider>();
-  const factory = createTerminalBackendFactory({
-    config: context.config,
+  const backend = createNodePtyBackend({
+    workspaceDirectory: context.config.paths.workspaceDir,
     logger: context.logger,
-    orchestrator: context.orchestrator,
   });
-  const wsServer = new WebSocketServer({ noServer: true });
+  const wsServer = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
 
   server.server.on("upgrade", (request, socket, head) => {
-    void handleTerminalUpgrade({ context, factory, request, socket, head, wsServer });
+    void handleTerminalUpgrade({ context, backend, request, socket, head, wsServer }).catch(
+      (error: unknown) => {
+        context.logger.error({ err: error }, "Terminal upgrade failed");
+        socket.destroy();
+      },
+    );
   });
 
-  server.addHook("onClose", () => {
+  server.addHook("preClose", async () => {
+    for (const client of wsServer.clients) client.terminate();
     wsServer.close();
+    await backend.dispose();
   });
 
   app.post(
@@ -44,14 +55,13 @@ export function registerTerminalRoutes(server: AppServer, context: RuntimeContex
       },
     },
     async (request, reply) => {
-      const { backend, cwd, shell } = request.body || {};
-      const result = await factory.createWithFallback({
-        preferred: backend,
+      const { cwd, shell } = request.body || {};
+      const result = await backend.create({
         cwd,
         shell,
       });
 
-      return reply.status(201).send(result.session);
+      return reply.status(201).send(result);
     },
   );
 
@@ -65,9 +75,9 @@ export function registerTerminalRoutes(server: AppServer, context: RuntimeContex
       },
     },
     async () => {
-      const openCodeSessions = await factory.openCodeBackend.list();
+      const sessions = await backend.list();
       return {
-        sessions: [...openCodeSessions].sort((left, right) => right.createdAt - left.createdAt),
+        sessions: [...sessions].sort((left, right) => right.createdAt - left.createdAt),
       };
     },
   );
@@ -83,7 +93,7 @@ export function registerTerminalRoutes(server: AppServer, context: RuntimeContex
       },
     },
     async (request) => {
-      return findSession(factory, request.params.id);
+      return findSession(backend, request.params.id);
     },
   );
 
@@ -96,8 +106,7 @@ export function registerTerminalRoutes(server: AppServer, context: RuntimeContex
       },
     },
     async (request, reply) => {
-      const session = await findSession(factory, request.params.id);
-      const backend = factory.create(session.backend);
+      await findSession(backend, request.params.id);
       await backend.resize(request.params.id, request.body.cols, request.body.rows);
       return reply.status(204).send();
     },
@@ -111,16 +120,15 @@ export function registerTerminalRoutes(server: AppServer, context: RuntimeContex
       },
     },
     async (request, reply) => {
-      const session = await findSession(factory, request.params.id);
-      const backend = factory.create(session.backend);
+      await findSession(backend, request.params.id);
       await backend.close(request.params.id);
       return reply.status(204).send();
     },
   );
 }
 
-async function findSession(factory: ReturnType<typeof createTerminalBackendFactory>, id: string) {
-  const sessions = [...(await factory.openCodeBackend.list())];
+async function findSession(backend: NodePtyBackend, id: string) {
+  const sessions = [...(await backend.list())];
   const session = sessions.find((candidate) => candidate.id === id);
 
   if (!session) {
@@ -131,8 +139,8 @@ async function findSession(factory: ReturnType<typeof createTerminalBackendFacto
 }
 
 async function handleTerminalUpgrade(options: {
-  context: RuntimeContext;
-  factory: ReturnType<typeof createTerminalBackendFactory>;
+  context: TerminalContext;
+  backend: NodePtyBackend;
   request: IncomingMessage;
   socket: Duplex;
   head: Buffer;
@@ -160,7 +168,7 @@ async function handleTerminalUpgrade(options: {
     return;
   }
 
-  const session = await findSession(options.factory, sessionId).catch(() => undefined);
+  const session = await findSession(options.backend, sessionId).catch(() => undefined);
 
   if (!session) {
     options.socket.write("HTTP/1.1 404 Not Found\r\n\r\n");
@@ -168,7 +176,7 @@ async function handleTerminalUpgrade(options: {
     return;
   }
 
-  const backend = options.factory.create(session.backend);
+  const backend = options.backend;
   const handle = await backend.attach(sessionId).catch(() => undefined);
 
   if (!handle) {
@@ -177,9 +185,14 @@ async function handleTerminalUpgrade(options: {
     return;
   }
 
+  options.socket.once("close", () => handle.close());
   options.wsServer.handleUpgrade(options.request, options.socket, options.head, (ws) => {
     handle.onData((data) => {
       if (ws.readyState === ws.OPEN) {
+        if (ws.bufferedAmount > 1024 * 1024) {
+          ws.terminate();
+          return;
+        }
         ws.send(data);
       }
     });
@@ -220,7 +233,7 @@ async function handleTerminalUpgrade(options: {
 }
 
 async function isTerminalUpgradeAuthorized(
-  context: RuntimeContext,
+  context: TerminalContext,
   request: IncomingMessage,
 ): Promise<boolean> {
   if (!context.ownerAccessService) {

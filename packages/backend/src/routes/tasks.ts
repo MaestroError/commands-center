@@ -85,7 +85,6 @@ const taskFeedbackParamsSchema = taskIdParamsSchema.extend({
 });
 
 export function registerTaskRoutes(server: AppServer, context: RuntimeContext): void {
-  const app = server.withTypeProvider<ZodTypeProvider>();
   const service = createTaskService({
     db: context.database.db,
     config: context.config,
@@ -130,6 +129,37 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
       logger: context.logger,
     });
   fallbackTaskSchedulerServiceRef.current = taskSchedulerService;
+  registerTaskServiceRoutes(server, context, {
+    service,
+    activityService,
+    conversationService,
+    taskContextAttachmentService,
+    executionService,
+    taskSchedulerService,
+  });
+}
+
+export function registerTaskServiceRoutes(
+  server: AppServer,
+  context: Pick<RuntimeContext, "database" | "config" | "logger">,
+  services: {
+    service: ReturnType<typeof createTaskService>;
+    activityService: ReturnType<typeof createActivityService>;
+    conversationService: ReturnType<typeof createConversationService>;
+    taskContextAttachmentService: ReturnType<typeof createTaskContextAttachmentService>;
+    executionService: ReturnType<typeof createTaskExecutionService>;
+    taskSchedulerService: ReturnType<typeof createTaskSchedulerService>;
+  },
+): void {
+  const app = server.withTypeProvider<ZodTypeProvider>();
+  const {
+    service,
+    activityService,
+    conversationService,
+    taskContextAttachmentService,
+    executionService,
+    taskSchedulerService,
+  } = services;
   const artifactService = createArtifactService({
     db: context.database.db,
     config: context.config,
@@ -1081,7 +1111,10 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
   );
 }
 
-function getRequestBaseUrl(context: RuntimeContext, request: { headers: Record<string, unknown> }) {
+function getRequestBaseUrl(
+  context: Pick<RuntimeContext, "config">,
+  request: { headers: Record<string, unknown> },
+) {
   if (context.config.security.publicOrigin) {
     return context.config.security.publicOrigin;
   }

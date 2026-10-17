@@ -69,13 +69,25 @@ describe("createSpecialistService", () => {
       expect(markdown).toContain("# Reviewer");
       expect(markdown).toContain("Review diffs and call out risks.");
       expect(config).toContain('"model": "openai/gpt-4.1"');
-      expect(config).toContain('"github_*": "allow"');
-      expect(config).toContain('"custom_review": "ask"');
+      expect(JSON.parse(config).permissions).toContainEqual({
+        action: "github_*",
+        resource: "*",
+        effect: "allow",
+      });
+      expect(JSON.parse(config).permissions).toContainEqual({
+        action: "custom_review",
+        resource: "*",
+        effect: "ask",
+      });
       expect(config).toContain('"cc_app": {');
-      expect(config).not.toContain('"cc_app_*"');
+      expect(JSON.parse(config).permissions).toContainEqual({
+        action: "cc_app_*",
+        resource: "*",
+        effect: "allow",
+      });
       // cc_default is enabled by default and carries an explicit 15s tool-call timeout.
       expect(config).toContain('"cc_default": {');
-      expect(config).toContain('"timeout": 15000');
+      expect(JSON.parse(config).mcp.servers.cc_default.timeout.execution).toBe(15000);
       expect(dispose).not.toHaveBeenCalled();
     } finally {
       await testDb.cleanup();
@@ -553,7 +565,11 @@ describe("createSpecialistService", () => {
       const config = await readFile(join(agent.workspacePath, "opencode.jsonc"), "utf8");
       expect(config).not.toContain('"github"');
       expect(config).not.toContain('"github_create_issue"');
-      expect(config).toContain('"custom_write": "allow"');
+      expect(JSON.parse(config).permissions).toContainEqual({
+        action: "custom_write",
+        resource: "*",
+        effect: "allow",
+      });
     } finally {
       await testDb.cleanup();
     }

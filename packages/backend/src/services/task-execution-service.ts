@@ -216,6 +216,10 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
       const runs = await options.taskService.listActiveRuns();
 
       for (const run of runs) {
+        if (run.status === "queued") {
+          scheduleAgentDrain(run.agentId);
+          continue;
+        }
         if (run.status !== "running") {
           continue;
         }
@@ -618,7 +622,9 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
         taskRunId: run.id,
         title: `Task: ${task.title}`,
         permission: run.effectivePermissions
-          ? buildOpenCodeSessionPermissions(run.effectivePermissions)
+          ? (options.buildSessionPermissions ?? buildOpenCodeSessionPermissions)(
+              run.effectivePermissions,
+            )
           : undefined,
       }),
     );

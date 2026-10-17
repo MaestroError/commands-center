@@ -178,11 +178,13 @@ export function registerPublicApiRoutes(server: AppServer, context: RuntimeConte
       archiveService: context.sessionArchiveService,
       archiveSettingsService: context.sessionArchiveSettingsService,
     });
-  const agentService = createSpecialistService({
-    db: context.database.db,
-    config: context.config,
-    opencodeService: context.opencodeService,
-  });
+  const agentService =
+    context.workspaceServices?.specialists ??
+    createSpecialistService({
+      db: context.database.db,
+      config: context.config,
+      opencodeService: context.opencodeService,
+    });
   const artifactService = createArtifactService({
     db: context.database.db,
     config: context.config,

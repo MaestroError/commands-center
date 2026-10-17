@@ -212,12 +212,11 @@ describe("runCli", () => {
   it("persists other CC_* environment values into the generated env file", async () => {
     existsSyncMock.mockImplementation((path: string) => path.endsWith(".env.prod.example"));
     readFileSyncMock.mockReturnValue(
-      "CC_HOST=0.0.0.0\nCC_PORT=3000\nCC_WORKSPACE_DIR=.cc/workspace\nCC_DATA_DIR=.cc/data\nCC_SECRET_KEY=\nCC_PUBLIC_ORIGIN=\nCC_LOG_LEVEL=info\nCC_MCP_STDIO_TIMEOUT_MS=120000\nCC_NPM_CACHE_DIR=\n",
+      "CC_HOST=0.0.0.0\nCC_PORT=3000\nCC_WORKSPACE_DIR=.cc/workspace\nCC_DATA_DIR=.cc/data\nCC_SECRET_KEY=\nCC_PUBLIC_ORIGIN=\nCC_LOG_LEVEL=info\nCC_MCP_STDIO_TIMEOUT_MS=120000\n",
     );
     process.env["CC_PUBLIC_ORIGIN"] = "https://cc.example.com";
     process.env["CC_LOG_LEVEL"] = "debug";
     process.env["CC_MCP_STDIO_TIMEOUT_MS"] = "180000";
-    process.env["CC_NPM_CACHE_DIR"] = "/var/cache/commandscenter/npm";
 
     await runCli(["start"]);
 
@@ -234,11 +233,6 @@ describe("runCli", () => {
     expect(writeFileSyncMock).toHaveBeenCalledWith(
       "/home/test/.cc/.env",
       expect.stringContaining("CC_MCP_STDIO_TIMEOUT_MS=180000"),
-      { encoding: "utf8", mode: 0o600 },
-    );
-    expect(writeFileSyncMock).toHaveBeenCalledWith(
-      "/home/test/.cc/.env",
-      expect.stringContaining("CC_NPM_CACHE_DIR=/var/cache/commandscenter/npm"),
       { encoding: "utf8", mode: 0o600 },
     );
   });

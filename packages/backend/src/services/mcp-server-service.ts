@@ -1,9 +1,11 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { syncEmbeddedGlobalMcpConfig } from "../opencode/embedded-mcp-config.js";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 
+import { CC_MANAGED_GROUP_METAS } from "../mcp/cc-managed/group-metadata.js";
 import { createId, now } from "../db/ids.js";
 import { mcp_servers } from "../db/schema/index.js";
 import { readConfigFile, writeConfigFileAtomic } from "../lib/config-file.js";
@@ -42,8 +44,6 @@ import {
   setMcpServerAssignment,
 } from "./specialist-capability-sync.js";
 import { withSpecialistMcpMutationLock } from "./specialist-mcp-mutation-lock.js";
-
-const OPENCODE_CONFIG_SCHEMA_URL = "https://opencode.ai/config.json";
 
 // ---------------------------------------------------------------------------
 // MCP configuration file schema  (configuration/mcp.json)
@@ -107,27 +107,6 @@ async function writeMcpConfigFile(config: RuntimeConfig, servers: McpFileEntry[]
 }
 
 // ---------------------------------------------------------------------------
-// Standalone opencode.jsonc sync (used by service and boot reconciler)
-// ---------------------------------------------------------------------------
-
-export async function syncGlobalMcpConfig(db: AppDb, config: RuntimeConfig): Promise<void> {
-  const rows = await db.query.mcp_servers.findMany({
-    orderBy: (table, operators) => [operators.asc(table.name)],
-  });
-
-  const configFilePath = join(config.paths.workspaceDir, "opencode.jsonc");
-  const current = await readGlobalConfig(configFilePath);
-  const next = {
-    ...current,
-    $schema: OPENCODE_CONFIG_SCHEMA_URL,
-    mcp: Object.fromEntries(rows.map((row) => [row.name, renderConfigEntry(row, config)])),
-  };
-
-  await mkdir(config.paths.workspaceDir, { recursive: true });
-  await writeFile(configFilePath, `${JSON.stringify(next, null, 2)}\n`, "utf8");
-}
-
-// ---------------------------------------------------------------------------
 // MCP server — boot reconciler
 // ---------------------------------------------------------------------------
 
@@ -172,7 +151,7 @@ export const mcpServerReconciler: WorkspaceReconciler = {
       }
     }
 
-    await syncGlobalMcpConfig(db, config);
+    await syncEmbeddedGlobalMcpConfig(db, config);
   },
 };
 
@@ -181,7 +160,20 @@ export type McpServerService = ReturnType<typeof createMcpServerService>;
 export function createMcpServerService(options: {
   db: AppDb;
   config: RuntimeConfig;
-  opencodeService: OpenCodeService;
+  opencodeService: Pick<
+    OpenCodeService,
+    | "dispose"
+    | "disposeGlobal"
+    | "listMcpStatus"
+    | "listMcpToolIds"
+    | "startMcpAuth"
+    | "authenticateMcp"
+    | "completeMcpAuth"
+    | "removeMcpAuth"
+  >;
+  syncGlobalConfig?: () => Promise<void>;
+  rewriteAgents?: typeof rewriteAgentsForMcpChange;
+  requiresEngineRestart?: (config: McpServerConfig) => Promise<boolean>;
   secretService: SecretService;
   orchestrator?: Pick<OpenCodeOrchestrator, "getStatus" | "restart">;
 }) {
@@ -250,7 +242,7 @@ export function createMcpServerService(options: {
 
           if (parsed.enabled) {
             const selectedSpecialists = new Set(parsed.specialistIds);
-            await rewriteAgentsForMcpChange({
+            await (options.rewriteAgents ?? rewriteAgentsForMcpChange)({
               db: options.db,
               config: options.config,
               opencodeService: options.opencodeService,
@@ -346,7 +338,7 @@ export function createMcpServerService(options: {
       }
 
       if (existing.name !== parsed.name) {
-        await rewriteAgentsForMcpChange({
+        await (options.rewriteAgents ?? rewriteAgentsForMcpChange)({
           db: options.db,
           config: options.config,
           opencodeService: options.opencodeService,
@@ -461,11 +453,11 @@ export function createMcpServerService(options: {
         return server;
       }
 
-      await callOpencode(row.name, "authenticate", () =>
+      const status = await callOpencode(row.name, "authenticate", () =>
         options.opencodeService.authenticateMcp(options.config.paths.workspaceDir, row.name),
       );
 
-      await options.opencodeService.disposeGlobal();
+      if (status.status === "connected") await options.opencodeService.disposeGlobal();
       return readOne(row);
     },
 
@@ -514,7 +506,7 @@ export function createMcpServerService(options: {
       );
 
       await options.db.delete(mcp_servers).where(eq(mcp_servers.id, id));
-      await rewriteAgentsForMcpChange({
+      await (options.rewriteAgents ?? rewriteAgentsForMcpChange)({
         db: options.db,
         config: options.config,
         opencodeService: options.opencodeService,
@@ -545,6 +537,9 @@ export function createMcpServerService(options: {
   // gives two servers whose names sanitize alike the same tool-id prefix, so a
   // legacy 'My Server' must still block a new 'my_server'.
   async function assertNameAvailable(name: string, excludeId?: string): Promise<void> {
+    if (CC_MANAGED_GROUP_METAS.some((group) => group.name === toMcpServerName(name))) {
+      throw new ConflictError(`MCP server name '${name}' is reserved by CommandsCenter.`);
+    }
     const rows = await options.db
       .select({ id: mcp_servers.id, name: mcp_servers.name })
       .from(mcp_servers);
@@ -559,7 +554,9 @@ export function createMcpServerService(options: {
   }
 
   async function syncGlobalConfig(): Promise<void> {
-    await syncGlobalMcpConfig(options.db, options.config);
+    await (
+      options.syncGlobalConfig ?? (() => syncEmbeddedGlobalMcpConfig(options.db, options.config))
+    )();
   }
 
   async function withRuntime(servers: McpServer[]): Promise<McpServer[]> {
@@ -592,6 +589,7 @@ export function createMcpServerService(options: {
   }
 
   async function readRequiresEngineRestart(config: McpServerConfig): Promise<boolean> {
+    if (options.requiresEngineRestart) return options.requiresEngineRestart(config);
     const latestSecretUpdate = await options.secretService.getLatestSetUpdate(
       listReferencedSecrets(config),
     );
@@ -646,89 +644,6 @@ function readTools(toolIds: string[], name: string): McpTool[] {
   return toolIds
     .filter((id) => id.startsWith(prefix))
     .map((id) => ({ id, name: id.slice(prefix.length) }));
-}
-
-async function readGlobalConfig(filePath: string): Promise<Record<string, unknown>> {
-  try {
-    const content = await readFile(filePath, "utf8");
-    const parsed = JSON.parse(content) as unknown;
-    return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {};
-  } catch {
-    return {};
-  }
-}
-
-function renderConfigEntry(
-  row: typeof mcp_servers.$inferSelect,
-  config: RuntimeConfig,
-): Record<string, unknown> {
-  const serverConfig = mcpServerConfigSchema.parse(
-    JSON.parse(row.config_json),
-  ) satisfies McpServerConfig;
-
-  if (serverConfig.transport === "stdio") {
-    return {
-      type: "local",
-      command: serverConfig.command,
-      enabled: row.enabled,
-      timeout: config.timeouts.mcpStdioMs,
-      ...(Object.keys(serverConfig.environment).length > 0
-        ? { environment: serverConfig.environment }
-        : {}),
-    };
-  }
-
-  const headers = Object.fromEntries(
-    serverConfig.headers.map((header) => [header.key, header.value]),
-  );
-
-  return {
-    type: "remote",
-    url: serverConfig.url,
-    enabled: row.enabled,
-    ...renderOauthConfig(row.id, serverConfig, config),
-    ...(serverConfig.headers.length > 0 ? { headers } : {}),
-  };
-}
-
-// Decide what OpenCode `oauth` config a remote server gets.
-//
-// - Non-OAuth servers: `oauth: false` (OpenCode never attempts a flow).
-// - Composio OAuth: left untouched (`{}`) — its loopback flow is unchanged, as
-//   Composio is configured separately and OAuth against it is not supported here.
-// - Other OAuth servers: point the redirect at a CC-hosted callback so the
-//   browser-based flow completes through CC (works on a remote/VPS host) instead
-//   of OpenCode's loopback `127.0.0.1:19876` listener.
-function renderOauthConfig(
-  serverId: string,
-  serverConfig: Extract<McpServerConfig, { transport: "streamable-http" | "sse" }>,
-  config: RuntimeConfig,
-): Record<string, unknown> {
-  if (serverConfig.authMethod !== "oauth") {
-    return { oauth: false };
-  }
-
-  if (isComposioRemoteUrl(serverConfig.url)) {
-    return {};
-  }
-
-  return { oauth: { redirectUri: buildMcpOauthRedirectUri(serverId, config) } };
-}
-
-export function buildMcpOauthRedirectUri(serverId: string, config: RuntimeConfig): string {
-  return new URL(
-    `/api/mcp-servers/${encodeURIComponent(serverId)}/auth/redirect`,
-    config.security.publicOrigin,
-  ).toString();
-}
-
-function isComposioRemoteUrl(url: string): boolean {
-  try {
-    const { hostname } = new URL(url);
-    return hostname === "composio.dev" || hostname.endsWith(".composio.dev");
-  } catch {
-    return false;
-  }
 }
 
 function mapMcpServer(row: typeof mcp_servers.$inferSelect): McpServer {

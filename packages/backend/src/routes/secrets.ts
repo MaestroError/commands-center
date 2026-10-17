@@ -14,7 +14,12 @@ const secretDeleteQuerySchema = z.object({
   restart: z.enum(["true", "false"]).optional(),
 });
 
-export function registerSecretRoutes(server: AppServer, context: RuntimeContext): void {
+export function registerSecretRoutes(
+  server: AppServer,
+  context: Pick<RuntimeContext, "secretService"> & {
+    orchestrator: Pick<RuntimeContext["orchestrator"], "restart">;
+  },
+): void {
   const app = server.withTypeProvider<ZodTypeProvider>();
 
   app.get(
@@ -40,7 +45,7 @@ export function registerSecretRoutes(server: AppServer, context: RuntimeContext)
     async (request, reply) => {
       await context.secretService.set(request.params.secretKey, request.body.value);
       if (request.body.restart && request.body.value.trim().length > 0) {
-        void context.orchestrator.restart("secret updated");
+        await context.orchestrator.restart("secret updated");
       }
       return reply.status(204).send();
     },
@@ -57,7 +62,7 @@ export function registerSecretRoutes(server: AppServer, context: RuntimeContext)
     async (request, reply) => {
       await context.secretService.delete(request.params.secretKey);
       if (request.query.restart !== "false") {
-        void context.orchestrator.restart("secret deleted");
+        await context.orchestrator.restart("secret deleted");
       }
       return reply.status(204).send();
     },

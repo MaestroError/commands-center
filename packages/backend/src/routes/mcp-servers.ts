@@ -10,7 +10,9 @@ import {
 
 import type { AppServer } from "../lib/fastify-zod.js";
 import type { RuntimeContext } from "../lib/start-server-runtime.js";
-import { createMcpServerService } from "../services/mcp-server-service.js";
+import { registerEmbeddedMcpOAuthCallbackRoute } from "./embedded-mcp-oauth.js";
+import type { EmbeddedMcpOAuthCallbacks } from "../opencode/embedded-mcp-oauth-callbacks.js";
+import { createMcpServerService, type McpServerService } from "../services/mcp-server-service.js";
 
 const mcpServerParamsSchema = z.object({
   mcpServerId: z.string().trim().min(1),
@@ -63,15 +65,30 @@ function renderAuthRedirectPage(options: { ok: boolean; title: string; message: 
 </html>`;
 }
 
-export function registerMcpServerRoutes(server: AppServer, context: RuntimeContext): void {
+export function registerMcpServerRoutes(
+  server: AppServer,
+  context: RuntimeContext,
+  callbacks?: EmbeddedMcpOAuthCallbacks,
+): void {
+  const service =
+    context.workspaceServices?.mcp ??
+    createMcpServerService({
+      db: context.database.db,
+      config: context.config,
+      opencodeService: context.opencodeService,
+      secretService: context.secretService,
+      orchestrator: context.orchestrator,
+    });
+
+  registerMcpServerServiceRoutes(server, service, callbacks ?? context.embeddedRuntime?.callbacks);
+}
+
+export function registerMcpServerServiceRoutes(
+  server: AppServer,
+  service: McpServerService,
+  callbacks?: EmbeddedMcpOAuthCallbacks,
+): void {
   const app = server.withTypeProvider<ZodTypeProvider>();
-  const service = createMcpServerService({
-    db: context.database.db,
-    config: context.config,
-    opencodeService: context.opencodeService,
-    secretService: context.secretService,
-    orchestrator: context.orchestrator,
-  });
 
   app.get("/api/mcp-servers", async () => service.list());
 
@@ -151,57 +168,60 @@ export function registerMcpServerRoutes(server: AppServer, context: RuntimeConte
     async (request) => service.completeAuth(request.params.mcpServerId, request.body.code),
   );
 
+  if (callbacks) registerEmbeddedMcpOAuthCallbackRoute(server, callbacks);
+
   // OAuth providers redirect the user's browser here (the CC-hosted redirectUri).
   // We complete the token exchange server-side and render a small status page.
-  app.get(
-    "/api/mcp-servers/:mcpServerId/auth/redirect",
-    {
-      schema: {
-        params: mcpServerParamsSchema,
-        querystring: mcpAuthRedirectQuerySchema,
+  if (!callbacks)
+    app.get(
+      "/api/mcp-servers/:mcpServerId/auth/redirect",
+      {
+        schema: {
+          params: mcpServerParamsSchema,
+          querystring: mcpAuthRedirectQuerySchema,
+        },
       },
-    },
-    async (request, reply) => {
-      const { code, error, error_description: errorDescription } = request.query;
+      async (request, reply) => {
+        const { code, error, error_description: errorDescription } = request.query;
 
-      if (error) {
-        return reply.type("text/html").send(
-          renderAuthRedirectPage({
-            ok: false,
-            title: "Authorization failed",
-            message: errorDescription || error,
-          }),
-        );
-      }
+        if (error) {
+          return reply.type("text/html").send(
+            renderAuthRedirectPage({
+              ok: false,
+              title: "Authorization failed",
+              message: errorDescription || error,
+            }),
+          );
+        }
 
-      if (!code) {
-        return reply.type("text/html").send(
-          renderAuthRedirectPage({
-            ok: false,
-            title: "Authorization failed",
-            message: "No authorization code was returned by the provider.",
-          }),
-        );
-      }
+        if (!code) {
+          return reply.type("text/html").send(
+            renderAuthRedirectPage({
+              ok: false,
+              title: "Authorization failed",
+              message: "No authorization code was returned by the provider.",
+            }),
+          );
+        }
 
-      try {
-        const server = await service.completeAuth(request.params.mcpServerId, code);
-        return reply.type("text/html").send(
-          renderAuthRedirectPage({
-            ok: true,
-            title: "Authorization complete",
-            message: `${server.name} is connected. You can close this tab and return to CC.`,
-          }),
-        );
-      } catch (caught) {
-        const message =
-          caught instanceof Error ? caught.message : "Failed to complete authorization.";
-        return reply
-          .type("text/html")
-          .send(renderAuthRedirectPage({ ok: false, title: "Authorization failed", message }));
-      }
-    },
-  );
+        try {
+          const server = await service.completeAuth(request.params.mcpServerId, code);
+          return reply.type("text/html").send(
+            renderAuthRedirectPage({
+              ok: true,
+              title: "Authorization complete",
+              message: `${server.name} is connected. You can close this tab and return to CC.`,
+            }),
+          );
+        } catch (caught) {
+          const message =
+            caught instanceof Error ? caught.message : "Failed to complete authorization.";
+          return reply
+            .type("text/html")
+            .send(renderAuthRedirectPage({ ok: false, title: "Authorization failed", message }));
+        }
+      },
+    );
 
   app.delete(
     "/api/mcp-servers/:mcpServerId/auth",

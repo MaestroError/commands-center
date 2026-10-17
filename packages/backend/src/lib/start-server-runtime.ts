@@ -1,23 +1,25 @@
+import { buildEmbeddedTaskPermissions } from "../opencode/embedded-task-permissions.js";
 import type { Logger } from "pino";
 
 import { createDatabaseClient, type DatabaseClient } from "../db/client.js";
 import { migrateDatabase } from "../db/migrate.js";
+import type { OpenCodeOrchestrator } from "../orchestrator/opencode-orchestrator.js";
+import { createEmbeddedRuntime, type EmbeddedRuntime } from "../opencode/embedded-runtime.js";
+import { createEmbeddedEngineService } from "../opencode/embedded-engine-service.js";
+import { createEmbeddedLifecycle } from "../opencode/embedded-lifecycle.js";
 import {
-  createOpenCodeOrchestrator,
-  type OpenCodeOrchestrator,
-} from "../orchestrator/opencode-orchestrator.js";
-import { syncCcManagedMcpSpecialistWorkspaces } from "../mcp/cc-managed/workspace-sync-service.js";
-import { createOpenCodeClient } from "./opencode-client.js";
-import { createOpenCodeService, type OpenCodeService } from "../services/opencode-service.js";
+  createEmbeddedWorkspaceServices,
+  type EmbeddedWorkspaceServices,
+} from "../opencode/embedded-workspace-services.js";
+import { syncEmbeddedGlobalMcpConfig } from "../opencode/embedded-mcp-config.js";
+
+import type { OpenCodeService } from "../services/opencode-service.js";
 import { createConversationService } from "../services/conversation-service.js";
 import {
   createInteractiveChatWatchdogService,
   type InteractiveChatWatchdogService,
 } from "../services/interactive-chat-watchdog-service.js";
-import {
-  createOpenCodeEventService,
-  type OpenCodeEventService,
-} from "../services/opencode-event-service.js";
+import type { OpenCodeEventService } from "../services/opencode-event-service.js";
 import {
   createWorkspaceWatchService,
   type WorkspaceWatchService,
@@ -68,12 +70,7 @@ import { documentReconciler } from "../services/document-service.js";
 import { specialistReconciler } from "../services/specialist-file.js";
 import { taskTemplateReconciler } from "../services/task-service.js";
 import { bootstrapRuntimePaths, bootstrapWorkspaceRoot } from "./runtime-paths.js";
-import {
-  buildNpmCacheEnv,
-  buildOpenCodeStateEnv,
-  ensureNpmCacheDir,
-  ensureOpenCodeStateDirs,
-} from "../opencode/opencode-env.js";
+
 import { runBootReconcile } from "./workspace-reconciler.js";
 import { runWorkspaceMigrations } from "../workspace-migrations/service.js";
 import { createDrainController, type DrainHandlers } from "./drain-protocol.js";
@@ -106,17 +103,15 @@ export type StartServerRuntimeOptions = {
   installSignalHandlers?: boolean;
   cwd?: string;
   env?: NodeJS.ProcessEnv;
-  /**
-   * Overrides the OpenCode orchestrator. Tests inject a fake here to boot the
-   * full runtime without spawning a real `opencode serve` child process.
-   */
-  createOrchestrator?: typeof createOpenCodeOrchestrator;
+  createEmbeddedRuntime?: typeof createEmbeddedRuntime;
 };
 
 export type RuntimeContext = {
   config: RuntimeConfig;
   logger: Logger;
   database: DatabaseClient;
+  embeddedRuntime?: EmbeddedRuntime;
+  workspaceServices?: EmbeddedWorkspaceServices;
   orchestrator: OpenCodeOrchestrator;
   opencodeService: OpenCodeService;
   openCodeEventService: OpenCodeEventService;
@@ -145,10 +140,6 @@ export type StartedServerRuntime = RuntimeContext & {
   drain: (signal: NodeJS.Signals | "manual") => Promise<void>;
 };
 
-export type OpenCodeStartupHandle = {
-  dispose(): void;
-};
-
 export async function startServerRuntime(
   options?: StartServerRuntimeOptions,
 ): Promise<StartedServerRuntime> {
@@ -165,343 +156,265 @@ export async function startServerRuntime(
   await bootstrapRuntimePaths(config);
 
   const database = createDatabaseClient(config);
-  migrateDatabase(database.db);
-  await runBootReconcile(
-    [
-      settingsReconciler,
-      mcpServerReconciler,
-      secretsManifestReconciler,
-      // Specialists must reconcile before task_templates: the internal
-      // task_templates.agent_id column references agents.id in the SQLite cache.
-      specialistReconciler,
-      taskTemplateReconciler,
-      documentReconciler,
-    ],
-    { config, db: database.db, logger },
-  );
-  const secretService = createSecretService({ db: database.db, config });
-  const apiTokenService = createApiTokenService({ db: database.db });
-  const tokenAuditService = createTokenAuditService({ db: database.db, config, logger });
-  const ownerAccessService = createOwnerAccessService({ config, logger });
-  await ownerAccessService.initialize();
-  await logOwnerClaimStartupInstructions({
-    config,
-    logger,
-    ownerAccessService,
-  });
-  logPublicBindingGuidance(config, logger);
-
-  await Promise.all([
-    ensureOpenCodeStateDirs(config.opencode.stateDir),
-    ensureNpmCacheDir(config.opencode.npmCacheDir),
-  ]);
-
-  // Base the OpenCode child environment on the same env used to parse config
-  // (options.env for tests/programmatic callers, process.env for the CLI, which
-  // passes process.env explicitly), so a caller-supplied env is reflected in the
-  // child too rather than silently ignored.
-  const childBaseEnv = options?.env ?? process.env;
-
-  const orchestratorFactory = options?.createOrchestrator ?? createOpenCodeOrchestrator;
-  const orchestrator = orchestratorFactory({
-    config,
-    logger,
-    // Spread CC runtime overrides after ambient variables and secrets so the
-    // configured OpenCode state and npm cache locations win.
-    resolveEnv: async () => ({
-      ...childBaseEnv,
-      ...(await secretService.buildEnvMap()),
-      ...buildOpenCodeStateEnv(config.opencode.stateDir),
-      ...buildNpmCacheEnv(config.opencode.npmCacheDir),
-    }),
-  });
-
-  const opencodeClient = createOpenCodeClient(config);
-  const opencodeService = createOpenCodeService({ client: opencodeClient, config, logger });
-  const openCodeEventService = createOpenCodeEventService({
-    config,
-    logger,
-    resolveSessionTree: (directory, rootSessionID, signal) =>
-      opencodeService.getSessionTreeIds(directory, rootSessionID, signal),
-  });
-  const interactiveChatWatchdogService = createInteractiveChatWatchdogService({
-    opencodeService,
-    logger,
-    prepareTimeoutMs: config.timeouts.opencodeRequestMs,
-  });
-  const workspaceWatchService = createWorkspaceWatchService({ logger });
-  const liveRequestService = createLiveRequestService();
-  const taskService = createTaskService({ db: database.db, config });
-  const taskContextAttachmentService = createTaskContextAttachmentService({ config, taskService });
-  const sessionArchiveService = createSessionArchiveService({ config, logger });
-  const sessionArchiveSettingsService = createSessionArchiveSettingsService({ config, logger });
-  const taskRunMonitorSettingsService = createTaskRunMonitorSettingsService({ config, logger });
-  const systemPromptService = createSystemPromptService({ config, logger });
-  const activityService = createActivityService({ db: database.db, logger });
-  const sessionArchiveScheduler = createSessionArchiveScheduler({
-    archiveService: sessionArchiveService,
-    settingsService: sessionArchiveSettingsService,
-    logger,
-  });
-  const conversationService = createConversationService({
-    db: database.db,
-    config,
-    opencodeService,
-    logger,
-    archiveService: sessionArchiveService,
-    archiveSettingsService: sessionArchiveSettingsService,
-    systemPromptService,
-    interactiveChatWatchdogService,
-  });
-  const taskPermissionService = createTaskPermissionService({
-    db: database.db,
-    config,
-    opencodeService,
-  });
-  const taskSchedulerServiceRef: { current?: TaskSchedulerService } = {};
-  const taskExecutionService = createTaskExecutionService({
-    db: database.db,
-    taskService,
-    conversationService,
-    orchestrator,
-    taskContextAttachmentService,
-    taskPermissionService,
-    logger,
-    archiveService: sessionArchiveService,
-    archiveSettingsService: sessionArchiveSettingsService,
-    monitorSettingsService: taskRunMonitorSettingsService,
-    activityService,
-    onRunTerminal: (run) => taskSchedulerServiceRef.current?.handleRunTerminal(run),
-  });
-  const taskSchedulerService = createTaskSchedulerService({
-    db: database.db,
-    taskService,
-    executionService: taskExecutionService,
-    logger,
-  });
-  taskSchedulerServiceRef.current = taskSchedulerService;
-  const scheduler = createSchedulerService({ delegate: taskSchedulerService });
-  const packageInfo = readPackageInfo();
-  const drainRuntime: {
-    drain?: (signal: NodeJS.Signals | "manual") => Promise<void>;
-  } = {};
-  const systemVersionService = createSystemVersionService({
-    config,
-    logger,
-    packageInfo,
-    packageRoot: packageInfo.packageRoot,
-    db: database.db,
-    drainController: {
-      drain: (signal) => drainRuntime.drain?.(signal) ?? Promise.resolve(),
-    },
-  });
-
-  const context: RuntimeContext = {
-    config,
-    logger,
-    database,
-    orchestrator,
-    opencodeService,
-    openCodeEventService,
-    interactiveChatWatchdogService,
-    workspaceWatchService,
-    secretService,
-    apiTokenService,
-    tokenAuditService,
-    ownerAccessService,
-    liveRequestService,
-    scheduler,
-    taskService,
-    taskExecutionService,
-    taskSchedulerService,
-    systemVersionService,
-    sessionArchiveService,
-    sessionArchiveSettingsService,
-    taskRunMonitorSettingsService,
-    systemPromptService,
-    activityService,
-  };
-  const server = await createServer(context);
-
-  if (options?.register) {
-    await options.register(server, context);
-  }
-
-  await syncCcManagedMcpSpecialistWorkspaces({
-    db: database.db,
-    config,
-    logger,
-  });
-
-  const openCodeStartupRef: { current?: OpenCodeStartupHandle } = {};
-  const auditPruneTimerRef: { current?: ReturnType<typeof setInterval> } = {};
-  const drainController = createDrainController({
-    logger,
-    timeoutMs: config.timeouts.drainMs,
-    handlers: {
-      stopAcceptingConnections: async () => {
-        await server.close();
-      },
-      terminateChildProcesses: async () => {
-        if (auditPruneTimerRef.current) {
-          clearInterval(auditPruneTimerRef.current);
-        }
-        openCodeStartupRef.current?.dispose();
-        taskExecutionService.dispose();
-        conversationService.dispose();
-        interactiveChatWatchdogService.dispose();
-        systemVersionService.stop();
-        taskSchedulerService.stop();
-        sessionArchiveScheduler.stop();
-        await sessionArchiveService.dispose();
-        await orchestrator.stop();
-        liveRequestService.dispose();
-        workspaceWatchService.dispose();
-        database.close();
-      },
-      ...options?.extraDrainHandlers,
-      flushLogs: () => {
-        flushLogger(logger);
-      },
-    },
-  });
-  drainRuntime.drain = drainController.drain;
-  context.shutdownRuntime = () => drainController.drain("manual");
-  systemVersionService.start();
-  taskSchedulerService.start();
-  void sessionArchiveScheduler.start();
-
-  // Prune the per-token audit log on startup, then daily. The interval is
-  // unref'd so it never keeps the process alive, and cleared on drain.
-  void tokenAuditService.pruneExpired().catch(() => undefined);
-  auditPruneTimerRef.current = setInterval(
-    () => void tokenAuditService.pruneExpired().catch(() => undefined),
-    24 * 60 * 60 * 1000,
-  );
-  auditPruneTimerRef.current.unref?.();
-
-  if (options?.installSignalHandlers !== false) {
-    installSignalHandlers(drainController.drain, logger);
-  }
-
-  openCodeStartupRef.current = startOpenCodeEngineBestEffort({
-    orchestrator,
-    logger,
-    retryDelayMs: config.timeouts.opencodeHealthPollMs,
-    onStarted: () => conversationService.resumeInteractiveChatWatchdogs(),
-  });
-  void taskExecutionService.resumeRunningTaskRuns().catch((error: unknown) => {
-    logger.error({ err: error }, "task run monitor resume failed");
-  });
-
+  const cleanup: (() => void | Promise<void>)[] = [() => database.close()];
   try {
-    await server.listen({
-      host: config.server.host,
-      port: config.server.port,
+    migrateDatabase(database.db);
+    await runBootReconcile(
+      [
+        settingsReconciler,
+        mcpServerReconciler,
+        secretsManifestReconciler,
+        // Specialists must reconcile before task_templates: the internal
+        // task_templates.agent_id column references agents.id in the SQLite cache.
+        specialistReconciler,
+        taskTemplateReconciler,
+        documentReconciler,
+      ],
+      { config, db: database.db, logger },
+    );
+    const secretService = createSecretService({ db: database.db, config });
+    const apiTokenService = createApiTokenService({ db: database.db });
+    const tokenAuditService = createTokenAuditService({ db: database.db, config, logger });
+    const ownerAccessService = createOwnerAccessService({ config, logger });
+    await ownerAccessService.initialize();
+    await logOwnerClaimStartupInstructions({
+      config,
+      logger,
+      ownerAccessService,
     });
+    logPublicBindingGuidance(config, logger);
+
+    const embeddedRuntime = await (options?.createEmbeddedRuntime ?? createEmbeddedRuntime)({
+      workspaceDirectory: config.paths.workspaceDir,
+      publicOrigin: config.security.publicOrigin,
+      logger,
+      resolveEnvironment: () => secretService.buildEnvMap(),
+      prepareConfiguration: (callbacks) =>
+        syncEmbeddedGlobalMcpConfig(database.db, config, callbacks),
+    });
+    cleanup.push(() => embeddedRuntime.close());
+    const workspaceServices = createEmbeddedWorkspaceServices({
+      config,
+      db: database.db,
+      runtime: embeddedRuntime,
+      secretService,
+    });
+    const orchestrator = createEmbeddedLifecycle(embeddedRuntime, config.paths.workspaceDir);
+    const opencodeService = createEmbeddedEngineService(embeddedRuntime, config);
+    const openCodeEventService = embeddedRuntime.events;
+    const interactiveChatWatchdogService = createInteractiveChatWatchdogService({
+      opencodeService,
+      logger,
+      prepareTimeoutMs: config.timeouts.opencodeRequestMs,
+    });
+    const workspaceWatchService = createWorkspaceWatchService({ logger });
+    cleanup.push(
+      () => workspaceWatchService.dispose(),
+      () => interactiveChatWatchdogService.dispose(),
+    );
+    const liveRequestService = createLiveRequestService();
+    cleanup.push(() => liveRequestService.dispose());
+    const taskService = createTaskService({ db: database.db, config });
+    const taskContextAttachmentService = createTaskContextAttachmentService({
+      config,
+      taskService,
+    });
+    const sessionArchiveService = createSessionArchiveService({ config, logger });
+    const sessionArchiveSettingsService = createSessionArchiveSettingsService({ config, logger });
+    const taskRunMonitorSettingsService = createTaskRunMonitorSettingsService({ config, logger });
+    const systemPromptService = createSystemPromptService({ config, logger });
+    const activityService = createActivityService({ db: database.db, logger });
+    const sessionArchiveScheduler = createSessionArchiveScheduler({
+      archiveService: sessionArchiveService,
+      settingsService: sessionArchiveSettingsService,
+      logger,
+    });
+    const conversationService = createConversationService({
+      db: database.db,
+      config,
+      opencodeService,
+      logger,
+      archiveService: sessionArchiveService,
+      archiveSettingsService: sessionArchiveSettingsService,
+      systemPromptService,
+      interactiveChatWatchdogService,
+    });
+    cleanup.push(
+      () => conversationService.dispose(),
+      () => sessionArchiveService.dispose(),
+      () => sessionArchiveScheduler.stop(),
+    );
+    const taskPermissionService = createTaskPermissionService({
+      db: database.db,
+      config,
+      opencodeService,
+      customToolService: workspaceServices.customTools,
+    });
+    const taskSchedulerServiceRef: { current?: TaskSchedulerService } = {};
+    const taskExecutionService = createTaskExecutionService({
+      db: database.db,
+      taskService,
+      conversationService,
+      orchestrator,
+      taskContextAttachmentService,
+      taskPermissionService,
+      buildSessionPermissions: buildEmbeddedTaskPermissions,
+      logger,
+      archiveService: sessionArchiveService,
+      archiveSettingsService: sessionArchiveSettingsService,
+      monitorSettingsService: taskRunMonitorSettingsService,
+      activityService,
+      onRunTerminal: (run) => taskSchedulerServiceRef.current?.handleRunTerminal(run),
+    });
+    const taskSchedulerService = createTaskSchedulerService({
+      db: database.db,
+      taskService,
+      executionService: taskExecutionService,
+      logger,
+    });
+    cleanup.push(
+      () => taskExecutionService.dispose(),
+      () => taskSchedulerService.stop(),
+    );
+    taskSchedulerServiceRef.current = taskSchedulerService;
+    const scheduler = createSchedulerService({ delegate: taskSchedulerService });
+    const packageInfo = readPackageInfo();
+    const drainRuntime: {
+      drain?: (signal: NodeJS.Signals | "manual") => Promise<void>;
+    } = {};
+    const systemVersionService = createSystemVersionService({
+      config,
+      logger,
+      packageInfo,
+      packageRoot: packageInfo.packageRoot,
+      db: database.db,
+      drainController: {
+        drain: (signal) => drainRuntime.drain?.(signal) ?? Promise.resolve(),
+      },
+    });
+
+    cleanup.push(() => systemVersionService.stop());
+    const context: RuntimeContext = {
+      embeddedRuntime,
+      workspaceServices,
+      config,
+      logger,
+      database,
+      orchestrator,
+      opencodeService,
+      openCodeEventService,
+      interactiveChatWatchdogService,
+      workspaceWatchService,
+      secretService,
+      apiTokenService,
+      tokenAuditService,
+      ownerAccessService,
+      liveRequestService,
+      scheduler,
+      taskService,
+      taskExecutionService,
+      taskSchedulerService,
+      systemVersionService,
+      sessionArchiveService,
+      sessionArchiveSettingsService,
+      taskRunMonitorSettingsService,
+      systemPromptService,
+      activityService,
+    };
+    const server = await createServer(context);
+    cleanup.push(() => server.close());
+
+    if (options?.register) {
+      await options.register(server, context);
+    }
+
+    await workspaceServices.reconcile();
+
+    const auditPruneTimerRef: { current?: ReturnType<typeof setInterval> } = {};
+    cleanup.push(() => {
+      clearInterval(auditPruneTimerRef.current);
+    });
+    const drainController = createDrainController({
+      logger,
+      timeoutMs: config.timeouts.drainMs,
+      handlers: {
+        stopAcceptingConnections: async () => {
+          taskSchedulerService.stop();
+          taskExecutionService.dispose();
+          await server.close();
+        },
+        terminateChildProcesses: async () => {
+          if (auditPruneTimerRef.current) {
+            clearInterval(auditPruneTimerRef.current);
+          }
+          taskExecutionService.dispose();
+          conversationService.dispose();
+          interactiveChatWatchdogService.dispose();
+          systemVersionService.stop();
+          taskSchedulerService.stop();
+          sessionArchiveScheduler.stop();
+          await sessionArchiveService.dispose();
+          try {
+            await orchestrator.stop();
+          } finally {
+            liveRequestService.dispose();
+            workspaceWatchService.dispose();
+            database.close();
+          }
+        },
+        ...options?.extraDrainHandlers,
+        flushLogs: () => {
+          flushLogger(logger);
+        },
+      },
+    });
+    drainRuntime.drain = drainController.drain;
+    context.shutdownRuntime = () => drainController.drain("manual");
+
+    // Prune the per-token audit log on startup, then daily. The interval is
+    // unref'd so it never keeps the process alive, and cleared on drain.
+    void tokenAuditService.pruneExpired().catch(() => undefined);
+    auditPruneTimerRef.current = setInterval(
+      () => void tokenAuditService.pruneExpired().catch(() => undefined),
+      24 * 60 * 60 * 1000,
+    );
+    auditPruneTimerRef.current.unref?.();
+
+    await server.listen({ host: config.server.host, port: config.server.port });
+    await conversationService.resumeInteractiveChatWatchdogs();
+    void taskExecutionService.resumeRunningTaskRuns().catch((error: unknown) => {
+      logger.error({ err: error }, "task run monitor resume failed");
+    });
+    systemVersionService.start();
+    taskSchedulerService.start();
+    void sessionArchiveScheduler.start();
+    if (options?.installSignalHandlers !== false) {
+      installSignalHandlers(drainController.drain, logger);
+    }
+
+    logger.info(
+      {
+        host: config.server.host,
+        port: config.server.port,
+      },
+      "runtime server listening",
+    );
+
+    return {
+      ...context,
+      server,
+      drain: drainController.drain,
+    };
   } catch (error) {
-    logger.error({ err: error }, "runtime server failed to listen; draining");
-    await drainController.drain("manual").catch((drainError: unknown) => {
-      logger.error({ err: drainError }, "runtime drain failed during startup recovery");
-    });
+    for (const close of cleanup.reverse()) {
+      try {
+        await close();
+      } catch (closeError) {
+        logger.error({ err: closeError }, "startup cleanup failed");
+      }
+    }
     throw error;
   }
-
-  logger.info(
-    {
-      host: config.server.host,
-      port: config.server.port,
-    },
-    "runtime server listening",
-  );
-
-  return {
-    ...context,
-    server,
-    drain: drainController.drain,
-  };
-}
-
-export function startOpenCodeEngineBestEffort(options: {
-  orchestrator: Pick<OpenCodeOrchestrator, "start" | "getStatus">;
-  logger: Logger;
-  retryDelayMs: number;
-  onStarted?: () => Promise<void>;
-}): OpenCodeStartupHandle {
-  let disposed = false;
-  let retryTimer: ReturnType<typeof setTimeout> | undefined;
-  let retryAttempts = 0;
-
-  const scheduleRetry = (): void => {
-    if (disposed || retryTimer) {
-      return;
-    }
-
-    retryTimer = setTimeout(() => {
-      retryTimer = undefined;
-      void start();
-    }, options.retryDelayMs);
-    retryTimer.unref?.();
-  };
-
-  const start = async (): Promise<void> => {
-    try {
-      await options.orchestrator.start();
-      retryAttempts = 0;
-      try {
-        await options.onStarted?.();
-      } catch (error) {
-        options.logger.warn({ err: error }, "opencode startup recovery failed");
-      }
-    } catch (error) {
-      if (disposed) {
-        return;
-      }
-
-      const status = options.orchestrator.getStatus();
-      const remainingRestartBudget = Math.max(0, status.maxRestarts - status.restartCount);
-
-      options.logger.error(
-        {
-          err: error,
-          engineState: status.state,
-          restartCount: status.restartCount,
-          maxRestarts: status.maxRestarts,
-          retryAttempts,
-        },
-        "opencode startup failed; CommandsCenter will continue running in degraded mode",
-      );
-
-      if (retryAttempts >= remainingRestartBudget) {
-        options.logger.error(
-          {
-            engineState: status.state,
-            restartCount: status.restartCount,
-            maxRestarts: status.maxRestarts,
-            retryAttempts,
-          },
-          "opencode startup retry limit reached",
-        );
-        return;
-      }
-
-      retryAttempts += 1;
-      scheduleRetry();
-    }
-  };
-
-  void start();
-
-  return {
-    dispose(): void {
-      disposed = true;
-
-      if (retryTimer) {
-        clearTimeout(retryTimer);
-        retryTimer = undefined;
-      }
-    },
-  };
 }
 
 export async function logOwnerClaimStartupInstructions(options: {

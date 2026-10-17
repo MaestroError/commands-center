@@ -304,9 +304,9 @@ describe("createServer", () => {
 
     try {
       const response = await server.inject({
-        method: "POST",
-        url: "/api/providers/openai/oauth/start",
-        payload: { method: -1 },
+        method: "PUT",
+        url: "/api/secrets/TEST_KEY",
+        payload: { value: 42 },
       });
 
       expect(response.statusCode).toBe(400);
@@ -315,9 +315,9 @@ describe("createServer", () => {
           code: "invalid_request",
           message: "Request validation failed.",
           details: {
-            formErrors: [expect.stringContaining("method")],
+            formErrors: [expect.stringContaining("value")],
             fieldErrors: {
-              "/method": [expect.stringContaining(">=")],
+              "/value": [expect.stringContaining("string")],
             },
           },
         },

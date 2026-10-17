@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { createOwnerAccessService } from "../../src/services/owner-access-service";
 import { createLogger } from "../../src/lib/logger";
 import { createServer } from "../../src/server";
 import { createSchedulerService } from "../../src/services/scheduler-service";
@@ -163,7 +164,8 @@ describe("system routes", () => {
     const testDb = await createTestDatabase();
     const shutdownRuntime = vi.fn(() => Promise.resolve());
     const server = await createServer({
-      config: testDb.config,
+      config: { ...testDb.config, nodeEnv: "production" },
+      ownerAccessService: createOwnerAccessService({ config: testDb.config }),
       logger: createLogger(testDb.config),
       database: testDb.client,
       apiTokenService: createApiTokenService({ db: testDb.client.db }),

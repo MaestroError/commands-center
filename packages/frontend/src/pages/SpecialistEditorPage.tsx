@@ -158,6 +158,7 @@ export function SpecialistEditorPage(props: SpecialistEditorPageProps) {
           <div className="flex flex-wrap gap-2">
             {saveError ? <p className="w-full text-sm text-danger">{saveError}</p> : null}
             <Button
+              data-testid="specialist-submit"
               disabled={
                 specialistMutations.create.isPending ||
                 specialistMutations.update.isPending ||

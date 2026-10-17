@@ -1,3 +1,4 @@
+import { prepareEmbeddedSpecialistWorkspace } from "../opencode/embedded-specialist-workspace.js";
 import { eq } from "drizzle-orm";
 import { access } from "node:fs/promises";
 import { join } from "node:path";
@@ -29,7 +30,7 @@ import {
 } from "./specialist-capability-sync.js";
 import { withSpecialistMcpMutationLock } from "./specialist-mcp-mutation-lock.js";
 import { createCustomToolService, type CustomToolService } from "./custom-tool-service.js";
-import { createProviderService } from "./provider-service.js";
+import { listProviderModels } from "./provider-service.js";
 import { createCcManagedMcpAuthStateStore } from "../mcp/cc-managed/auth-state-store.js";
 import { createCcManagedMcpAuthTokenService } from "../mcp/cc-managed/auth-token-service.js";
 import {
@@ -44,7 +45,7 @@ import {
   getWorkspaceSkillRoot,
   listBuiltInSkills,
   moveWorkspace,
-  prepareWorkspace,
+  type prepareWorkspace,
   resolveSpecialistWorkspacePath,
 } from "./specialist-workspace.js";
 import { writeSpecialistFile } from "./specialist-file.js";
@@ -54,16 +55,15 @@ export type SpecialistService = ReturnType<typeof createSpecialistService>;
 export function createSpecialistService(options: {
   db: AppDb;
   config: RuntimeConfig;
-  opencodeService: OpenCodeService;
+  opencodeService: Pick<OpenCodeService, "dispose" | "listProviders">;
+  prepareWorkspace?: (
+    input: Parameters<typeof prepareWorkspace>[0] & { overwriteSlugs?: string[] },
+  ) => Promise<void>;
   customToolService?: CustomToolService;
   skillRoot?: string;
 }) {
   const skillRoot = options.skillRoot ?? getBuiltInSkillRoot(options.config);
   const workspaceSkillRoot = getWorkspaceSkillRoot(options.config);
-  const providerService = createProviderService({
-    config: options.config,
-    opencodeService: options.opencodeService,
-  });
   const customToolService =
     options.customToolService ??
     createCustomToolService({
@@ -71,6 +71,10 @@ export function createSpecialistService(options: {
       db: options.db,
       opencodeService: options.opencodeService,
     });
+  const prepare: NonNullable<typeof options.prepareWorkspace> =
+    options.prepareWorkspace ??
+    ((input) =>
+      prepareEmbeddedSpecialistWorkspace({ ...input, db: options.db, customToolService }));
   const appMcpAuthStateStore = createCcManagedMcpAuthStateStore(options.config);
   const appMcpRegistry = createCcManagedMcpServerRegistry({
     customToolService,
@@ -127,7 +131,8 @@ export function createSpecialistService(options: {
           capabilities,
         });
 
-        await prepareWorkspace({
+        await prepare({
+          overwriteSlugs: parsed.customToolOverwriteSlugs,
           config: options.config,
           workspacePath,
           input: {
@@ -221,7 +226,8 @@ export function createSpecialistService(options: {
         appMcpEntries,
       };
 
-      await prepareWorkspace({
+      await prepare({
+        overwriteSlugs: parsed.customToolOverwriteSlugs,
         config: options.config,
         workspacePath: nextWorkspacePath,
         input: workspaceInput,
@@ -322,7 +328,7 @@ export function createSpecialistService(options: {
           .select({ name: mcp_servers.name, enabled: mcp_servers.enabled })
           .from(mcp_servers),
         options.customToolService?.listGlobal() ?? Promise.resolve([]),
-        providerService.listModels(),
+        listProviderModels(options.opencodeService, options.config.paths.workspaceDir),
       ]);
 
       const ccManagedMcpServers = listCcManagedMcpServers(appMcpRegistry).map((server) => ({

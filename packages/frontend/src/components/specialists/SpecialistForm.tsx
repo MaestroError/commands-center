@@ -163,7 +163,11 @@ export function SpecialistForm(props: SpecialistFormProps) {
       >
         <Field error={errors.name} label="Name" required>
           <div className="grid gap-2">
-            <Input onChange={(event) => update("name", event.target.value)} value={value.name} />
+            <Input
+              data-testid="specialist-name"
+              onChange={(event) => update("name", event.target.value)}
+              value={value.name}
+            />
             <p className="text-xs text-text-secondary" data-testid="specialist-slug-preview">
               Identifier: <span className="font-medium text-text-primary">{slug}</span>
               {slugTaken ? <span className="ml-1 text-danger">(already in use)</span> : null}
@@ -171,7 +175,11 @@ export function SpecialistForm(props: SpecialistFormProps) {
           </div>
         </Field>
         <Field error={errors.role} label="Role" required>
-          <Input onChange={(event) => update("role", event.target.value)} value={value.role} />
+          <Input
+            data-testid="specialist-role"
+            onChange={(event) => update("role", event.target.value)}
+            value={value.role}
+          />
         </Field>
         <div className="lg:col-span-2">
           <Field error={undefined} label="Avatar">
@@ -186,6 +194,7 @@ export function SpecialistForm(props: SpecialistFormProps) {
         <div className="lg:col-span-2">
           <Field error={errors.instructions} label="Instructions" required>
             <Textarea
+              data-testid="specialist-instructions"
               className="min-h-48 resize-y"
               onChange={(event) => update("instructions", event.target.value)}
               value={value.instructions}
@@ -241,6 +250,7 @@ export function SpecialistForm(props: SpecialistFormProps) {
           <div className="mt-5">
             <Field error={errors.defaultModel} label="Model" required>
               <SearchableSelect
+                testId="specialist-model"
                 ariaLabel="Model"
                 onChange={(next) => update("defaultModel", next)}
                 options={catalog?.providerModels ?? []}

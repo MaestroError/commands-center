@@ -4,13 +4,17 @@ import type { ZodTypeProvider } from "fastify-type-provider-zod";
 
 import type { AppServer } from "../lib/fastify-zod.js";
 import type { RuntimeContext } from "../lib/start-server-runtime.js";
+import type { ConversationRouteContext } from "./conversation-context.js";
 import { createConversationService } from "../services/conversation-service.js";
 
 const conversationParamsSchema = z.object({
   conversationId: z.string().min(1),
 });
 
-export function registerConversationEventRoutes(server: AppServer, context: RuntimeContext): void {
+export function registerConversationEventRoutes(
+  server: AppServer,
+  context: ConversationRouteContext & Pick<RuntimeContext, "openCodeEventService">,
+): void {
   const app = server.withTypeProvider<ZodTypeProvider>();
   const service = createConversationService({
     db: context.database.db,

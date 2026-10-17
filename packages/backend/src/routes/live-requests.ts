@@ -15,7 +15,10 @@ const paramsSchema = z.object({
   requestId: z.string().min(1),
 });
 
-export function registerLiveRequestRoutes(server: AppServer, context: RuntimeContext): void {
+export function registerLiveRequestRoutes(
+  server: AppServer,
+  context: Pick<RuntimeContext, "liveRequestService">,
+): void {
   const app = server.withTypeProvider<ZodTypeProvider>();
 
   app.post(
