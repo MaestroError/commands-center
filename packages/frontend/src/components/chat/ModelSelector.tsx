@@ -311,14 +311,7 @@ export function ModelSelector({
       </button>
 
       {selectedModel && selectedModel.variants.length > 0 ? (
-        <Select
-          value={
-            selectedKey.includes("#") ? selectedKey.slice(selectedKey.indexOf("#") + 1) : "default"
-          }
-          onValueChange={(variant) =>
-            onChange(`${uniqueKey(selectedModel)}${variant !== "default" ? `#${variant}` : ""}`)
-          }
-        >
+        <Select value={selectedKey} onValueChange={onChange}>
           <SelectTrigger
             aria-label="Model tier"
             data-testid="model-tier"
@@ -327,18 +320,16 @@ export function ModelSelector({
             <SelectValue />
           </SelectTrigger>
           <SelectContent side={placement === "up" ? "top" : "bottom"}>
-            <SelectItem value="default">
+            <SelectItem value={uniqueKey(selectedModel)}>
               {selectedModel.defaultVariant
                 ? `Default (${selectedModel.defaultVariant})`
                 : "Model default"}
             </SelectItem>
-            {selectedModel.variants
-              .filter((variant) => variant !== "default")
-              .map((variant) => (
-                <SelectItem key={variant} value={variant}>
-                  {variant}
-                </SelectItem>
-              ))}
+            {selectedModel.variants.map((variant) => (
+              <SelectItem key={variant} value={`${uniqueKey(selectedModel)}#${variant}`}>
+                {variant}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       ) : null}

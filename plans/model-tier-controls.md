@@ -32,4 +32,10 @@ model preference lifecycle. Fallback models each retain their own model/tier sel
 - Final embedded browser acceptance: 27/27 passed against the rebuilt owned Select UI, including chat tier persistence, scheduled execution and task/template editor saves.
 - The expanded suite exceeded the owner-login rate limit; chat fixtures now authenticate once and reuse cookies, matching the existing task-suite approach. Production authentication is unchanged.
 - ESLint --fix, formatting, build and diff checks passed.
-- No commit or merge requested; feature remains on `codex/model-tier-controls`.
+- Feature published in PR #210 targeting `codex/opencode-v2-migration`.
+
+## PR review follow-up
+
+- [x] Use full model references as distinct dropdown values for the base model and every provider variant, including `default`.
+- [x] Test selecting and restoring the explicit `default` tier and returning to model default.
+- [x] Run ESLint --fix, regression tests and typechecking before updating PR #210. All 19 ModelSelector tests, frontend typecheck and design-system audit passed.

@@ -240,7 +240,7 @@ describe("model tiers", () => {
           connected: true,
           models: [
             { id: "astra", name: "Astra", variants: ["medium", "high"], defaultVariant: "medium" },
-            { id: "other", name: "Other", variants: ["low"] },
+            { id: "other", name: "Other", variants: ["low", "default"] },
           ],
         },
       ],
@@ -282,5 +282,26 @@ describe("model tiers", () => {
     await userEvent.click(screen.getByRole("combobox", { name: "Model tier" }));
     await userEvent.click(screen.getByRole("option", { name: "Default (medium)" }));
     expect(onChange).toHaveBeenCalledWith("openai/astra");
+  });
+
+  it("selects a provider variant named default", async () => {
+    const onChange = vi.fn();
+    render(<ModelSelector value="openai/other" onChange={onChange} />);
+    await userEvent.click(screen.getByRole("combobox", { name: "Model tier" }));
+    await userEvent.click(screen.getByRole("option", { name: /^default$/ }));
+    expect(onChange).toHaveBeenCalledWith("openai/other#default");
+  });
+
+  it("restores the explicit default variant", () => {
+    render(<ModelSelector value="openai/other#default" onChange={vi.fn()} />);
+    expect(screen.getByRole("combobox", { name: "Model tier" })).toHaveTextContent(/^default$/);
+  });
+
+  it("clears the explicit default variant when returning to model default", async () => {
+    const onChange = vi.fn();
+    render(<ModelSelector value="openai/other#default" onChange={onChange} />);
+    await userEvent.click(screen.getByRole("combobox", { name: "Model tier" }));
+    await userEvent.click(screen.getByRole("option", { name: "Model default" }));
+    expect(onChange).toHaveBeenCalledWith("openai/other");
   });
 });
