@@ -1,3 +1,9 @@
+import { readFile } from "node:fs/promises";
+import {
+  templateFilePath,
+  taskTemplateReconciler,
+} from "../../src/services/task-service/template-files";
+import pino from "pino";
 import { describe, expect, it } from "vitest";
 import { persistedTaskRunArtifactSchema, taskRunArtifactSchema } from "@cc/shared/schemas";
 import { eq } from "drizzle-orm";
@@ -1091,6 +1097,68 @@ describe("createTaskService", () => {
       expect(storedOccurrence?.description).toBe("Use the old prompt.");
       expect(storedOccurrence?.scheduledFor).toBe("2026-06-08T09:00:00.000Z");
       expect(occurrences.map((task) => task.id)).toEqual([occurrence?.id]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("recovers a template tier from portable workspace files", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const template = await service.createTemplate({
+        defaultAgentId: agent.id,
+        model: "openai/astra#high",
+        title: "Portable tier",
+      });
+      const persisted = JSON.parse(
+        await readFile(templateFilePath(testDb.config, template.id), "utf8"),
+      );
+      expect(persisted.model).toBe("openai/astra#high");
+      await testDb.client.db.delete(task_templates).where(eq(task_templates.id, template.id));
+      await taskTemplateReconciler.reconcile({
+        config: testDb.config,
+        db: testDb.client.db,
+        logger: pino({ level: "silent" }),
+      });
+      expect((await service.getTemplate(template.id))?.model).toBe("openai/astra#high");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("preserves a tier in a task model", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await service.create({
+        agentId: agent.id,
+        model: "openai/astra#high",
+        title: "Tier task",
+      });
+      expect((await service.get(task.id))?.model).toBe("openai/astra#high");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("inherits a template tier in a generated task", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const template = await service.createTemplate({
+        defaultAgentId: agent.id,
+        model: "openai/astra#high",
+        title: "Tier template",
+      });
+      const task = await service.createTaskFromTemplate(template.id, {
+        occurrenceAt: "2026-06-08T09:00:00.000Z",
+        triggerSource: "template",
+      });
+      expect(task?.model).toBe("openai/astra#high");
     } finally {
       await testDb.cleanup();
     }

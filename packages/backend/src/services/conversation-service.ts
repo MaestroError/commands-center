@@ -1375,7 +1375,7 @@ export function createConversationService(options: {
     directory: string,
     requested: string | undefined,
     fallbackQualified: string,
-  ): Promise<{ providerID: string; modelID: string }> {
+  ): Promise<{ providerID: string; modelID: string; variant?: string }> {
     if (!requested || requested === fallbackQualified) {
       return parseModel(fallbackQualified);
     }
@@ -1390,7 +1390,7 @@ export function createConversationService(options: {
           ),
       );
 
-      if (available.has(requested)) {
+      if (available.has(requested.split("#")[0]!)) {
         return parseModel(requested);
       }
     } catch {
@@ -1826,7 +1826,7 @@ function mapPendingQuestion(question: OpenCodePendingQuestion): PendingChatQuest
   };
 }
 
-function parseModel(value: string): { providerID: string; modelID: string } {
+function parseModel(value: string): { providerID: string; modelID: string; variant?: string } {
   const slash = value.indexOf("/");
 
   if (slash <= 0 || slash === value.length - 1) {
@@ -1835,12 +1835,13 @@ function parseModel(value: string): { providerID: string; modelID: string } {
 
   return {
     providerID: value.slice(0, slash),
-    modelID: value.slice(slash + 1),
+    modelID: value.slice(slash + 1).split("#")[0]!,
+    ...(value.includes("#") ? { variant: value.slice(value.indexOf("#") + 1) } : {}),
   };
 }
 
-function qualifyModel(model: { providerID: string; modelID: string }): string {
-  return `${model.providerID}/${model.modelID}`;
+function qualifyModel(model: { providerID: string; modelID: string; variant?: string }): string {
+  return `${model.providerID}/${model.modelID}${model.variant ? `#${model.variant}` : ""}`;
 }
 
 const OPENCODE_AGENTS = new Set(["general", "plan", "build", "explore"]);

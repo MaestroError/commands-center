@@ -48,7 +48,9 @@ const runtime = await startServerRuntime({
               "local-e2e": {
                 package: "@opencode/ai/providers/openai-compatible",
                 settings: { baseURL: `${provider.origin}/v1`, apiKey: "fixture-only" },
-                models: { test: {} },
+                models: {
+                  test: { variants: [{ id: "high", body: { reasoning_effort: "high" } }] },
+                },
               },
             },
           }),

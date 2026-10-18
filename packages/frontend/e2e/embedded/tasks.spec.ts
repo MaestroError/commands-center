@@ -157,3 +157,50 @@ test("recovers monitoring without duplicating an accepted prompt", async ({ page
   await completed(page, run);
   expect(await countRequests()).toBe(1);
 });
+
+test("sends a task model tier through the scheduler", async ({ page }) => {
+  const task = await createTask(page, "TASK_TIER_PROBE", { model: "local-e2e/test#high" });
+  await completed(page, await queue(page, task.id));
+  const requests = (await (
+    await page.request.get("/api/e2e/provider-requests")
+  ).json()) as string[];
+  expect(
+    requests.some(
+      (request) =>
+        request.includes("TASK_TIER_PROBE") && request.includes('"reasoning_effort":"high"'),
+    ),
+  ).toBe(true);
+});
+
+test("saves a tier from the task editor", async ({ page }) => {
+  const task = await createTask(page, "Tier editor task");
+  await page.goto(`/tasks/${task.id}/edit`);
+  await page.getByRole("button", { name: "Select model", exact: true }).first().click();
+  await page.getByRole("option", { name: /local-e2e/ }).click();
+  await page.getByTestId("model-tier").click();
+  await page.getByRole("option", { name: "high", exact: true }).click();
+  const saved = page.waitForResponse(
+    (response) =>
+      response.url().endsWith(`/api/tasks/${task.id}`) && response.request().method() === "PATCH",
+  );
+  await page.getByRole("button", { name: "Save task", exact: true }).click();
+  expect(await (await saved).json()).toMatchObject({ model: "local-e2e/test#high" });
+});
+
+test("saves a tier from the task template editor", async ({ page }) => {
+  await createTask(page, "Tier template specialist");
+  await page.goto("/tasks/templates/new");
+  await page.getByTestId("task-template-title-input").fill("Tier template UI");
+  await page.getByRole("combobox", { name: "Default specialist" }).fill("Tier template specialist");
+  await page.getByRole("option", { name: "Tier template specialist", exact: true }).click();
+  await page.getByRole("button", { name: "Select model", exact: true }).first().click();
+  await page.getByRole("option", { name: /local-e2e/ }).click();
+  await page.getByTestId("model-tier").click();
+  await page.getByRole("option", { name: "high", exact: true }).click();
+  const saved = page.waitForResponse(
+    (response) =>
+      response.url().endsWith("/api/tasks/templates") && response.request().method() === "POST",
+  );
+  await page.getByTestId("task-template-save").click();
+  expect(await (await saved).json()).toMatchObject({ model: "local-e2e/test#high" });
+});

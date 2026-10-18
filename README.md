@@ -42,6 +42,19 @@ CC starts the pinned `@opencode/sdk` automatically. No separate `opencode serve`
 process or engine port is needed. Restarting the engine reloads configuration and
 secrets in the embedded host.
 
+## Model tiers
+
+Chat, tasks and task templates expose a **Model tier** dropdown beside the model
+picker when OpenCode reports available variants (such as medium or high).
+Choose **Model default** to let OpenCode apply its defaults; an explicit configured
+reasoning effort is shown as **Default (medium)**, for example. Changing the model
+resets the tier. Task templates and fallback models preserve their own selections.
+Chat remembers the selection for that conversation in the current browser.
+
+Tier choices use OpenCode's `provider/model#variant` reference format in existing
+model fields, including portable task-template files. These are reasoning variants,
+not priority/billing service tiers.
+
 ## Production Usage
 
 CommandsCenter production use is centered on the globally installed `ccenter` binary from the `commandscenter` npm package. Runtime state is portable and lives in the workspace directory, not in the npm package install directory.

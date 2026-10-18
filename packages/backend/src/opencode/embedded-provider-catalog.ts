@@ -21,7 +21,17 @@ export async function listEmbeddedProviders(
       models: Object.fromEntries(
         models.data
           .filter((model) => model.providerID === provider.id && model.enabled)
-          .map((model) => [model.id, { name: model.name }]),
+          .map((model) => [
+            model.id,
+            {
+              name: model.name,
+              variants: model.variants.map((variant) => variant.id),
+              defaultVariant:
+                typeof model.settings?.["reasoningEffort"] === "string"
+                  ? model.settings["reasoningEffort"]
+                  : undefined,
+            },
+          ]),
       ),
     })),
     connected: [

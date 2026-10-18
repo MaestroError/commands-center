@@ -1,3 +1,10 @@
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from "@/components/ui/select";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown, Cpu } from "lucide-react";
 
@@ -27,6 +34,8 @@ interface ModelOption {
   providerId: string;
   providerName: string;
   connected: boolean;
+  variants: string[];
+  defaultVariant?: string;
 }
 
 const RECENT_MODELS_KEY = "cc-recent-models";
@@ -92,6 +101,8 @@ export function ModelSelector({
             providerId: provider.provider.id,
             providerName: provider.provider.name,
             connected: provider.connected,
+            variants: model.variants ?? [],
+            defaultVariant: model.defaultVariant,
           })),
         )
         .filter((model) => model.connected),
@@ -99,7 +110,8 @@ export function ModelSelector({
   );
 
   const uniqueKey = (model: ModelOption) => `${model.providerId}/${model.id}`;
-  const isConnectedKey = (key: string) => connectedModels.some((model) => uniqueKey(model) === key);
+  const isConnectedKey = (key: string) =>
+    connectedModels.some((model) => uniqueKey(model) === key.split("#")[0]);
   const firstKey = connectedModels[0] ? uniqueKey(connectedModels[0]) : "";
   // In "specialist default" mode an empty value means "no override"; otherwise the
   // picker resolves to a concrete model (chat behaviour). If the requested value
@@ -116,7 +128,9 @@ export function ModelSelector({
         : allowEmptySelection
           ? ""
           : firstKey;
-  const selectedModel = connectedModels.find((model) => uniqueKey(model) === selectedKey);
+  const selectedModel = connectedModels.find(
+    (model) => uniqueKey(model) === selectedKey.split("#")[0],
+  );
 
   const modelByKey = useMemo(() => {
     const map = new Map<string, ModelOption>();
@@ -247,7 +261,7 @@ export function ModelSelector({
 
   const renderOption = (model: ModelOption, index: number) => {
     const key = uniqueKey(model);
-    const isSelected = key === selectedKey;
+    const isSelected = key === selectedKey.split("#")[0];
     return (
       <button
         key={key}
@@ -273,7 +287,7 @@ export function ModelSelector({
   };
 
   return (
-    <div ref={containerRef} className="relative">
+    <div ref={containerRef} className="relative flex items-center gap-2">
       <button
         type="button"
         aria-label="Select model"
@@ -295,6 +309,30 @@ export function ModelSelector({
         </span>
         <ChevronIcon />
       </button>
+
+      {selectedModel && selectedModel.variants.length > 0 ? (
+        <Select value={selectedKey} onValueChange={onChange}>
+          <SelectTrigger
+            aria-label="Model tier"
+            data-testid="model-tier"
+            className="h-7 min-h-0 w-auto max-w-40 rounded-full px-2.5 py-0 text-xs"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent side={placement === "up" ? "top" : "bottom"}>
+            <SelectItem value={uniqueKey(selectedModel)}>
+              {selectedModel.defaultVariant
+                ? `Default (${selectedModel.defaultVariant})`
+                : "Model default"}
+            </SelectItem>
+            {selectedModel.variants.map((variant) => (
+              <SelectItem key={variant} value={`${uniqueKey(selectedModel)}#${variant}`}>
+                {variant}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      ) : null}
 
       {open ? (
         <div

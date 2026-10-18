@@ -1,11 +1,21 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type BrowserContext } from "@playwright/test";
 import { fileManagerFileContentResponseSchema } from "@cc/shared/schemas";
 
-async function createSpecialist(page: Page, name: string): Promise<void> {
-  await page.goto("/specialists/new");
+let cookies: Awaited<ReturnType<BrowserContext["cookies"]>>;
+test.beforeAll(async ({ browser }) => {
+  const page = await browser.newPage();
+  await page.goto("/login");
   await page.getByTestId("owner-login-password").fill("Local-v2-test-password!");
   await page.getByTestId("owner-login-submit").click();
   await expect(page).not.toHaveURL(/\/login/);
+  cookies = await page.context().cookies();
+  await page.close();
+});
+test.beforeEach(async ({ context }) => {
+  await context.addCookies(cookies);
+});
+
+async function createSpecialist(page: Page, name: string): Promise<void> {
   await page.goto("/specialists/new");
   await page.getByTestId("specialist-name").fill(name);
   await page.getByTestId("specialist-role").fill("Local integration tester");
@@ -90,4 +100,22 @@ test("sends a text attachment through the real chat route", async ({ page }) => 
   await send(page, "Read the attached notes.");
   const requests = await page.request.get("/api/e2e/provider-requests");
   expect(await requests.text()).toContain("CC_LOCAL_ATTACHMENT_MARKER");
+});
+
+test("sends a selected model tier from chat", async ({ page }) => {
+  await createSpecialist(page, "Browser Tier");
+  await page.getByTestId("model-tier").click();
+  await page.getByRole("option", { name: "high", exact: true }).click();
+  await send(page, "CHAT_TIER_PROBE");
+  const requests = (await (
+    await page.request.get("/api/e2e/provider-requests")
+  ).json()) as string[];
+  expect(
+    requests.some(
+      (request) =>
+        request.includes("CHAT_TIER_PROBE") && request.includes('"reasoning_effort":"high"'),
+    ),
+  ).toBe(true);
+  await page.reload();
+  await expect(page.getByTestId("model-tier")).toHaveText("high");
 });
