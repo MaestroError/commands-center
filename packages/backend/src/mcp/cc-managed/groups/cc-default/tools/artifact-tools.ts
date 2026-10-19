@@ -1,3 +1,4 @@
+import type { CcManagedToolContext } from "../../../server-registry.js";
 import { addArtifactInputSchema, artifactSchema } from "@cc/shared/schemas";
 import { z } from "zod";
 
@@ -62,10 +63,10 @@ export function createArtifactToolDefinitions(options: ArtifactToolOptions) {
       context: addArtifactToolMetadata.context,
       inputSchema: addArtifactInputSchema,
       outputSchema: artifactSchema,
-      execute: async (args: unknown, context: { agentSlug: string }): Promise<ToolResult> => {
+      execute: async (args: unknown, context: CcManagedToolContext): Promise<ToolResult> => {
         try {
           const parsed = addArtifactInputSchema.parse(args);
-          const { conversationId } = await resolveCurrentChatOwner(options.db, context.agentSlug);
+          const { conversationId } = await resolveCurrentChatOwner(options.db, context);
 
           const artifact = await artifactService.create({
             conversationId,
@@ -105,10 +106,10 @@ export function createArtifactToolDefinitions(options: ArtifactToolOptions) {
       context: listUploadedFilesToolMetadata.context,
       inputSchema: listUploadedFilesInputSchema,
       outputSchema: listUploadedFilesOutputSchema,
-      execute: async (args: unknown, context: { agentSlug: string }): Promise<ToolResult> => {
+      execute: async (args: unknown, context: CcManagedToolContext): Promise<ToolResult> => {
         try {
           listUploadedFilesInputSchema.parse(args);
-          const owner = await resolveCurrentChatOwner(options.db, context.agentSlug);
+          const owner = await resolveCurrentChatOwner(options.db, context);
           const structuredContent = listUploadedFilesOutputSchema.parse({
             files: await chatUploadService.list(owner),
           });
@@ -140,8 +141,13 @@ export function createArtifactToolDefinitions(options: ArtifactToolOptions) {
 // Resolve whichever direct chat is currently open for the calling specialist.
 async function resolveCurrentChatOwner(
   db: AppDb,
-  agentSlug: string,
+  context: CcManagedToolContext,
 ): Promise<{ agentId: string; conversationId: string }> {
+  if (context.caller) {
+    if (context.caller.context !== "chat") throw new Error("Chat tool requires a chat caller.");
+    return { agentId: context.caller.agentId, conversationId: context.caller.conversationId };
+  }
+  const { agentSlug } = context;
   // Archiving moves the workspace but leaves the managed-MCP token valid, so the
   // ownership lookup requires an active specialist rather than trusting the slug.
   const agent = await db.query.agents.findFirst({

@@ -44,12 +44,9 @@ describe("owner auth guard", () => {
       { method: "OPTIONS", path: "/oauth/jwks" },
       { method: "GET", path: /^\/api\/oauth\/interactions\/[^/]+$/ },
       { method: "POST", path: /^\/api\/oauth\/interactions\/[^/]+$/ },
-      { method: "GET", path: /^\/api\/mcp\/cc\/[^/]+\/specialists\/[^/]+$/ },
-      { method: "POST", path: /^\/api\/mcp\/cc\/[^/]+\/specialists\/[^/]+$/ },
-      { method: "DELETE", path: /^\/api\/mcp\/cc\/[^/]+\/specialists\/[^/]+$/ },
     ]);
     expect(isPublicRoute("GET", "/api/opencode")).toBe(false);
-    expect(isPublicRoute("POST", "/api/mcp/cc/cc-app/specialists/writer")).toBe(true);
+    expect(isPublicRoute("POST", "/api/mcp/cc/cc-app/specialists/writer")).toBe(false);
   });
 
   it.each([
@@ -223,7 +220,7 @@ describe("owner auth guard", () => {
     }
   });
 
-  it("lets CC-managed MCP routes use their own bearer auth without owner session or origin", async () => {
+  it("does not exempt retired internal MCP paths from owner authentication", async () => {
     const testDb = await createTestDatabase();
     const productionConfig = loadRuntimeConfig({
       cwd: testDb.cwd,
@@ -251,7 +248,7 @@ describe("owner auth guard", () => {
       });
 
       expect(response.statusCode).toBe(401);
-      expect(response.body).toContain("Invalid bearer token");
+      expect(response.body).toContain("Owner session is required");
     } finally {
       await server.close();
       await testDb.cleanup();

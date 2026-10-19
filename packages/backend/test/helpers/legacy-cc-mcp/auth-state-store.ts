@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { randomBytes } from "node:crypto";
 
-import type { RuntimeConfig } from "../../lib/runtime-config.js";
+import type { RuntimeConfig } from "../../../src/lib/runtime-config.js";
 
 const AUTH_STATE_FILE = "cc-managed-mcp.json";
 

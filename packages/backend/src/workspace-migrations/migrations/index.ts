@@ -12,6 +12,7 @@ import { updateDocumentsAgentsGuideGlobalToolNamesMigration } from "./0009-updat
 import { updateDocumentsAgentsGuideMoveToolsMigration } from "./0010-update-documents-agents-guide-move-tools.js";
 
 import { taskTemplateFoldersMigration } from "./0011-task-template-folders.js";
+import { nativeCcToolsMigration } from "./0012-native-cc-tools.js";
 
 export const workspaceMigrations = [
   createMigrationSmokeTestDirectoryMigration,
@@ -25,4 +26,5 @@ export const workspaceMigrations = [
   updateDocumentsAgentsGuideGlobalToolNamesMigration,
   updateDocumentsAgentsGuideMoveToolsMigration,
   taskTemplateFoldersMigration,
+  nativeCcToolsMigration,
 ] satisfies WorkspaceMigration[];

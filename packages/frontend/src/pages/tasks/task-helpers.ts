@@ -30,6 +30,7 @@ import {
   type Specialist,
   type SpecialistCatalog,
   type Task,
+  type TaskPermissionProfile,
   type TaskRepeatRule,
   type TaskRun,
   type TaskSchedulerState,
@@ -246,6 +247,7 @@ export function formatTaskContextSummary(task: Task): string {
 }
 
 export type FormState = {
+  permissionProfile?: TaskPermissionProfile;
   agentId: string;
   /** Optional qualified `provider/model` override; empty = use the specialist default. */
   model: string;
@@ -298,6 +300,7 @@ export type TaskView = (typeof TASK_VIEWS)[number];
 
 export function taskToForm(task?: Task, prefill?: TaskCreationPrefill): FormState {
   return {
+    permissionProfile: normalizeCcTaskProfile(task?.permissionProfile),
     agentId: task?.agentId ?? prefill?.agentId ?? "",
     model: task?.model ?? "",
     fallbackModels: task?.fallbackModels ?? [],
@@ -329,6 +332,7 @@ export function templateToForm(
   const repeatFrequency = repeatRule?.frequency ?? "week";
 
   return {
+    permissionProfile: normalizeCcTaskProfile(template?.permissionProfile),
     agentId: template?.defaultAgentId ?? prefill?.defaultAgentId ?? "",
     model: template?.model ?? "",
     fallbackModels: template?.fallbackModels ?? [],
@@ -424,6 +428,7 @@ export function getTaskTemplateCreationPrefill(
 export function formToTaskInput(form: FormState): CreateTaskInput | UpdateTaskInput {
   const description = buildTaskPromptText(form.prompt);
   const input: CreateTaskInput | UpdateTaskInput = {
+    permissionProfile: form.permissionProfile,
     agentId: form.agentId,
     model: form.model ? form.model : null,
     fallbackModels: normalizeTaskFallbackModels(form.fallbackModels, form.model),
@@ -458,6 +463,7 @@ function readTaskTitle(title: string, description: string): string {
 
 export function formToTemplateInput(form: FormState): CreateTaskTemplateInput {
   const input: CreateTaskTemplateInput = {
+    permissionProfile: form.permissionProfile,
     defaultAgentId: form.agentId,
     model: form.model ? form.model : null,
     fallbackModels: normalizeTaskFallbackModels(form.fallbackModels, form.model),
@@ -508,6 +514,7 @@ export function templateAsTask(template: TaskTemplate): Task {
     agentId: template.defaultAgentId,
     defaultAgentId: template.defaultAgentId,
     templateId: template.id,
+    permissionProfile: template.permissionProfile,
     model: template.model,
     fallbackModels: template.fallbackModels,
     title: template.title,
@@ -1072,4 +1079,21 @@ export function useTaskComposerSkills(
       .filter((skill) => selectedSlugs.has(skill.slug))
       .map((skill) => ({ slug: skill.slug, description: skill.description }));
   }, [agent, catalog]);
+}
+
+function normalizeCcTaskProfile(
+  profile: TaskPermissionProfile | undefined,
+): TaskPermissionProfile | undefined {
+  if (!profile) return undefined;
+  return {
+    ...profile,
+    appMcpServers: profile.appMcpServers?.map((rule) => ({
+      ...rule,
+      action: rule.action === "ask" ? "allow" : rule.action,
+    })),
+    appToolPermissions: profile.appToolPermissions?.map((rule) => ({
+      ...rule,
+      action: rule.action === "ask" ? "allow" : rule.action,
+    })),
+  };
 }

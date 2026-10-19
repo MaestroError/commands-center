@@ -232,3 +232,108 @@ test("edits a template prompt as a file before generating a task", async ({ page
   expect(generated.description).toBe("Edited in Monaco: use the latest file content.");
   await files.close();
 });
+
+test("creates a task with a grant from a disabled CC group", async ({ page }) => {
+  await createTask(page, "Override creation specialist");
+  await page.goto("/tasks/new");
+  await page.getByLabel("Title", { exact: true }).fill("Task override UI");
+  await page
+    .getByRole("combobox", { name: "Assigned specialist" })
+    .fill("Override creation specialist");
+  await page.getByRole("option", { name: "Override creation specialist", exact: true }).click();
+  await page.getByRole("switch", { name: "Change available tools" }).click();
+  await page.getByRole("switch", { name: "cc_tasks_management list_tasks", exact: true }).click();
+  const saved = page.waitForResponse(
+    (response) => response.url().endsWith("/api/tasks") && response.request().method() === "POST",
+  );
+  await page.getByRole("button", { name: "Create task", exact: true }).click();
+  const task = taskSchema.parse(await (await saved).json());
+  expect(task.permissionProfile?.appToolPermissions).toContainEqual({
+    pattern: "cc_tasks_management_list_tasks",
+    action: "allow",
+  });
+});
+
+test("restores specialist inheritance from the task editor", async ({ page }) => {
+  const task = await createTask(page, "Restore task defaults", {
+    permissionProfile: {
+      appToolPermissions: [],
+      toolPermissions: [{ pattern: "retained_custom", action: "deny" }],
+    },
+  });
+  await page.goto(`/tasks/${task.id}/edit`);
+  await expect(page.getByRole("switch", { name: "Change available tools" })).toBeChecked();
+  await page.getByRole("switch", { name: "Change available tools" }).click();
+  const saved = page.waitForResponse(
+    (response) =>
+      response.url().endsWith(`/api/tasks/${task.id}`) && response.request().method() === "PATCH",
+  );
+  await page.getByRole("button", { name: "Save task", exact: true }).click();
+  expect(taskSchema.parse(await (await saved).json()).permissionProfile).toEqual({
+    toolPermissions: [{ pattern: "retained_custom", action: "deny" }],
+  });
+  await page.goto(`/tasks/${task.id}/edit`);
+  await expect(page.getByRole("switch", { name: "Change available tools" })).not.toBeChecked();
+});
+
+test("creates a template with CC tool overrides", async ({ page }) => {
+  await createTask(page, "Override template specialist");
+  await page.goto("/tasks/templates/new");
+  await page.getByTestId("task-template-title-input").fill("Override template UI");
+  await page
+    .getByRole("combobox", { name: "Default specialist" })
+    .fill("Override template specialist");
+  await page.getByRole("option", { name: "Override template specialist", exact: true }).click();
+  await page.getByRole("switch", { name: "Change available tools" }).click();
+  await page.getByRole("switch", { name: "cc_default set_task_result", exact: true }).click();
+  const saved = page.waitForResponse(
+    (response) =>
+      response.url().endsWith("/api/tasks/templates") && response.request().method() === "POST",
+  );
+  await page.getByRole("button", { name: "Create template", exact: true }).click();
+  const template = taskTemplateSchema.parse(await (await saved).json());
+  expect(template.permissionProfile?.appToolPermissions).toContainEqual({
+    pattern: "cc_default_set_task_result",
+    action: "deny",
+  });
+  await page.goto(`/tasks/templates/${template.id}/edit`);
+  await expect(
+    page.getByRole("switch", { name: "cc_default set_task_result", exact: true }),
+  ).not.toBeChecked();
+});
+
+test("restores specialist inheritance from the template editor", async ({ page }) => {
+  const task = await createTask(page, "Restore template specialist");
+  const template = taskTemplateSchema.parse(
+    await post(page, "/api/tasks/templates", {
+      defaultAgentId: task.agentId,
+      title: "Restore template",
+      permissionProfile: {
+        appToolPermissions: [],
+        toolPermissions: [{ pattern: "retained_custom", action: "deny" }],
+      },
+    }),
+  );
+  await page.goto(`/tasks/templates/${template.id}/edit`);
+  await page.getByRole("switch", { name: "Change available tools" }).click();
+  const saved = page.waitForResponse(
+    (response) =>
+      response.url().endsWith(`/api/tasks/templates/${template.id}`) &&
+      response.request().method() === "PATCH",
+  );
+  await page.getByRole("button", { name: "Save template", exact: true }).click();
+  expect(taskTemplateSchema.parse(await (await saved).json()).permissionProfile).toEqual({
+    toolPermissions: [{ pattern: "retained_custom", action: "deny" }],
+  });
+});
+
+test("executes a task override from a specialist-disabled CC group", async ({ page }) => {
+  const task = await createTask(page, "Override execution specialist", {
+    description: "CALL:cc_tasks_management_list_tasks",
+    permissionProfile: {
+      appToolPermissions: [{ pattern: "cc_tasks_management_list_tasks", action: "allow" }],
+    },
+  });
+  const result = await completed(page, await queue(page, task.id));
+  expect(result.finalMessage).toMatch(/Found \d+ tasks\./);
+});

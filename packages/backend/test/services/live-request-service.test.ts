@@ -5,6 +5,22 @@ import { createLiveRequestService } from "../../src/services/live-request-servic
 import type { ChatEvent } from "@cc/shared/schemas";
 
 describe("live request service", () => {
+  it("cancels a review form when its tool call is aborted", async () => {
+    const service = createLiveRequestService();
+    const controller = new AbortController();
+    const pending = service.create({
+      conversationId: "caller",
+      kind: "review",
+      closable: false,
+      presentation: { title: "Review", cancelLabel: "Cancel" },
+      fields: [],
+      signal: controller.signal,
+    });
+    controller.abort();
+    await expect(pending).rejects.toThrow("cancelled");
+    expect(service.listByConversation("caller")).toEqual([]);
+    service.dispose();
+  });
   it("publishes opened and resolved events for a conversation request", async () => {
     const service = createLiveRequestService();
     const controller = new AbortController();

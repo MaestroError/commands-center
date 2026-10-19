@@ -1,3 +1,4 @@
+import type { CcManagedToolContext } from "../../../server-registry.js";
 import { z } from "zod";
 
 import type { ActivityService } from "../../../../../services/activity-service.js";
@@ -16,7 +17,7 @@ const requestSecretOutputSchema = z.object({
 export const requestSecretToolMetadata = {
   name: "request_secret",
   description:
-    "Ask the CommandsCenter operator to provide a workspace secret (such as an API key). Non-blocking: it registers the secret key as unset and posts an action item to the operator's activity thread. It does NOT pause your turn, and the value will not be available until the operator fills it (which restarts the AI engine). Use this in chat when a credential is missing; do not assume the secret is available in the same turn.",
+    "Ask the CommandsCenter operator to provide a workspace secret (such as an API key). Non-blocking: it registers the secret key as unset and posts an action item to the operator's activity thread. It does NOT pause your turn, and the value will not be available until the operator fills it (which restarts the AI engine). Use this when a credential is missing; do not assume the secret is available in the same turn.",
   context: "chat",
 } as const;
 
@@ -30,7 +31,7 @@ export function createRequestSecretDefinition(options: {
     context: requestSecretToolMetadata.context,
     inputSchema: requestSecretInputSchema,
     outputSchema: requestSecretOutputSchema,
-    async execute(args: unknown, _context: { agentSlug: string }) {
+    async execute(args: unknown, _context: CcManagedToolContext) {
       const parsed = requestSecretInputSchema.parse(args);
       const key = parsed.key.trim();
 

@@ -1,8 +1,3 @@
-import { createCcManagedMcpAuthStateStore } from "../mcp/cc-managed/auth-state-store.js";
-import { createCcManagedMcpAuthTokenService } from "../mcp/cc-managed/auth-token-service.js";
-import { createCcManagedMcpToolAccessService } from "../mcp/cc-managed/tool-access-service.js";
-import { createCcManagedMcpServerRegistry } from "../mcp/cc-managed/server-registry.js";
-import { createCcManagedMcpWorkspaceEntryService } from "../mcp/cc-managed/workspace-entry-service.js";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -104,6 +99,7 @@ export function createEmbeddedWorkspaceServices(options: {
     rewriteAgents: (input) =>
       rewriteAgentsForMcpChange({
         ...input,
+        opencodeService: { ...input.opencodeService, dispose: async () => {} },
         prepareWorkspace: (workspace) =>
           writeEmbeddedSpecialistWorkspace({
             ...workspace,
@@ -156,24 +152,12 @@ export function createEmbeddedWorkspaceServices(options: {
     specialists,
     mcp,
     async reconcile() {
-      const entries = createCcManagedMcpWorkspaceEntryService({
-        config,
-        authTokenService: createCcManagedMcpAuthTokenService({
-          authStateStore: createCcManagedMcpAuthStateStore(config),
-        }),
-        toolAccessService: createCcManagedMcpToolAccessService(),
-        registry: createCcManagedMcpServerRegistry({ customToolService: customTools }),
-      });
       for (const specialist of await specialists.list()) {
         await prepare({
           config,
           workspacePath: specialist.workspacePath,
           input: {
             ...specialist,
-            appMcpEntries: await entries.buildEntries({
-              slug: specialist.slug,
-              capabilities: specialist.capabilities,
-            }),
           },
           writeRules: false,
           missingSkillPolicy: "retain",

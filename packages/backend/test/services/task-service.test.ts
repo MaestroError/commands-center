@@ -14,6 +14,77 @@ import { createTestDatabase } from "../helpers/db";
 import { agents, conversations, task_runs, task_templates } from "../../src/db/schema/index";
 
 describe("createTaskService", () => {
+  it("recovers CC tool overrides from portable template files", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const permissionProfile = {
+        appToolPermissions: [{ pattern: "cc_default_set_task_result", action: "allow" as const }],
+        customTools: ["retained"],
+      };
+      const template = await service.createTemplate({
+        defaultAgentId: agent.id,
+        title: "Portable overrides",
+        permissionProfile,
+      });
+      await testDb.client.db.delete(task_templates).where(eq(task_templates.id, template.id));
+      await taskTemplateReconciler.reconcile({
+        config: testDb.config,
+        db: testDb.client.db,
+        logger: pino({ level: "silent" }),
+      });
+      expect((await service.getTemplate(template.id))?.permissionProfile).toEqual(
+        permissionProfile,
+      );
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("keeps generated task overrides independent of later template edits", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const permissionProfile = {
+        appToolPermissions: [{ pattern: "cc_default_set_task_result", action: "allow" as const }],
+      };
+      const template = await service.createTemplate({
+        defaultAgentId: agent.id,
+        title: "Snapshot",
+        permissionProfile,
+      });
+      const task = await service.createTaskFromTemplate(template.id, {
+        occurrenceAt: "2026-06-08T09:00:00.000Z",
+        triggerSource: "template",
+      });
+      await service.updateTemplate(template.id, { permissionProfile: { appToolPermissions: [] } });
+      expect((await service.get(task!.id))?.permissionProfile).toEqual(permissionProfile);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("removes CC overrides without dropping unrelated task permissions", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await service.create({
+        agentId: agent.id,
+        title: "Restore inheritance",
+        permissionProfile: { appToolPermissions: [], customTools: ["retained"] },
+      });
+      await service.update(task.id, { permissionProfile: { customTools: ["retained"] } });
+      expect((await service.get(task.id))?.permissionProfile).toEqual({
+        customTools: ["retained"],
+      });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("creates backlog and scheduled tasks", async () => {
     const testDb = await createTestDatabase();
     const service = createTaskService({ db: testDb.client.db, config: testDb.config });

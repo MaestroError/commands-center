@@ -208,3 +208,54 @@ async function insertAgent(
 
   return agent;
 }
+
+describe("explicit CC tool matrices", () => {
+  it.each([
+    {
+      name: "grants a tool from a specialist-disabled group",
+      rules: [{ pattern: "cc_default_set_task_result", action: "allow" as const }],
+      pattern: "cc_default_set_task_result",
+      expected: "allow",
+    },
+    {
+      name: "denies tools omitted from an override",
+      rules: [{ pattern: "cc_default_set_task_result", action: "allow" as const }],
+      pattern: "cc_default_add_task_artifact",
+      expected: "deny",
+    },
+    {
+      name: "denies every tool for an empty override",
+      rules: [],
+      pattern: "cc_default_set_task_result",
+      expected: "deny",
+    },
+    {
+      name: "rejects a chat-only tool grant at run resolution",
+      rules: [{ pattern: "cc_default_list_uploaded_files", action: "allow" as const }],
+      pattern: "cc_default_list_uploaded_files",
+      expected: "deny",
+    },
+  ])("$name", async ({ rules, pattern, expected }) => {
+    const testDb = await createTestDatabase();
+    try {
+      const agent = await insertAgent(testDb.client.db, {
+        appMcpServers: [{ name: "cc_default", enabled: false, action: "deny" }],
+      });
+      const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+      const permissionService = createTaskPermissionService({
+        db: testDb.client.db,
+        config: testDb.config,
+        opencodeService: {} as OpenCodeService,
+      });
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Override",
+        permissionProfile: { appToolPermissions: rules },
+      });
+      const effective = await permissionService.compute(task);
+      expect(effective.appToolPermissions).toContainEqual({ pattern, action: expected });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+});

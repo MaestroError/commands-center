@@ -1,3 +1,4 @@
+import type { CcManagedToolContext } from "../../../server-registry.js";
 import { z } from "zod";
 
 import {
@@ -106,10 +107,17 @@ export function createTaskRunOutcomeToolDefinitions(options: TaskRunOutcomeToolO
       context: setTaskResultToolMetadata.context,
       inputSchema: setTaskRunResultInputSchema,
       outputSchema: mcpTaskRunOutcomeResultSchema,
-      execute: async (args: unknown, context: { agentSlug: string }) =>
+      execute: async (args: unknown, context: CcManagedToolContext) =>
         executeTool(async () => {
           const parsed = setTaskRunResultInputSchema.parse(args);
-          const agentId = await requireCallingAgentId(options.db, context.agentSlug);
+          if (
+            context.caller &&
+            (context.caller.context !== "task_run" || context.caller.taskRunId !== parsed.taskRunId)
+          ) {
+            throw new Error("Task outcome must target the calling task run.");
+          }
+          const agentId =
+            context.caller?.agentId ?? (await requireCallingAgentId(options.db, context.agentSlug));
           const run = await options.taskService.setRunResultText(
             parsed.taskRunId,
             agentId,
@@ -125,10 +133,17 @@ export function createTaskRunOutcomeToolDefinitions(options: TaskRunOutcomeToolO
       context: addTaskArtifactToolMetadata.context,
       inputSchema: addTaskRunArtifactInputSchema,
       outputSchema: mcpTaskRunOutcomeResultSchema,
-      execute: async (args: unknown, context: { agentSlug: string }) =>
+      execute: async (args: unknown, context: CcManagedToolContext) =>
         executeTool(async () => {
           const parsed = addTaskRunArtifactInputSchema.parse(args);
-          const agentId = await requireCallingAgentId(options.db, context.agentSlug);
+          if (
+            context.caller &&
+            (context.caller.context !== "task_run" || context.caller.taskRunId !== parsed.taskRunId)
+          ) {
+            throw new Error("Task outcome must target the calling task run.");
+          }
+          const agentId =
+            context.caller?.agentId ?? (await requireCallingAgentId(options.db, context.agentSlug));
           const run = await options.taskService.addRunArtifact(
             parsed.taskRunId,
             agentId,
@@ -144,10 +159,17 @@ export function createTaskRunOutcomeToolDefinitions(options: TaskRunOutcomeToolO
       context: markNeedsHumanReviewToolMetadata.context,
       inputSchema: markTaskRunNeedsReviewInputSchema,
       outputSchema: mcpTaskRunOutcomeResultSchema,
-      execute: async (args: unknown, context: { agentSlug: string }) =>
+      execute: async (args: unknown, context: CcManagedToolContext) =>
         executeTool(async () => {
           const parsed = markTaskRunNeedsReviewInputSchema.parse(args);
-          const agentId = await requireCallingAgentId(options.db, context.agentSlug);
+          if (
+            context.caller &&
+            (context.caller.context !== "task_run" || context.caller.taskRunId !== parsed.taskRunId)
+          ) {
+            throw new Error("Task outcome must target the calling task run.");
+          }
+          const agentId =
+            context.caller?.agentId ?? (await requireCallingAgentId(options.db, context.agentSlug));
           const run = await options.taskService.markRunNeedsHumanReview(
             parsed.taskRunId,
             agentId,

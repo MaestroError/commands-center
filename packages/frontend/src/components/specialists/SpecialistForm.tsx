@@ -1,7 +1,7 @@
+import { CcToolGroups } from "@/components/specialists/CcToolGroups";
 import { useState } from "react";
 import { Link } from "react-router";
 
-import { Switch } from "@/components/common/Switch";
 import { SpecialistAvatarPicker } from "@/components/specialists/SpecialistAvatarPicker";
 import { EmptyState, LoadingState } from "@/components/common/PageStates";
 import { SearchableSelect } from "@/components/common/SearchableSelect";
@@ -9,8 +9,6 @@ import { useSpecialistCustomToolsQuery, useCustomToolsQuery } from "@/hooks/use-
 import { useSpecialistCatalogQuery, useSpecialistsQuery } from "@/hooks/use-specialists-query";
 import { useMcpServersQuery } from "@/hooks/use-mcp-servers-query";
 import {
-  getAppMcpServerAction,
-  getAppMcpToolAction,
   getMcpServerAction,
   setAppMcpServerAction,
   setAppMcpToolEnabled,
@@ -26,7 +24,6 @@ import type {
   SpecialistCatalog,
   SpecialistCapabilitySelection,
   SpecialistMcpOverride,
-  AppMcpToolContext,
   BuiltInSkill,
   CustomTool,
   CustomToolDriftStatus,
@@ -453,85 +450,15 @@ export function SpecialistForm(props: SpecialistFormProps) {
       </CollapsibleSection>
 
       <CollapsibleSection
-        description="Enable CC-managed MCP groups per specialist. These are internal app capabilities, not external integrations."
+        description="Enable CC tool groups for this specialist and customize individual tool permissions."
         title="CommandsCenter tools"
       >
-        {(catalog?.appMcpServers.length ?? 0) > 0 ? (
-          <div className="grid gap-4">
-            {catalog?.appMcpServers.map((server) => {
-              const serverAction = getAppMcpServerAction(value.capabilities, server.name);
-
-              return (
-                <article
-                  className="rounded-xl border border-border bg-surface p-4"
-                  key={server.name}
-                >
-                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="text-base font-semibold text-text-primary">{server.name}</h3>
-                        <span className="rounded-full border border-border px-2 py-0.5 text-xs text-text-secondary">
-                          CC-managed
-                        </span>
-                      </div>
-                      <p className="mt-2 text-sm text-text-secondary">{server.description}</p>
-                    </div>
-
-                    <AppMcpServerPermissionControl
-                      label={server.name}
-                      onChange={(action) => setAppMcpServerPermission(server.name, action)}
-                      value={serverAction}
-                    />
-                  </div>
-
-                  {serverAction !== "deny" && server.tools.length > 0 ? (
-                    <div className="mt-4 grid gap-3">
-                      {server.tools.map((tool) => {
-                        const toolEnabled =
-                          getAppMcpToolAction(value.capabilities, server.name, tool.name) ===
-                          "allow";
-
-                        return (
-                          <div
-                            className="flex flex-col gap-3 rounded-lg border border-border bg-background p-3 md:flex-row md:items-start md:justify-between"
-                            key={tool.name}
-                          >
-                            <div className="min-w-0">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <p className="font-medium text-text-primary">{tool.name}</p>
-                                <ToolContextBadge context={tool.context} />
-                              </div>
-                              <p className="mt-1 text-sm text-text-secondary">{tool.description}</p>
-                            </div>
-                            <div className="flex shrink-0 items-center gap-2">
-                              <Switch
-                                aria-label={`${server.name} ${tool.name}`}
-                                checked={toolEnabled}
-                                onChange={(enabled) =>
-                                  setAppMcpToolPermission(server.name, tool.name, enabled)
-                                }
-                              />
-                              <span className="text-xs text-text-secondary">
-                                {toolEnabled ? "Enabled" : "Disabled"}
-                              </span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : null}
-                </article>
-              );
-            })}
-          </div>
-        ) : (
-          <div>
-            <EmptyState
-              description="No CommandsCenter-managed MCP groups are registered in this build."
-              title="No CC-managed tools available"
-            />
-          </div>
-        )}
+        <CcToolGroups
+          groups={catalog?.appMcpServers ?? []}
+          capabilities={value.capabilities}
+          onGroupChange={setAppMcpServerPermission}
+          onToolChange={setAppMcpToolPermission}
+        />
       </CollapsibleSection>
 
       <CollapsibleSection
@@ -768,55 +695,6 @@ function McpServerPermissionControl(props: {
   );
 }
 
-function AppMcpServerPermissionControl(props: {
-  label: string;
-  value: PermissionAction;
-  onChange: (action: PermissionAction) => void;
-}) {
-  const options = [
-    {
-      value: "deny" as const,
-      label: "Disabled",
-      selectedClassName: "border-danger-border bg-danger-surface text-danger-foreground",
-    },
-    {
-      value: "ask" as const,
-      label: "Ask",
-      selectedClassName: "border-warning-border bg-warning-surface text-warning-foreground",
-    },
-    {
-      value: "allow" as const,
-      label: "Allow",
-      selectedClassName: "border-success-border bg-success-surface text-success-foreground",
-    },
-  ];
-
-  return (
-    <div className="inline-flex rounded-xl border border-border bg-surface p-1">
-      {options.map((option) => {
-        const selected = props.value === option.value;
-
-        return (
-          <button
-            aria-label={`${props.label} ${option.label}`}
-            aria-pressed={selected}
-            className={
-              selected
-                ? `rounded-lg border px-3 py-1.5 text-xs font-medium transition ${option.selectedClassName}`
-                : "rounded-lg border border-transparent px-3 py-1.5 text-xs font-medium text-text-secondary transition hover:bg-surface-elevated hover:text-text-primary"
-            }
-            key={option.value}
-            onClick={() => props.onChange(option.value)}
-            type="button"
-          >
-            {option.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 function StatusBadge(props: { status: CustomToolDriftStatus }) {
   const label = {
     global_only: "Global only",
@@ -839,20 +717,6 @@ function StatusBadge(props: { status: CustomToolDriftStatus }) {
   }[props.status];
 
   return <span className={className}>{label}</span>;
-}
-
-function ToolContextBadge(props: { context: AppMcpToolContext }) {
-  const label = {
-    chat: "Chat",
-    task_run: "Task run",
-    both: "Chat + task",
-  }[props.context];
-
-  return (
-    <span className="rounded-full border border-border bg-surface px-2 py-0.5 text-xs text-text-secondary">
-      {label}
-    </span>
-  );
 }
 
 function buildSkillOptions(catalog: SpecialistCatalog | undefined): SkillOption[] {

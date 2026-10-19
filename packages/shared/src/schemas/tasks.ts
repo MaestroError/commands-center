@@ -195,6 +195,22 @@ export const taskPermissionProfileSchema = z.object({
     .optional(),
 });
 
+const taskPermissionProfileInputSchema: z.ZodType<
+  z.output<typeof taskPermissionProfileSchema>,
+  z.input<typeof taskPermissionProfileSchema>
+> = taskPermissionProfileSchema
+  .extend({
+    appMcpServers: z
+      .array(specialistAppMcpServerSchema.extend({ action: z.enum(["allow", "deny"]) }))
+      .optional(),
+    appToolPermissions: z
+      .array(specialistPermissionRuleSchema.extend({ action: z.enum(["allow", "deny"]) }))
+      .optional(),
+  })
+  .describe(
+    "CC-tool overrides use appToolPermissions as a complete allow/deny matrix. Omit both appToolPermissions and appMcpServers to inherit specialist CC defaults; an empty appToolPermissions array denies all CC tools. Preserve unrelated permission fields when editing.",
+  );
+
 export const queueTaskInputSchema = z.object({
   taskId: z.string().trim().min(1),
   subtaskId: z.string().trim().min(1).optional(),
@@ -274,7 +290,7 @@ export const createTaskInputSchema = z.object({
   scheduledAt: z.string().datetime().optional(),
   dueAt: z.string().datetime().optional(),
   context: taskContextInputSchema.optional(),
-  permissionProfile: taskPermissionProfileSchema.optional(),
+  permissionProfile: taskPermissionProfileInputSchema.optional(),
   enabled: z.boolean().optional(),
 });
 
@@ -304,7 +320,7 @@ export const updateTaskInputSchema = z.object({
   scheduledAt: nullableDateTimeSchema.optional(),
   dueAt: nullableDateTimeSchema.optional(),
   context: taskContextInputSchema.optional(),
-  permissionProfile: taskPermissionProfileSchema.optional(),
+  permissionProfile: taskPermissionProfileInputSchema.optional(),
   enabled: z.boolean().optional(),
 });
 
@@ -478,7 +494,7 @@ export const createTaskTemplateInputSchema = z.object({
   description: z.string().default(""),
   todos: z.array(taskTodoInputSchema).default([]),
   recurrence: recurringTaskScheduleSchema.nullish(),
-  permissionProfile: taskPermissionProfileSchema.optional(),
+  permissionProfile: taskPermissionProfileInputSchema.optional(),
   mcpConfig: taskTemplateMcpConfigInputSchema.optional(),
   enabled: z.boolean().optional(),
 });
@@ -492,7 +508,7 @@ export const updateTaskTemplateInputSchema = z.object({
   recurrence: recurringTaskScheduleSchema.nullish(),
   model: z.string().trim().min(1).nullish(),
   fallbackModels: fallbackModelsBaseSchema.optional(),
-  permissionProfile: taskPermissionProfileSchema.optional(),
+  permissionProfile: taskPermissionProfileInputSchema.optional(),
   mcpConfig: taskTemplateMcpConfigInputSchema.optional(),
   enabled: z.boolean().optional(),
 });

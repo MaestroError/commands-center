@@ -1,3 +1,4 @@
+import { TaskToolPermissions } from "@/components/tasks/TaskToolPermissions";
 // Split out of TasksPage.tsx (issue #99).
 
 import { ModelSelector } from "@/components/chat/ModelSelector";
@@ -205,13 +206,12 @@ export function TaskFormPage(props: { mode: "create" | "edit" }) {
                 </p>
               </div>
 
-              <section className="rounded-xl border border-border bg-surface p-4">
-                <h2 className="font-semibold text-text-primary">Permission profile</h2>
-                <p className="mt-1 text-sm leading-6 text-text-secondary">
-                  This UI currently inherits the assigned specialist permissions. Task runs still
-                  persist their effective permission snapshot and auto-approve task-safe rules.
-                </p>
-              </section>
+              <TaskToolPermissions
+                specialist={selectedAgent}
+                catalog={catalogQuery.data}
+                value={form.permissionProfile}
+                onChange={(permissionProfile) => updateForm({ permissionProfile })}
+              />
 
               <div className="flex flex-wrap gap-2">
                 <Button

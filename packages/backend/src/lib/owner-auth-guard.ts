@@ -13,7 +13,6 @@ import type { RuntimeContext } from "./start-server-runtime.js";
 
 const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const STATIC_ASSET_PATTERN = /\.[a-zA-Z0-9]+$/;
-const CC_MANAGED_MCP_ROUTE_PATTERN = /^\/api\/mcp\/cc\/[^/]+\/specialists\/[^/]+$/;
 const PUBLIC_API_PREFIX = "/api/public/";
 const PUBLIC_MCP_PATH = "/api/public/mcp";
 const OAUTH_PROTOCOL_POST_PATHS = new Set(["/oauth/register", "/oauth/revoke", "/oauth/token"]);
@@ -67,10 +66,7 @@ export function registerOwnerAuthGuard(
     }
 
     if (isPublicRoute(method, pathname)) {
-      if (
-        !CC_MANAGED_MCP_ROUTE_PATTERN.test(pathname) &&
-        !(method === "POST" && OAUTH_PROTOCOL_POST_PATHS.has(pathname))
-      ) {
+      if (!(method === "POST" && OAUTH_PROTOCOL_POST_PATHS.has(pathname))) {
         validateOriginForMutation(context, request);
       }
       return;

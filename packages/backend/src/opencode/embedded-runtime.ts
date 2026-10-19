@@ -45,6 +45,7 @@ export async function createEmbeddedRuntime(
       workspaceDirectory: options.workspaceDirectory,
       sdkOptions: options.sdkOptions,
       environment: await options.resolveEnvironment(),
+      ccTools: options.ccTools,
     });
   } catch (error) {
     callbacks.dispose();

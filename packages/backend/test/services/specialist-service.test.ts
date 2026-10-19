@@ -79,15 +79,13 @@ describe("createSpecialistService", () => {
         resource: "*",
         effect: "ask",
       });
-      expect(config).toContain('"cc_app": {');
+      expect(config).not.toContain('"cc_app": {');
       expect(JSON.parse(config).permissions).toContainEqual({
         action: "cc_app_*",
         resource: "*",
         effect: "allow",
       });
-      // cc_default is enabled by default and carries an explicit 15s tool-call timeout.
-      expect(config).toContain('"cc_default": {');
-      expect(JSON.parse(config).mcp.servers.cc_default.timeout.execution).toBe(15000);
+      expect(config).not.toContain('"cc_default": {');
       expect(dispose).not.toHaveBeenCalled();
     } finally {
       await testDb.cleanup();
@@ -268,13 +266,13 @@ describe("createSpecialistService", () => {
             {
               name: "draft_specialist",
               description:
-                "Open a prefilled specialist form in chat for the operator to review, edit, and confirm before the specialist is created. Pass whatever details you know (all optional) to pre-fill the form. Chat only.",
+                "Open a prefilled specialist form in chat for the operator to review, edit, and confirm before the specialist is created. Pass whatever details you know (all optional) to pre-fill the form.",
               context: "chat",
             },
             {
               name: "draft_specialist_update",
               description:
-                "Open a prefilled form in chat with an existing specialist's current details for the operator to review, edit, and confirm before the update is saved. Provide the specialist id and optionally any suggested changes to pre-fill. Chat only.",
+                "Open a prefilled form in chat with an existing specialist's current details for the operator to review, edit, and confirm before the update is saved. Provide the specialist id and optionally any suggested changes to pre-fill.",
               context: "chat",
             },
             {
@@ -286,13 +284,13 @@ describe("createSpecialistService", () => {
             {
               name: "draft_task",
               description:
-                "Open a prefilled task form in chat for the operator to review, edit, and confirm before the task is created. Pass whatever details you know (all optional) to pre-fill the form. Chat only.",
+                "Open a prefilled task form in chat for the operator to review, edit, and confirm before the task is created. Pass whatever details you know (all optional) to pre-fill the form.",
               context: "chat",
             },
             {
               name: "draft_task_update",
               description:
-                "Open a prefilled form in chat with an existing task's current details for the operator to review, edit, and confirm before the update is saved. Provide the task id and optionally any suggested changes to pre-fill. Chat only.",
+                "Open a prefilled form in chat with an existing task's current details for the operator to review, edit, and confirm before the update is saved. Provide the task id and optionally any suggested changes to pre-fill.",
               context: "chat",
             },
           ],

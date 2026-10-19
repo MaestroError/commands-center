@@ -57,6 +57,7 @@ export function createTaskPermissionService(options: {
       const { appMcpServers, appToolPermissions, diagnostics } = filterAppToolsForTaskRun(
         merged,
         registry,
+        task.permissionProfile?.appToolPermissions !== undefined,
       );
       const normalized = taskPermissionProfileSchema.parse({
         ...merged,
@@ -154,13 +155,16 @@ export function buildOpenCodeSessionPermissions(
 function filterAppToolsForTaskRun(
   permissions: TaskPermissionProfile,
   registry: readonly CcManagedMcpServerDefinition[],
+  hasToolOverride: boolean,
 ): {
   appMcpServers: NonNullable<TaskPermissionProfile["appMcpServers"]>;
   appToolPermissions: NonNullable<TaskPermissionProfile["appToolPermissions"]>;
   diagnostics: TaskPermissionDiagnostic[];
 } {
   const diagnostics: TaskPermissionDiagnostic[] = [];
-  const selectedAppMcpServers = permissions.appMcpServers ?? [];
+  const selectedAppMcpServers = hasToolOverride
+    ? registry.map((group) => ({ name: group.name, enabled: true, action: "allow" as const }))
+    : (permissions.appMcpServers ?? []);
   const appMcpServers = selectedAppMcpServers.filter((serverSelection) => {
     const server = registry.find((entry) => entry.name === serverSelection.name);
 
@@ -184,16 +188,10 @@ function filterAppToolsForTaskRun(
     return false;
   });
   const deniedPatterns = new Set<string>();
-  const autoAllowedTaskRunPatterns = new Set<string>();
 
   for (const server of registry) {
     for (const tool of server.catalogTools) {
       if (tool.context === "task_run" || tool.context === "both") {
-        if (server.enabledByDefault) {
-          autoAllowedTaskRunPatterns.add(
-            buildCcManagedToolPermissionPattern(server.name, tool.name),
-          );
-        }
         continue;
       }
 
@@ -220,22 +218,23 @@ function filterAppToolsForTaskRun(
       appMcpServers.push({ name: server.name, enabled: true, action: "allow" });
     }
   }
-  const appToolPermissions = (permissions.appToolPermissions ?? []).filter(
-    (rule) => !deniedPatterns.has(rule.pattern),
-  );
-  const existingPatterns = new Set(appToolPermissions.map((rule) => rule.pattern));
-
-  return {
-    appMcpServers,
-    appToolPermissions: [
-      ...appToolPermissions,
-      ...[...autoAllowedTaskRunPatterns]
-        .filter((pattern) => !existingPatterns.has(pattern))
-        .map((pattern) => ({ pattern, action: "allow" as const })),
-      ...[...deniedPatterns].map((pattern) => ({ pattern, action: "deny" as const })),
-    ],
-    diagnostics,
-  };
+  const appToolPermissions = registry.flatMap((group) => {
+    const selection = appMcpServers.find((entry) => entry.name === group.name);
+    const enabled = selection
+      ? selection.enabled !== false && selection.action !== "deny"
+      : group.enabledByDefault;
+    return group.catalogTools.map((tool) => {
+      const pattern = buildCcManagedToolPermissionPattern(group.name, tool.name);
+      const rule = permissions.appToolPermissions?.find((entry) => entry.pattern === pattern);
+      const action =
+        !enabled || deniedPatterns.has(pattern)
+          ? ("deny" as const)
+          : (rule?.action ??
+            (hasToolOverride ? ("deny" as const) : (selection?.action ?? ("allow" as const))));
+      return { pattern, action };
+    });
+  });
+  return { appMcpServers, appToolPermissions, diagnostics };
 }
 
 function normalizeRulesForTask(

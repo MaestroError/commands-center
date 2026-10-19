@@ -1,3 +1,4 @@
+import type { CcManagedToolContext } from "../../../server-registry.js";
 import { z } from "zod";
 
 import {
@@ -100,7 +101,7 @@ export const getSelfTaskTemplateToolMetadata = {
 export const createSelfTaskTemplateToolMetadata = {
   name: "create_self_task_template",
   description:
-    "Create a reusable CommandsCenter task template assigned to you as the default specialist. A template captures a task title, description, acceptance criteria, and optionally a recurrence schedule — making it suitable as a cron job for work that repeats on a fixed interval (daily, weekly, and so on). Use `todos` to propose acceptance criteria (the operator's definition of done): each is shown to the running agent as a criterion to satisfy, but only the operator can check them off during review. The template is always assigned to you; do not attempt to pass a defaultAgentId. Only available in task-run context. Templates store the prompt in task.md; promptPath is workspace-relative. Use template tools for settings changes so they take effect immediately; direct task.json edits require restart. You may edit task.md directly for future tasks. When updating description through a tool, pass expectedPromptRevision from the latest template read to detect conflicting edits.",
+    "Create a reusable CommandsCenter task template assigned to you as the default specialist. A template captures a task title, description, acceptance criteria, and optionally a recurrence schedule — making it suitable as a cron job for work that repeats on a fixed interval (daily, weekly, and so on). Use `todos` to propose acceptance criteria (the operator's definition of done): each is shown to the running agent as a criterion to satisfy, but only the operator can check them off during review. The template is always assigned to you; do not attempt to pass a defaultAgentId. Templates store the prompt in task.md; promptPath is workspace-relative. Use template tools for settings changes so they take effect immediately; direct task.json edits require restart. You may edit task.md directly for future tasks. When updating description through a tool, pass expectedPromptRevision from the latest template read to detect conflicting edits.",
   context: "task_run",
 } as const;
 
@@ -114,7 +115,7 @@ export const runSelfTaskTemplateNowToolMetadata = {
 export const updateSelfTaskTemplateToolMetadata = {
   name: "update_self_task_template",
   description:
-    "Update one of your own CommandsCenter task templates without reassigning it to another specialist. Existing generated tasks keep their copied content. Only available in task-run context. Templates store the prompt in task.md; promptPath is workspace-relative. Use template tools for settings changes so they take effect immediately; direct task.json edits require restart. You may edit task.md directly for future tasks. When updating description through a tool, pass expectedPromptRevision from the latest template read to detect conflicting edits.",
+    "Update one of your own CommandsCenter task templates without reassigning it to another specialist. Existing generated tasks keep their copied content. Templates store the prompt in task.md; promptPath is workspace-relative. Use template tools for settings changes so they take effect immediately; direct task.json edits require restart. You may edit task.md directly for future tasks. When updating description through a tool, pass expectedPromptRevision from the latest template read to detect conflicting edits.",
   context: "task_run",
 } as const;
 
@@ -149,7 +150,7 @@ export function createSelfTaskTemplateToolDefinitions(options: SelfTaskTemplateT
       context: listSelfTaskTemplatesToolMetadata.context,
       inputSchema: z.object({}).strict(),
       outputSchema: listSelfTaskTemplatesOutputSchema,
-      execute: async (_args: unknown, context: { agentSlug: string }) =>
+      execute: async (_args: unknown, context: CcManagedToolContext) =>
         executeTool(async () => {
           const agentId = await requireCallingAgentId(options.db, context.agentSlug);
           const templates = await options.taskService.listTemplates({ defaultAgentId: agentId });
@@ -172,7 +173,7 @@ export function createSelfTaskTemplateToolDefinitions(options: SelfTaskTemplateT
       context: getSelfTaskTemplateToolMetadata.context,
       inputSchema: templateIdInputSchema,
       outputSchema: mcpTaskTemplateSchema,
-      execute: async (args: unknown, context: { agentSlug: string }) =>
+      execute: async (args: unknown, context: CcManagedToolContext) =>
         executeTool(async () => {
           const parsed = templateIdInputSchema.parse(args);
           const agentId = await requireCallingAgentId(options.db, context.agentSlug);
@@ -194,7 +195,7 @@ export function createSelfTaskTemplateToolDefinitions(options: SelfTaskTemplateT
       context: createSelfTaskTemplateToolMetadata.context,
       inputSchema: createSelfTaskTemplateInputSchema,
       outputSchema: mcpTaskTemplateSchema,
-      execute: async (args: unknown, context: { agentSlug: string }) =>
+      execute: async (args: unknown, context: CcManagedToolContext) =>
         executeTool(async () => {
           const parsed = createSelfTaskTemplateInputSchema.parse(args);
           const agentId = await requireCallingAgentId(options.db, context.agentSlug);
@@ -215,7 +216,7 @@ export function createSelfTaskTemplateToolDefinitions(options: SelfTaskTemplateT
       context: updateSelfTaskTemplateToolMetadata.context,
       inputSchema: updateSelfTaskTemplateToolInputSchema,
       outputSchema: mcpTaskTemplateSchema,
-      execute: async (args: unknown, context: { agentSlug: string }) =>
+      execute: async (args: unknown, context: CcManagedToolContext) =>
         executeTool(async () => {
           const parsed = updateSelfTaskTemplateToolInputSchema.parse(args);
           const agentId = await requireCallingAgentId(options.db, context.agentSlug);
@@ -242,7 +243,7 @@ export function createSelfTaskTemplateToolDefinitions(options: SelfTaskTemplateT
       context: runSelfTaskTemplateNowToolMetadata.context,
       inputSchema: runSelfTaskTemplateNowInputSchema,
       outputSchema: mcpTaskRunSchema,
-      execute: async (args: unknown, context: { agentSlug: string }) =>
+      execute: async (args: unknown, context: CcManagedToolContext) =>
         executeTool(async () => {
           const parsed = runSelfTaskTemplateNowInputSchema.parse(args);
           const agentId = await requireCallingAgentId(options.db, context.agentSlug);
@@ -276,7 +277,7 @@ export function createSelfTaskTemplateToolDefinitions(options: SelfTaskTemplateT
       context: createSelfTaskFromTemplateToolMetadata.context,
       inputSchema: templateIdInputSchema,
       outputSchema: mcpTaskSchema,
-      execute: async (args: unknown, context: { agentSlug: string }) =>
+      execute: async (args: unknown, context: CcManagedToolContext) =>
         executeTool(async () => {
           const parsed = templateIdInputSchema.parse(args);
           const agentId = await requireCallingAgentId(options.db, context.agentSlug);
@@ -303,7 +304,7 @@ export function createSelfTaskTemplateToolDefinitions(options: SelfTaskTemplateT
       context: enableSelfTaskTemplateToolMetadata.context,
       inputSchema: templateIdInputSchema,
       outputSchema: mcpTaskTemplateSchema,
-      execute: async (args: unknown, context: { agentSlug: string }) =>
+      execute: async (args: unknown, context: CcManagedToolContext) =>
         executeTool(async () => {
           const parsed = templateIdInputSchema.parse(args);
           const agentId = await requireCallingAgentId(options.db, context.agentSlug);
@@ -327,7 +328,7 @@ export function createSelfTaskTemplateToolDefinitions(options: SelfTaskTemplateT
       context: disableSelfTaskTemplateToolMetadata.context,
       inputSchema: templateIdInputSchema,
       outputSchema: mcpTaskTemplateSchema,
-      execute: async (args: unknown, context: { agentSlug: string }) =>
+      execute: async (args: unknown, context: CcManagedToolContext) =>
         executeTool(async () => {
           const parsed = templateIdInputSchema.parse(args);
           const agentId = await requireCallingAgentId(options.db, context.agentSlug);

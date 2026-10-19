@@ -3,11 +3,14 @@ import type { OpenCode } from "@opencode/sdk";
 export async function requestEmbeddedToolPermission(
   host: OpenCode.Interface,
   input: Parameters<OpenCode.Interface["permission"]["create"]>[0],
+  signal?: AbortSignal,
 ): Promise<void> {
   const controller = new AbortController();
+  let requestID: string | undefined;
   try {
-    const events = host.events.subscribe({ signal: controller.signal });
-    let requestID: string | undefined;
+    const events = host.events.subscribe({
+      signal: signal ? AbortSignal.any([signal, controller.signal]) : controller.signal,
+    });
     for await (const event of events) {
       if (event.type === "server.connected") {
         const result = await host.permission.create(input);
@@ -44,6 +47,15 @@ export async function requestEmbeddedToolPermission(
       }
     }
     throw new Error("Custom tool permission stream closed.");
+  } catch (cause) {
+    if (signal?.aborted && requestID) {
+      try {
+        await host.permission.reply({ sessionID: input.sessionID, requestID, decision: "reject" });
+      } catch (error) {
+        if (!(error instanceof Error && error.name === "PermissionNotFoundError")) throw error;
+      }
+    }
+    throw cause;
   } finally {
     controller.abort();
   }

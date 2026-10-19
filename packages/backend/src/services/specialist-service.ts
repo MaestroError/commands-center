@@ -31,14 +31,10 @@ import {
 import { withSpecialistMcpMutationLock } from "./specialist-mcp-mutation-lock.js";
 import { createCustomToolService, type CustomToolService } from "./custom-tool-service.js";
 import { listProviderModels } from "./provider-service.js";
-import { createCcManagedMcpAuthStateStore } from "../mcp/cc-managed/auth-state-store.js";
-import { createCcManagedMcpAuthTokenService } from "../mcp/cc-managed/auth-token-service.js";
 import {
   createCcManagedMcpServerRegistry,
   listCcManagedMcpServers,
 } from "../mcp/cc-managed/server-registry.js";
-import { createCcManagedMcpToolAccessService } from "../mcp/cc-managed/tool-access-service.js";
-import { createCcManagedMcpWorkspaceEntryService } from "../mcp/cc-managed/workspace-entry-service.js";
 import {
   archiveWorkspace,
   getBuiltInSkillRoot,
@@ -75,19 +71,8 @@ export function createSpecialistService(options: {
     options.prepareWorkspace ??
     ((input) =>
       prepareEmbeddedSpecialistWorkspace({ ...input, db: options.db, customToolService }));
-  const appMcpAuthStateStore = createCcManagedMcpAuthStateStore(options.config);
   const appMcpRegistry = createCcManagedMcpServerRegistry({
     customToolService,
-  });
-  const appMcpAuthTokenService = createCcManagedMcpAuthTokenService({
-    authStateStore: appMcpAuthStateStore,
-  });
-  const appMcpToolAccessService = createCcManagedMcpToolAccessService();
-  const appMcpWorkspaceEntryService = createCcManagedMcpWorkspaceEntryService({
-    config: options.config,
-    authTokenService: appMcpAuthTokenService,
-    toolAccessService: appMcpToolAccessService,
-    registry: appMcpRegistry,
   });
 
   return {
@@ -126,10 +111,6 @@ export function createSpecialistService(options: {
         const timestamp = now();
         const workspacePath = buildWorkspacePath(slug);
         const capabilities = await normalizeCapabilities(parsed.capabilities);
-        const appMcpEntries = await appMcpWorkspaceEntryService.buildEntries({
-          slug,
-          capabilities,
-        });
 
         await prepare({
           overwriteSlugs: parsed.customToolOverwriteSlugs,
@@ -141,7 +122,6 @@ export function createSpecialistService(options: {
             instructions: parsed.instructions,
             defaultModel: parsed.defaultModel,
             capabilities,
-            appMcpEntries,
           },
           skillRoot,
           workspaceSkillRoot,
@@ -213,17 +193,12 @@ export function createSpecialistService(options: {
 
       const capabilities = parsed.capabilities ?? parseCapabilities(existing.capabilities_json);
       const normalizedCapabilities = await normalizeCapabilities(capabilities);
-      const appMcpEntries = await appMcpWorkspaceEntryService.buildEntries({
-        slug: nextSlug,
-        capabilities: normalizedCapabilities,
-      });
       const workspaceInput = {
         name: nextName,
         role: parsed.role ?? existing.role,
         instructions: parsed.instructions ?? existing.instructions,
         defaultModel: parsed.defaultModel ?? existing.default_model,
         capabilities: normalizedCapabilities,
-        appMcpEntries,
       };
 
       await prepare({

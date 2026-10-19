@@ -63,6 +63,31 @@ async function setup() {
 }
 
 describe("add_artifact", () => {
+  it("uses the calling chat even after another chat becomes current", async () => {
+    const { testDb, tool } = await setup();
+    const agentId = await insertAgent(testDb.client.db, "reviewer");
+    const callerId = await insertCurrentChat(testDb.client.db, agentId);
+    await testDb.client.db
+      .update(conversations)
+      .set({ is_current: false })
+      .where(eq(conversations.id, callerId));
+    await insertCurrentChat(testDb.client.db, agentId);
+    const result = await tool.execute(
+      { title: "Owned result", type: "url", link: "https://example.com" },
+      {
+        agentSlug: "reviewer",
+        caller: {
+          context: "chat",
+          agentId,
+          agentSlug: "reviewer",
+          conversationId: callerId,
+          sessionID: "caller",
+          ownerSessionID: "caller",
+        },
+      },
+    );
+    expect(result.structuredContent).toMatchObject({ conversationId: callerId });
+  });
   it("registers an artifact against the current chat conversation", async () => {
     const { testDb, tool } = await setup();
     const agentId = await insertAgent(testDb.client.db, "reviewer");

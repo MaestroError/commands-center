@@ -1,3 +1,4 @@
+import { TaskToolPermissions } from "@/components/tasks/TaskToolPermissions";
 // Split out of TasksPage.tsx (issue #99).
 
 import { ModelSelector } from "@/components/chat/ModelSelector";
@@ -161,6 +162,12 @@ export function TaskTemplateForm(props: {
           value={form.prompt}
         />
       </section>
+      <TaskToolPermissions
+        specialist={selectedAgent}
+        catalog={catalogQuery.data}
+        value={form.permissionProfile}
+        onChange={(permissionProfile) => updateForm({ permissionProfile })}
+      />
       <section className="grid min-w-0 gap-2 rounded-xl border border-border bg-surface p-4">
         <label className="flex items-center gap-2 text-sm font-medium text-text-primary">
           <input

@@ -4,6 +4,8 @@ import { setTimeout } from "node:timers/promises";
 
 import type { OpenCode } from "@opencode/sdk";
 import { requestEmbeddedToolPermission } from "./embedded-tool-permission.js";
+import type { EmbeddedCcTools } from "./embedded-cc-tools.js";
+import { CC_MANAGED_GROUP_METAS } from "../mcp/cc-managed/group-metadata.js";
 
 import {
   buildNpmCacheEnv,
@@ -22,6 +24,7 @@ export type EmbeddedOpenCodeHostOptions = {
   workspaceDirectory: string;
   sdkOptions?: Pick<OpenCode.CreateOptions, "fs" | "models" | "log">;
   environment?: Record<string, string>;
+  ccTools?: { current?: EmbeddedCcTools };
 };
 
 let boundWorkspace: string | undefined;
@@ -31,6 +34,7 @@ export async function createEmbeddedOpenCodeHost({
   workspaceDirectory,
   sdkOptions,
   environment = {},
+  ccTools,
 }: EmbeddedOpenCodeHostOptions): Promise<EmbeddedOpenCodeHost> {
   await mkdir(workspaceDirectory, { recursive: true });
   const workspace = await realpath(workspaceDirectory);
@@ -74,6 +78,23 @@ export async function createEmbeddedOpenCodeHost({
           id: "cc.tool-catalog",
           async setup(context) {
             const directory = await realpath(context.location.directory);
+            if (ccTools) {
+              await context.tool.transform((editor) => {
+                for (const tool of ccTools.current?.list(directory) ?? []) editor.add(tool);
+              });
+              await context.session.hook("context", async (event) => {
+                const allowed =
+                  (await ccTools.current?.allowed(directory, event.sessionID)) ?? new Set<string>();
+                for (const name of Object.keys(event.tools)) {
+                  if (
+                    CC_MANAGED_GROUP_METAS.some((group) => name.startsWith(`${group.name}_`)) &&
+                    !allowed.has(name)
+                  ) {
+                    delete event.tools[name];
+                  }
+                }
+              });
+            }
             let initialized = false;
             const read = async (signal?: AbortSignal): Promise<EmbeddedTool[]> => {
               if (!initialized) {

@@ -1,3 +1,4 @@
+import type { CcManagedToolContext } from "../../../server-registry.js";
 import { z } from "zod";
 
 import type { ConversationService } from "../../../../../services/conversation-service.js";
@@ -6,11 +7,11 @@ import type {
   CustomToolCopyConflict,
 } from "../../../../../services/custom-tool-action-service.js";
 import type { LiveRequestService } from "../../../../../services/live-request-service.js";
-import { blockingWaitBudgetMs, CC_MANAGED_MCP_TIMEOUT_MS } from "../../../live-request-timeouts.js";
+import { blockingWaitBudgetMs, CC_TOOL_CALL_TIMEOUT_MS } from "../../../live-request-timeouts.js";
 
 // This tool lives in cc_app; the conflict prompt must close before that group's
 // tool-call timeout. See live-request-timeouts.ts.
-const REVIEW_TIMEOUT_MS = blockingWaitBudgetMs(CC_MANAGED_MCP_TIMEOUT_MS);
+const REVIEW_TIMEOUT_MS = blockingWaitBudgetMs(CC_TOOL_CALL_TIMEOUT_MS);
 
 const copyCustomToolToSpecialistInputSchema = z.object({
   toolSlug: z.string().trim().min(1),
@@ -49,7 +50,7 @@ export function createCopyCustomToolToSpecialistDefinition(options: {
     context: copyCustomToolToSpecialistMetadata.context,
     inputSchema: copyCustomToolToSpecialistInputSchema,
     outputSchema: copyCustomToolToSpecialistOutputSchema,
-    async execute(args: unknown, context: { agentSlug: string }) {
+    async execute(args: unknown, context: CcManagedToolContext) {
       try {
         const parsed = copyCustomToolToSpecialistInputSchema.parse(args);
         const targetSpecialistSlug = parsed.specialistSlug ?? context.agentSlug;
@@ -74,6 +75,7 @@ export function createCopyCustomToolToSpecialistDefinition(options: {
 
         const decision = await requestConflictDecision({
           conflict: firstAttempt.conflict,
+          context,
           conversationService: options.conversationService,
           liveRequestService: options.liveRequestService,
         });
@@ -117,15 +119,17 @@ async function resolveConversationId(
 }
 
 async function requestConflictDecision(options: {
+  context: CcManagedToolContext;
   conflict: CustomToolCopyConflict;
   conversationService: ConversationService;
   liveRequestService: LiveRequestService;
 }) {
   const response = await options.liveRequestService.create({
-    conversationId: await resolveConversationId(
-      options.conversationService,
-      options.conflict.agentId,
-    ),
+    conversationId:
+      options.context.caller?.context === "chat"
+        ? options.context.caller.conversationId
+        : await resolveConversationId(options.conversationService, options.conflict.agentId),
+    signal: options.context.signal,
     kind: "custom_tool_copy_conflict",
     closable: false,
     timeoutMs: REVIEW_TIMEOUT_MS,
