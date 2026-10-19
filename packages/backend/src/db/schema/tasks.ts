@@ -21,7 +21,7 @@ export const task_templates = sqliteTable(
     model: text("model"),
     fallback_models: text("fallback_models").notNull().default("[]"),
     title: text("title").notNull(),
-    description: text("description").notNull(),
+    prompt_path: text("prompt_path").notNull().default(""),
     todos_json: text("todos_json").notNull(),
     status: text("status").notNull(),
     recurrence_json: text("recurrence_json"),

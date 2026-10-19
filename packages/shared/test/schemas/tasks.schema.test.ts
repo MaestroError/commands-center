@@ -180,6 +180,8 @@ describe("task schemas", () => {
     it("accepts recurring task generator contracts", () => {
       expect(
         taskTemplateSchema.parse({
+          promptPath: "configuration/task-templates/template-1/task.md",
+          promptRevision: "revision",
           id: "template-1",
           defaultAgentId: "agent-1",
           title: "Weekly status",

@@ -53,6 +53,8 @@ function makeTemplate(
   return {
     id,
     defaultAgentId: "agent-1",
+    promptPath: "configuration/task-templates/template-1/task.md",
+    promptRevision: "test-revision",
     fallbackModels: [],
     title,
     description: "",

@@ -1,8 +1,8 @@
-// Task-template file mirroring (configuration/task-templates/*.json) and the
+// Task-template folder persistence and the
 // boot reconciler, split out of task-service.ts (issue #99).
 
-import { readdir, unlink } from "node:fs/promises";
-import { resolve } from "node:path";
+import { mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { dirname, relative, resolve } from "node:path";
 import {
   fallbackModelsSchema,
   recurringTaskScheduleSchema,
@@ -15,12 +15,13 @@ import { eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { now } from "../../db/ids.js";
 import { task_templates } from "../../db/schema/index.js";
-import { readConfigFile, writeConfigFileAtomic } from "../../lib/config-file.js";
+import { writeConfigFileAtomic } from "../../lib/config-file.js";
 import type { RuntimeConfig } from "../../lib/runtime-config.js";
 import type { WorkspaceReconciler } from "../../lib/workspace-reconciler.js";
+import { templatePromptPath } from "./template-prompt.js";
 import { computeNextRecurringRun } from "../task-scheduler-service.js";
 
-export const taskTemplateFileSchema = z.object({
+export const legacyTaskTemplateFileSchema = z.object({
   version: z.literal(1),
   id: z.string(),
   defaultAgentId: z.string(),
@@ -39,25 +40,50 @@ export const taskTemplateFileSchema = z.object({
   updatedAt: z.string().datetime(),
 });
 
+export const taskTemplateFileSchema = legacyTaskTemplateFileSchema
+  .omit({ description: true })
+  .extend({
+    version: z.literal(2),
+    promptPath: z.string(),
+  });
+
 export type TemplateFileContent = z.infer<typeof taskTemplateFileSchema>;
 
 export function templateFilePath(config: RuntimeConfig, id: string): string {
-  return resolve(config.paths.subdirectories.configuration, "task-templates", `${id}.json`);
+  return resolve(config.paths.subdirectories.configuration, "task-templates", id, "task.json");
 }
 
 export async function writeTemplateFile(
   config: RuntimeConfig,
-  content: Omit<TemplateFileContent, "version">,
+  content: Omit<TemplateFileContent, "version" | "promptPath">,
+  initialPrompt?: string,
 ): Promise<void> {
-  await writeConfigFileAtomic(templateFilePath(config, content.id), { version: 1, ...content });
+  const promptPath = relative(config.paths.workspaceDir, templatePromptPath(config, content.id))
+    .split("\\")
+    .join("/");
+  const settings = { version: 2, ...content, promptPath };
+  const path = templateFilePath(config, content.id);
+  if (initialPrompt === undefined) {
+    await writeConfigFileAtomic(path, settings);
+    return;
+  }
+  const root = dirname(dirname(path));
+  await mkdir(root, { recursive: true });
+  const staging = await mkdtemp(resolve(root, ".template-create-"));
+  try {
+    await writeFile(resolve(staging, "task.md"), initialPrompt, "utf8");
+    await writeConfigFileAtomic(resolve(staging, "task.json"), settings);
+    await rename(staging, dirname(path));
+  } finally {
+    await rm(staging, { recursive: true, force: true });
+  }
 }
 
 export async function deleteTemplateFile(config: RuntimeConfig, id: string): Promise<void> {
-  try {
-    await unlink(templateFilePath(config, id));
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
-  }
+  await rm(resolve(config.paths.subdirectories.configuration, "task-templates", id), {
+    recursive: true,
+    force: true,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -72,7 +98,9 @@ export const taskTemplateReconciler: WorkspaceReconciler = {
 
     let filenames: string[];
     try {
-      filenames = await readdir(dir);
+      filenames = (await readdir(dir, { withFileTypes: true }))
+        .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
+        .map((entry) => entry.name);
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") return;
       throw err;
@@ -80,12 +108,28 @@ export const taskTemplateReconciler: WorkspaceReconciler = {
 
     const fileIds = new Set<string>();
 
-    for (const filename of filenames.filter((f) => f.endsWith(".json"))) {
-      const path = resolve(dir, filename);
-      const data = await readConfigFile(path, taskTemplateFileSchema, logger);
-      if (!data) continue;
-
-      fileIds.add(data.id);
+    for (const filename of filenames) {
+      const path = resolve(dir, filename, "task.json");
+      fileIds.add(filename);
+      let data: z.infer<typeof taskTemplateFileSchema>;
+      try {
+        data = taskTemplateFileSchema.parse(JSON.parse(await readFile(path, "utf8")));
+        const expectedPath = relative(
+          config.paths.workspaceDir,
+          templatePromptPath(config, filename),
+        )
+          .split("\\")
+          .join("/");
+        if (data.id !== filename || data.promptPath !== expectedPath) {
+          throw new Error(`Invalid task template identity or promptPath in ${path}`);
+        }
+      } catch (error) {
+        logger.warn(
+          { err: error, path, templateId: filename },
+          "Skipping invalid task template settings",
+        );
+        continue;
+      }
 
       const enabled = data.enabled;
       const recurrence = data.recurrence;
@@ -96,7 +140,7 @@ export const taskTemplateReconciler: WorkspaceReconciler = {
         model: data.model ?? null,
         fallback_models: JSON.stringify(data.fallbackModels),
         title: data.title,
-        description: data.description,
+        prompt_path: templatePromptPath(config, data.id),
         todos_json: JSON.stringify(data.todos),
         status: enabled ? ("enabled" as const) : ("disabled" as const),
         recurrence_json: recurrence ? JSON.stringify(recurrence) : null,

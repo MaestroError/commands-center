@@ -408,6 +408,8 @@ function mockGlobalSearchSources() {
     {
       id: "template-1",
       defaultAgentId: "agent-1",
+      promptPath: "configuration/task-templates/template-1/task.md",
+      promptRevision: "test-revision",
       fallbackModels: [],
       title: "Release task template",
       description: "Repeatable release work.",

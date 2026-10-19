@@ -93,14 +93,14 @@ export const listSelfTaskTemplatesToolMetadata = {
 export const getSelfTaskTemplateToolMetadata = {
   name: "get_self_task_template",
   description:
-    "Read one of your own CommandsCenter task templates by id. A task template is a saved task configuration that can be instantiated into a runnable task on demand or on a schedule. Will fail if the template is assigned to a different specialist.",
+    "Read one of your own CommandsCenter task templates by id. A task template is a saved task configuration that can be instantiated into a runnable task on demand or on a schedule. Will fail if the template is assigned to a different specialist. Templates store the prompt in task.md; promptPath is workspace-relative. Use template tools for settings changes so they take effect immediately; direct task.json edits require restart. You may edit task.md directly for future tasks. When updating description through a tool, pass expectedPromptRevision from the latest template read to detect conflicting edits.",
   context: "both",
 } as const;
 
 export const createSelfTaskTemplateToolMetadata = {
   name: "create_self_task_template",
   description:
-    "Create a reusable CommandsCenter task template assigned to you as the default specialist. A template captures a task title, description, acceptance criteria, and optionally a recurrence schedule — making it suitable as a cron job for work that repeats on a fixed interval (daily, weekly, and so on). Use `todos` to propose acceptance criteria (the operator's definition of done): each is shown to the running agent as a criterion to satisfy, but only the operator can check them off during review. The template is always assigned to you; do not attempt to pass a defaultAgentId. Only available in task-run context.",
+    "Create a reusable CommandsCenter task template assigned to you as the default specialist. A template captures a task title, description, acceptance criteria, and optionally a recurrence schedule — making it suitable as a cron job for work that repeats on a fixed interval (daily, weekly, and so on). Use `todos` to propose acceptance criteria (the operator's definition of done): each is shown to the running agent as a criterion to satisfy, but only the operator can check them off during review. The template is always assigned to you; do not attempt to pass a defaultAgentId. Only available in task-run context. Templates store the prompt in task.md; promptPath is workspace-relative. Use template tools for settings changes so they take effect immediately; direct task.json edits require restart. You may edit task.md directly for future tasks. When updating description through a tool, pass expectedPromptRevision from the latest template read to detect conflicting edits.",
   context: "task_run",
 } as const;
 
@@ -114,7 +114,7 @@ export const runSelfTaskTemplateNowToolMetadata = {
 export const updateSelfTaskTemplateToolMetadata = {
   name: "update_self_task_template",
   description:
-    "Update one of your own CommandsCenter task templates without reassigning it to another specialist. Existing generated tasks keep their copied content. Only available in task-run context.",
+    "Update one of your own CommandsCenter task templates without reassigning it to another specialist. Existing generated tasks keep their copied content. Only available in task-run context. Templates store the prompt in task.md; promptPath is workspace-relative. Use template tools for settings changes so they take effect immediately; direct task.json edits require restart. You may edit task.md directly for future tasks. When updating description through a tool, pass expectedPromptRevision from the latest template read to detect conflicting edits.",
   context: "task_run",
 } as const;
 

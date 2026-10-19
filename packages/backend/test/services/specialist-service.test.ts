@@ -377,7 +377,9 @@ describe("createSpecialistService", () => {
             },
             {
               name: "create_task_template",
-              description: "Create a recurring CommandsCenter task template.",
+              description: expect.stringContaining(
+                "Create a recurring CommandsCenter task template.",
+              ),
               context: "both",
             },
             {
@@ -387,13 +389,14 @@ describe("createSpecialistService", () => {
             },
             {
               name: "get_task_template",
-              description: "Read a CommandsCenter task template by id.",
+              description: expect.stringContaining("Read a CommandsCenter task template by id."),
               context: "both",
             },
             {
               name: "update_task_template",
-              description:
+              description: expect.stringContaining(
                 "Update an existing CommandsCenter task template by id. Existing generated tasks keep their copied content.",
+              ),
               context: "both",
             },
             {

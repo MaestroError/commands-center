@@ -153,6 +153,8 @@ function makeTemplate(overrides: Partial<TaskTemplate> = {}): TaskTemplate {
   return {
     id: "template-1",
     defaultAgentId: "agent-1",
+    promptPath: "configuration/task-templates/template-1/task.md",
+    promptRevision: "test-revision",
     fallbackModels: [],
     title: "Weekly release notes",
     description: "Draft release notes.",

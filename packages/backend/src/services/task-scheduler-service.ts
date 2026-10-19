@@ -7,11 +7,11 @@ import {
   taskSchedulerStateSchema,
   type SchedulerStatus,
   type Task,
-  type TaskTemplate,
   type TaskRun,
   type TaskSchedulerState,
 } from "@cc/shared/schemas";
 
+import type { TaskTemplateMetadata } from "./task-service/mappers.js";
 import type { AppDb } from "../db/client.js";
 import { getSetting } from "../db/helpers.js";
 import { now } from "../db/ids.js";
@@ -25,10 +25,10 @@ const MAX_RECURRING_SEARCH_DAYS = 3660;
 const TASK_DONE_AUTO_ARCHIVE_WEEKS_SETTING = "taskDoneAutoArchiveWeeks";
 const zonedFormatters = new Map<string, Intl.DateTimeFormat>();
 
-type RecurringTaskSchedule = NonNullable<TaskTemplate["recurrence"]>;
+type RecurringTaskSchedule = NonNullable<TaskTemplateMetadata["recurrence"]>;
 type ScheduledEntry =
   | { kind: "task"; task: Task }
-  | { kind: "template"; template: TaskTemplate; task: Task };
+  | { kind: "template"; template: TaskTemplateMetadata; task: Task };
 
 type ZonedDateTimeParts = {
   year: number;
@@ -90,7 +90,7 @@ export function createTaskSchedulerService(options: {
     async reconcile(from = now()): Promise<TaskSchedulerState[]> {
       const [scheduledTasks, recurringTemplates] = await Promise.all([
         options.taskService.list({ status: "scheduled", includeArchived: false }),
-        options.taskService.listTemplates(),
+        options.taskService.listTemplateMetadata(),
       ]);
       const entries: ScheduledEntry[] = [
         ...scheduledTasks.map((task) => ({ kind: "task" as const, task })),
@@ -159,7 +159,7 @@ export function createTaskSchedulerService(options: {
         return;
       }
 
-      const template = await options.taskService.getTemplate(task.sourceTemplateId);
+      const template = await options.taskService.getTemplateMetadata(task.sourceTemplateId);
 
       if (!template) {
         return;
@@ -175,29 +175,14 @@ export function createTaskSchedulerService(options: {
   };
 
   async function runDueTask(taskId: string, dueAt: Date, at: Date): Promise<void> {
-    const task = await options.taskService.get(taskId);
-
-    if (task && task.templateId === task.id) {
-      const template = await options.taskService.getTemplate(task.id);
-
-      if (!template) {
-        await deleteState(taskId);
-        return;
-      }
-
+    const template = await options.taskService.getTemplateMetadata(taskId);
+    if (template) {
       await runDueTemplate(template, dueAt, at);
       return;
     }
-
+    const task = await options.taskService.get(taskId);
     if (!task) {
-      const template = await options.taskService.getTemplate(taskId);
-
-      if (!template) {
-        await deleteState(taskId);
-        return;
-      }
-
-      await runDueTemplate(template, dueAt, at);
+      await deleteState(taskId);
       return;
     }
 
@@ -225,7 +210,11 @@ export function createTaskSchedulerService(options: {
     }
   }
 
-  async function runDueTemplate(template: TaskTemplate, dueAt: Date, at: Date): Promise<void> {
+  async function runDueTemplate(
+    template: TaskTemplateMetadata,
+    dueAt: Date,
+    at: Date,
+  ): Promise<void> {
     if (!template.enabled || !template.recurrence) {
       await upsertState(
         templateSchedulerTask(template),
@@ -237,9 +226,10 @@ export function createTaskSchedulerService(options: {
 
     const scheduledAt = computeCatchUpOccurrence(template.recurrence, dueAt, at);
     const schedulerTask = templateSchedulerTask(template);
+    let generatedTask: Task | undefined;
 
     try {
-      const generatedTask = await options.taskService.createTaskFromTemplate(template.id, {
+      generatedTask = await options.taskService.createTaskFromTemplate(template.id, {
         occurrenceAt: scheduledAt.toISOString(),
         triggerSource: "scheduled",
       });
@@ -264,7 +254,13 @@ export function createTaskSchedulerService(options: {
         scheduledAt,
       );
     } catch (error) {
-      await createFailedScheduledRunForTemplate(template, scheduledAt, error);
+      options.logger?.error(
+        { err: error, templateId: template.id },
+        "Scheduled template run failed",
+      );
+      if (generatedTask) {
+        await createFailedScheduledRun(generatedTask, scheduledAt, error);
+      }
       await upsertState(
         schedulerTask,
         computeTemplateNextRunAtAfter(template, scheduledAt, at),
@@ -323,24 +319,6 @@ export function createTaskSchedulerService(options: {
     return typeof setting === "number" && Number.isFinite(setting) && setting >= 0
       ? setting
       : DEFAULT_DONE_AUTO_ARCHIVE_WEEKS;
-  }
-
-  async function createFailedScheduledRunForTemplate(
-    template: TaskTemplate,
-    scheduledAt: Date,
-    error: unknown,
-  ): Promise<void> {
-    const generatedTask = await options.taskService.createTaskFromTemplate(template.id, {
-      occurrenceAt: scheduledAt.toISOString(),
-      scheduledFor: scheduledAt.toISOString(),
-      triggerSource: "scheduled",
-    });
-
-    if (!generatedTask) {
-      return;
-    }
-
-    await createFailedScheduledRun(generatedTask, scheduledAt, error);
   }
 
   async function reconcileTaskState(
@@ -459,7 +437,7 @@ function computeNextRunAtAfter(task: Task, after: Date): Date | undefined {
 }
 
 function computeTemplateNextRunAtAfter(
-  template: TaskTemplate,
+  template: TaskTemplateMetadata,
   from: Date,
   after: Date,
 ): Date | undefined {
@@ -470,7 +448,7 @@ function computeTemplateNextRunAtAfter(
   return computeNextRecurringRun(template.recurrence, from, after);
 }
 
-function templateSchedulerTask(template: TaskTemplate): Task {
+function templateSchedulerTask(template: TaskTemplateMetadata): Task {
   return {
     id: template.id,
     agentId: template.defaultAgentId,
@@ -478,7 +456,7 @@ function templateSchedulerTask(template: TaskTemplate): Task {
     model: template.model,
     fallbackModels: template.fallbackModels,
     title: template.title,
-    description: template.description,
+    description: "",
     context: { attachments: [] },
     todos: template.todos,
     status: "backlog",

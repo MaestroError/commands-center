@@ -29,6 +29,7 @@ import {
   taskGenerationSourceLetter,
 } from "./mappers.js";
 import { readTemplateNextOccurrenceAt, writeTemplateFile } from "./template-files.js";
+import { readTemplatePrompt, templatePromptPath, writeTemplatePrompt } from "./template-prompt.js";
 import {
   assertMcpToolNameAvailable,
   parseMcpConfigOrDefault,
@@ -62,22 +63,24 @@ export function createTaskTemplateOps(ctx: TaskServiceContext, service: TaskServ
       const mcpConfig = resolveMcpConfig({ title: parsed.title, input: parsed.mcpConfig });
       assertMcpToolNameAvailable(mcpConfig.toolName, await loadTakenToolNames());
 
-      // File-first: persist to configuration/task-templates/<id>.json.
-      await writeTemplateFile(options.config, {
-        id,
-        defaultAgentId: parsed.defaultAgentId,
-        model: parsed.model ?? null,
-        fallbackModels,
-        title: parsed.title,
-        description: parsed.description,
-        todos,
-        recurrence,
-        permissionProfile: parsed.permissionProfile ?? null,
-        mcpConfig,
-        enabled,
-        createdAt: timestamp.toISOString(),
-        updatedAt: timestamp.toISOString(),
-      });
+      await writeTemplateFile(
+        options.config,
+        {
+          id,
+          defaultAgentId: parsed.defaultAgentId,
+          model: parsed.model ?? null,
+          fallbackModels,
+          title: parsed.title,
+          todos,
+          recurrence,
+          permissionProfile: parsed.permissionProfile ?? null,
+          mcpConfig,
+          enabled,
+          createdAt: timestamp.toISOString(),
+          updatedAt: timestamp.toISOString(),
+        },
+        parsed.description,
+      );
 
       const [row] = await options.db
         .insert(task_templates)
@@ -88,7 +91,7 @@ export function createTaskTemplateOps(ctx: TaskServiceContext, service: TaskServ
           model: parsed.model ?? null,
           fallback_models: JSON.stringify(fallbackModels),
           title: parsed.title,
-          description: parsed.description,
+          prompt_path: templatePromptPath(options.config, id),
           todos_json: JSON.stringify(todos),
           status: enabled ? "enabled" : "disabled",
           recurrence_json: recurrence ? JSON.stringify(recurrence) : null,
@@ -111,7 +114,7 @@ export function createTaskTemplateOps(ctx: TaskServiceContext, service: TaskServ
         throw new Error("Failed to create task template record.");
       }
 
-      return mapTaskTemplate(row);
+      return mapTaskTemplate(row, options.config);
     },
 
     async updateTemplate(
@@ -168,14 +171,20 @@ export function createTaskTemplateOps(ctx: TaskServiceContext, service: TaskServ
       });
       assertMcpToolNameAvailable(mcpConfig.toolName, await loadTakenToolNames(id));
 
-      // File-first: update configuration/task-templates/<id>.json.
+      if (parsed.description !== undefined) {
+        await writeTemplatePrompt(
+          options.config,
+          existing.prompt_path,
+          parsed.description,
+          parsed.expectedPromptRevision,
+        );
+      }
       await writeTemplateFile(options.config, {
         id,
         defaultAgentId,
         model,
         fallbackModels,
         title: nextTitle,
-        description: parsed.description ?? existing.description,
         todos,
         recurrence,
         permissionProfile:
@@ -196,7 +205,6 @@ export function createTaskTemplateOps(ctx: TaskServiceContext, service: TaskServ
           model,
           fallback_models: JSON.stringify(fallbackModels),
           title: parsed.title ?? existing.title,
-          description: parsed.description ?? existing.description,
           todos_json: JSON.stringify(todos),
           status: enabled ? "enabled" : "disabled",
           recurrence_json: recurrence ? JSON.stringify(recurrence) : null,
@@ -220,7 +228,7 @@ export function createTaskTemplateOps(ctx: TaskServiceContext, service: TaskServ
         await resetTemplateSchedulerState(id);
       }
 
-      return mapTaskTemplate(row);
+      return mapTaskTemplate(row, options.config);
     },
 
     async enableTemplate(id: string): Promise<TaskTemplate | undefined> {
@@ -244,6 +252,8 @@ export function createTaskTemplateOps(ctx: TaskServiceContext, service: TaskServ
       if (!template.enabled && !input.allowDisabled) {
         throw new Error("Task template is disabled.");
       }
+
+      const description = await readTemplatePrompt(options.config, template.prompt_path);
 
       const row = options.db.transaction((tx) => {
         const timestamp = now();
@@ -282,7 +292,7 @@ export function createTaskTemplateOps(ctx: TaskServiceContext, service: TaskServ
             model: template.model,
             fallback_models: template.fallback_models,
             title: generatedTitle,
-            description: template.description,
+            description,
             context: JSON.stringify(normalizeTaskContext(input.context)),
             todos_json: template.todos_json,
             status: scheduledFor ? "scheduled" : "backlog",

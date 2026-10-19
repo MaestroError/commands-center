@@ -47,7 +47,7 @@ const logger = { debug: () => {}, error: () => {} } as never;
 // ---------------------------------------------------------------------------
 
 describe("task template file persistence", () => {
-  it("createTemplate writes configuration/task-templates/<id>.json", async () => {
+  it("createTemplate writes configuration/task-templates/<id>/task.json", async () => {
     const testDb = await createTestDatabase();
     const service = createTaskService({ db: testDb.client.db, config: testDb.config });
 
@@ -61,7 +61,7 @@ describe("task template file persistence", () => {
         enabled: true,
       });
 
-      const filePath = join(configDir(testDb), "task-templates", `${template.id}.json`);
+      const filePath = join(configDir(testDb), "task-templates", template.id, "task.json");
       const file = JSON.parse(await readFile(filePath, "utf8")) as {
         version: number;
         id: string;
@@ -70,7 +70,7 @@ describe("task template file persistence", () => {
         todos: Array<{ content: string }>;
       };
 
-      expect(file.version).toBe(1);
+      expect(file.version).toBe(2);
       expect(file.id).toBe(template.id);
       expect(file.title).toBe("Daily standup");
       expect(file.enabled).toBe(true);
@@ -97,14 +97,16 @@ describe("task template file persistence", () => {
         description: "New desc",
       });
 
-      const filePath = join(configDir(testDb), "task-templates", `${template.id}.json`);
+      const filePath = join(configDir(testDb), "task-templates", template.id, "task.json");
       const file = JSON.parse(await readFile(filePath, "utf8")) as {
         title: string;
         description: string;
       };
 
       expect(file.title).toBe("Updated title");
-      expect(file.description).toBe("New desc");
+      expect(
+        await readFile(join(configDir(testDb), "task-templates", template.id, "task.md"), "utf8"),
+      ).toBe("New desc");
     } finally {
       await testDb.cleanup();
     }
@@ -125,7 +127,7 @@ describe("task template file persistence", () => {
 
       await service.disable(template.id);
 
-      const filePath = join(configDir(testDb), "task-templates", `${template.id}.json`);
+      const filePath = join(configDir(testDb), "task-templates", template.id, "task.json");
       const file = JSON.parse(await readFile(filePath, "utf8")) as { enabled: boolean };
       expect(file.enabled).toBe(false);
     } finally {
@@ -148,7 +150,7 @@ describe("task template file persistence", () => {
 
       await service.enable(template.id);
 
-      const filePath = join(configDir(testDb), "task-templates", `${template.id}.json`);
+      const filePath = join(configDir(testDb), "task-templates", template.id, "task.json");
       const file = JSON.parse(await readFile(filePath, "utf8")) as { enabled: boolean };
       expect(file.enabled).toBe(true);
     } finally {
@@ -170,7 +172,7 @@ describe("task template file persistence", () => {
 
       await service.delete(template.id);
 
-      const filePath = join(configDir(testDb), "task-templates", `${template.id}.json`);
+      const filePath = join(configDir(testDb), "task-templates", template.id, "task.json");
       await expect(readFile(filePath, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
     } finally {
       await testDb.cleanup();
@@ -230,11 +232,11 @@ describe("taskTemplateReconciler", () => {
 
       // Remove only the file, leaving the DB row — simulates a crash after file
       // deletion but before the DB soft-delete, or a manual file removal.
-      const { unlink } = await import("node:fs/promises");
+      const { rm } = await import("node:fs/promises");
       const { join: pathJoin } = await import("node:path");
-      await unlink(pathJoin(configDir(testDb), "task-templates", `${template.id}.json`));
+      await rm(pathJoin(configDir(testDb), "task-templates", template.id), { recursive: true });
 
-      expect(await service.listTemplates()).toHaveLength(1);
+      expect(await testDb.client.db.select().from(task_templates)).toHaveLength(1);
 
       await taskTemplateReconciler.reconcile({
         config: testDb.config,

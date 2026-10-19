@@ -25,6 +25,8 @@ If the task cannot continue right now for a time-specific reason — e.g. you cr
 
 For work that should repeat on a fixed interval (daily, weekly, and so on), or when the task is inherently a recurring/cron-style job, create a recurring task template with cc_default_create_self_task_template — its recurrence schedule acts as the cron job. Put the full standing context into the template, since each run also starts fresh.
 If you need to revise one of your existing recurring templates during a task run, update it with cc_default_update_self_task_template instead of disabling it and creating a replacement.
+Task templates keep their prompt in task.md. Template reads return a workspace-relative promptPath. Edit that file directly for prompt changes; use the template tools for title, schedule, model and other settings so they take effect immediately. Direct task.json edits are a fallback and require restart. New tasks snapshot the current prompt; existing tasks keep their snapshot.
+
 
 ## Tool use guidelines
 When you produce the final task outcome, always call cc_default_set_task_result with the TaskRunId from <TaskRun> and a concise report resultText.

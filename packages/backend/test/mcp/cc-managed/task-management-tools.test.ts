@@ -1,3 +1,6 @@
+import { readFile, writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
+import { taskTemplateSchema } from "@cc/shared/schemas";
 import { randomUUID } from "node:crypto";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -169,6 +172,41 @@ describe("tasks management tools", () => {
 
     const runNow = await byName("run_task_template_now").execute({ taskId: templateId }, ctx);
     expect(runNow.isError).toBeFalsy();
+  });
+
+  it("exposes the created template prompt file through MCP", async () => {
+    const { testDb, byName } = await setup();
+    await insertAgent(testDb.client.db, ctx.agentSlug);
+    const created = await byName("create_task_template").execute(
+      { title: "Files", description: "Prompt" },
+      ctx,
+    );
+    const template = taskTemplateSchema.parse(created.structuredContent);
+    expect(
+      await readFile(resolve(testDb.config.paths.workspaceDir, template.promptPath), "utf8"),
+    ).toBe("Prompt");
+  });
+
+  it("rejects a stale MCP prompt update after a direct file edit", async () => {
+    const { testDb, byName } = await setup();
+    await insertAgent(testDb.client.db, ctx.agentSlug);
+    const created = await byName("create_task_template").execute(
+      { title: "Files", description: "Prompt" },
+      ctx,
+    );
+    const template = taskTemplateSchema.parse(created.structuredContent);
+    await writeFile(
+      resolve(testDb.config.paths.workspaceDir, template.promptPath),
+      "Changed externally",
+    );
+    const updated = await byName("update_task_template").execute({
+      templateId: template.id,
+      input: { description: "Stale", expectedPromptRevision: template.promptRevision },
+    });
+    expect(updated.isError).toBe(true);
+    expect(
+      await readFile(resolve(testDb.config.paths.workspaceDir, template.promptPath), "utf8"),
+    ).toBe("Changed externally");
   });
 
   it("errors when a template id is missing or the template does not exist", async () => {

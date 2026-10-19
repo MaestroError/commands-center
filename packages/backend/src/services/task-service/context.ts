@@ -42,6 +42,7 @@ import {
   normalizeTaskStatus,
 } from "./status.js";
 import { writeTemplateFile } from "./template-files.js";
+import { parseMcpConfigOrDefault } from "./template-mcp-config.js";
 
 export const fallbackModelsOverrideSchema = z
   .array(z.string().trim().min(1))
@@ -195,14 +196,13 @@ export function createTaskServiceContext(
     const timestamp = now();
 
     if (existingTemplate) {
-      // File-first: update enabled flag in configuration/task-templates/<id>.json.
+      // File-first: update enabled flag in configuration/task-templates/<id>/task.json.
       await writeTemplateFile(options.config, {
         id,
         defaultAgentId: existingTemplate.default_agent_id ?? existingTemplate.agent_id,
         model: existingTemplate.model,
         fallbackModels: parseFallbackModels(existingTemplate.fallback_models),
         title: existingTemplate.title,
-        description: existingTemplate.description,
         todos: parseTaskTodos(existingTemplate.todos_json),
         recurrence: existingTemplate.recurrence_json
           ? recurringTaskScheduleSchema.parse(JSON.parse(existingTemplate.recurrence_json))
@@ -210,6 +210,10 @@ export function createTaskServiceContext(
         permissionProfile:
           parseOptional(existingTemplate.permission_profile_json, taskPermissionProfileSchema) ??
           null,
+        mcpConfig: parseMcpConfigOrDefault(
+          existingTemplate.mcp_config_json,
+          existingTemplate.title,
+        ),
         enabled,
         createdAt: existingTemplate.created_at.toISOString(),
         updatedAt: timestamp.toISOString(),
@@ -229,7 +233,7 @@ export function createTaskServiceContext(
         throw new Error("Failed to update task template enabled state.");
       }
 
-      return mapTemplateAsTask(row);
+      return mapTemplateAsTask(row, options.config);
     }
 
     if (!existing) {

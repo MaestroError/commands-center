@@ -215,7 +215,8 @@ export const getTaskRunToolMetadata = {
 
 export const createTaskTemplateToolMetadata = {
   name: "create_task_template",
-  description: "Create a recurring CommandsCenter task template.",
+  description:
+    "Create a recurring CommandsCenter task template. Templates store the prompt in task.md; promptPath is workspace-relative. Use template tools for settings changes so they take effect immediately; direct task.json edits require restart. You may edit task.md directly for future tasks. When updating description through a tool, pass expectedPromptRevision from the latest template read to detect conflicting edits.",
   context: "both",
 } as const;
 
@@ -227,14 +228,15 @@ export const listTaskTemplatesToolMetadata = {
 
 export const getTaskTemplateToolMetadata = {
   name: "get_task_template",
-  description: "Read a CommandsCenter task template by id.",
+  description:
+    "Read a CommandsCenter task template by id. Templates store the prompt in task.md; promptPath is workspace-relative. Use template tools for settings changes so they take effect immediately; direct task.json edits require restart. You may edit task.md directly for future tasks. When updating description through a tool, pass expectedPromptRevision from the latest template read to detect conflicting edits.",
   context: "both",
 } as const;
 
 export const updateTaskTemplateToolMetadata = {
   name: "update_task_template",
   description:
-    "Update an existing CommandsCenter task template by id. Existing generated tasks keep their copied content.",
+    "Update an existing CommandsCenter task template by id. Existing generated tasks keep their copied content. Templates store the prompt in task.md; promptPath is workspace-relative. Use template tools for settings changes so they take effect immediately; direct task.json edits require restart. You may edit task.md directly for future tasks. When updating description through a tool, pass expectedPromptRevision from the latest template read to detect conflicting edits.",
   context: "both",
 } as const;
 

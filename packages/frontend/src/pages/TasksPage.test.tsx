@@ -93,6 +93,8 @@ const generatedTask: Task = {
 const taskTemplate: TaskTemplate = {
   id: "template-1",
   defaultAgentId: "agent-1",
+  promptPath: "configuration/task-templates/template-1/task.md",
+  promptRevision: "test-revision",
   fallbackModels: [],
   title: "Weekly release notes",
   description: "Generate release note draft every week.",
@@ -1463,6 +1465,56 @@ describe("TasksPage", () => {
           body: expect.stringContaining('"title":"Updated template"'),
         }),
       );
+    });
+  });
+
+  it("links the template prompt to a new file-manager editor tab", async () => {
+    mockFetch({ templatesPayload: [taskTemplate] });
+    renderWithRouter(<TasksPage />, "/tasks/templates/template-1/edit");
+    const link = await screen.findByTestId("task-template-edit-file");
+    expect(link).toHaveAttribute("target", "_blank");
+    const href = new URL(link.getAttribute("href")!, "http://localhost");
+    expect(href.pathname).toBe("/files");
+    expect(href.searchParams.get("select")).toBe(taskTemplate.promptPath);
+    expect(href.searchParams.get("tabs")).toContain("task.md");
+  });
+
+  it("omits the unchanged prompt when saving template settings", async () => {
+    const fetchMock = mockFetch({ templatesPayload: [taskTemplate] });
+    renderWithRouter(<TasksPage />, "/tasks/templates/template-1/edit");
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText("Title"), " updated");
+    await user.click(screen.getByRole("button", { name: "Save template" }));
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(
+        ([url, init]) => url === "/api/tasks/templates/template-1" && init?.method === "PATCH",
+      );
+      expect(call).toBeDefined();
+      const body = call?.[1]?.body;
+      if (typeof body !== "string") throw new Error("Expected a JSON request body");
+      expect(JSON.parse(body)).not.toHaveProperty("description");
+    });
+  });
+
+  it("includes the baseline revision when saving an edited template prompt", async () => {
+    const fetchMock = mockFetch({ templatesPayload: [taskTemplate] });
+    renderWithRouter(<TasksPage />, "/tasks/templates/template-1/edit");
+    const user = userEvent.setup();
+    const prompt = await screen.findByRole("textbox", { name: "Task prompt" });
+    await user.clear(prompt);
+    await user.type(prompt, "Changed prompt");
+    await user.click(screen.getByRole("button", { name: "Save template" }));
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(
+        ([url, init]) => url === "/api/tasks/templates/template-1" && init?.method === "PATCH",
+      );
+      expect(call).toBeDefined();
+      const body = call?.[1]?.body;
+      if (typeof body !== "string") throw new Error("Expected a JSON request body");
+      expect(JSON.parse(body)).toMatchObject({
+        description: "Changed prompt",
+        expectedPromptRevision: taskTemplate.promptRevision,
+      });
     });
   });
 

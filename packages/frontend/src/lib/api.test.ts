@@ -1293,6 +1293,8 @@ function makeTaskSubtaskPayload(overrides: Record<string, unknown> = {}): Record
 
 function makeTaskTemplatePayload(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
+    promptPath: "configuration/task-templates/template-1/task.md",
+    promptRevision: "test-revision",
     id: "template-1",
     defaultAgentId: "agent-1",
     title: "Weekly release notes",

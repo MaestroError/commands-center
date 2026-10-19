@@ -1,6 +1,7 @@
 import { expect, test, type Page, type BrowserContext } from "@playwright/test";
 import {
   specialistSchema,
+  taskTemplateSchema,
   taskSchema,
   taskRunSchema,
   taskRunListSchema,
@@ -203,4 +204,31 @@ test("saves a tier from the task template editor", async ({ page }) => {
   );
   await page.getByTestId("task-template-save").click();
   expect(await (await saved).json()).toMatchObject({ model: "local-e2e/test#high" });
+});
+
+test("edits a template prompt as a file before generating a task", async ({ page, context }) => {
+  const task = await createTask(page, "File template specialist");
+  const template = taskTemplateSchema.parse(
+    await post(page, "/api/tasks/templates", {
+      defaultAgentId: task.agentId,
+      title: "File-backed template",
+      description: "Original prompt",
+    }),
+  );
+  await page.goto(`/tasks/templates/${template.id}/edit`);
+  const opened = context.waitForEvent("page");
+  await page.getByTestId("task-template-edit-file").click();
+  const files = await opened;
+  await expect(files).toHaveURL(/\/files\?.*tabs=/);
+  const editor = files.getByRole("textbox", { name: /Editor content/ });
+  await editor.focus();
+  await editor.press("Home");
+  await editor.press("Shift+End");
+  await editor.press("Backspace");
+  await files.keyboard.insertText("Edited in Monaco: use the latest file content.");
+  await files.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(files.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+  const generated = taskSchema.parse(await post(page, `/api/tasks/templates/${template.id}/tasks`));
+  expect(generated.description).toBe("Edited in Monaco: use the latest file content.");
+  await files.close();
 });
