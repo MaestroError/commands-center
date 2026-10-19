@@ -178,6 +178,8 @@ const session: TaskRunSessionInspection = {
 const recurringTemplate: TaskTemplate = {
   id: "template-1",
   defaultAgentId: "agent-1",
+  promptPath: "configuration/task-templates/template-1/task.md",
+  promptRevision: "test-revision",
   fallbackModels: [],
   title: "Weekly release notes",
   description: "Generate release note draft every week.",

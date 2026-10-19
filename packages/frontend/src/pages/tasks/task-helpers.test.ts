@@ -131,6 +131,8 @@ function templateWithMcpConfig(): TaskTemplate {
   return {
     id: "template-1",
     defaultAgentId: "agent-1",
+    promptPath: "configuration/task-templates/template-1/task.md",
+    promptRevision: "test-revision",
     fallbackModels: [],
     title: "Async report",
     description: "Create a report.",

@@ -79,6 +79,8 @@ describe("task board URLs", () => {
       withTaskTemplateBoardUrl(config, {
         id: "template-123",
         defaultAgentId: "agent-123",
+        promptPath: "configuration/task-templates/template-1/task.md",
+        promptRevision: "test-revision",
         fallbackModels: [],
         title: "Template",
         description: "",

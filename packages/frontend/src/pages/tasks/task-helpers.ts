@@ -462,7 +462,10 @@ export function formToTemplateInput(form: FormState): CreateTaskTemplateInput {
     model: form.model ? form.model : null,
     fallbackModels: normalizeTaskFallbackModels(form.fallbackModels, form.model),
     title: form.title,
-    description: buildTaskPromptText(form.prompt),
+    description:
+      form.prompt.selectedSkill || form.prompt.mentionedFiles.length > 0
+        ? buildTaskPromptText(form.prompt)
+        : form.prompt.text,
     todos: form.todosText
       .split("\n")
       .map((line) => line.trim())

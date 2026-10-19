@@ -1,5 +1,7 @@
 // Row mappers and JSON parse/normalize helpers, split out of task-service.ts (issue #99).
 
+import { relative } from "node:path";
+
 import {
   MAX_FALLBACK_MODELS,
   artifactSchema,
@@ -49,6 +51,7 @@ import {
   deriveTaskRunRuntimeState,
 } from "./status.js";
 import { parseMcpConfigOrDefault } from "./template-mcp-config.js";
+import { readTemplatePrompt, templatePromptRevision } from "./template-prompt.js";
 
 export function generatedTasksForTemplateFilter(templateId: string) {
   return and(
@@ -124,7 +127,11 @@ export function mapTask(row: typeof tasks.$inferSelect): Task {
   });
 }
 
-export function mapTemplateAsTask(row: typeof task_templates.$inferSelect): Task {
+export async function mapTemplateAsTask(
+  row: typeof task_templates.$inferSelect,
+  config: RuntimeConfig,
+): Promise<Task> {
+  const description = await readTemplatePrompt(config, row.prompt_path);
   return taskSchema.parse({
     id: row.id,
     templateId: row.id,
@@ -133,7 +140,7 @@ export function mapTemplateAsTask(row: typeof task_templates.$inferSelect): Task
     model: row.model ?? undefined,
     fallbackModels: parseFallbackModels(row.fallback_models),
     title: row.title,
-    description: row.description,
+    description,
     context: normalizeTaskContext(),
     todos: parseTaskTodos(row.todos_json),
     status: row.status,
@@ -147,14 +154,20 @@ export function mapTemplateAsTask(row: typeof task_templates.$inferSelect): Task
   });
 }
 
-export function mapTaskTemplate(row: typeof task_templates.$inferSelect): TaskTemplate {
+export async function mapTaskTemplate(
+  row: typeof task_templates.$inferSelect,
+  config: RuntimeConfig,
+): Promise<TaskTemplate> {
+  const description = await readTemplatePrompt(config, row.prompt_path);
   return taskTemplateSchema.parse({
     id: row.id,
     defaultAgentId: row.default_agent_id ?? row.agent_id,
     model: row.model ?? undefined,
     fallbackModels: parseFallbackModels(row.fallback_models),
     title: row.title,
-    description: row.description,
+    description,
+    promptPath: relative(config.paths.workspaceDir, row.prompt_path).split("\\").join("/"),
+    promptRevision: templatePromptRevision(description),
     todos: parseTaskTodos(row.todos_json),
     recurrence: row.recurrence_json
       ? recurringTaskScheduleSchema.parse(JSON.parse(row.recurrence_json))

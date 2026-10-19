@@ -42,6 +42,27 @@ CC starts the pinned `@opencode/sdk` automatically. No separate `opencode serve`
 process or engine port is needed. Restarting the engine reloads configuration and
 secrets in the embedded host.
 
+## Task template files
+
+Each template lives in `configuration/task-templates/<id>/`:
+
+- `task.md` contains the prompt. Edit it directly or use **Edit as file** in the
+  template editor to open Monaco in a new tab. The next generated task reads the
+  current file; existing tasks retain their snapshots.
+- `task.json` holds settings and a workspace-relative `promptPath`. Change settings
+  through the UI or MCP template tools for immediate effect. Direct JSON edits
+  are supported as a fallback and take effect after restarting CC.
+
+SQLite stores template settings and the resolved prompt path, not the template
+prompt. Template API/tool responses include `promptPath` and `promptRevision`;
+pass that revision as `expectedPromptRevision` when updating a prompt to reject
+stale edits. Settings-only updates leave Markdown untouched.
+
+Existing JSON templates are migrated automatically on startup, retaining their
+IDs. Extra files in a template folder are preserved by settings updates but are
+not automatically executed or included in task context. Deleting a template
+removes its folder and its contents.
+
 ## Model tiers
 
 Chat, tasks and task templates expose a **Model tier** dropdown beside the model

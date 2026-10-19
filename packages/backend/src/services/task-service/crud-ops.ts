@@ -133,7 +133,7 @@ export function createTaskCrudOps(ctx: TaskServiceContext, service: TaskServiceR
         return undefined;
       }
 
-      const task = mapTemplateAsTask(existingTemplate);
+      const task = await mapTemplateAsTask(existingTemplate, options.config);
 
       return service.create({
         agentId: task.agentId,
@@ -382,7 +382,7 @@ export function createTaskCrudOps(ctx: TaskServiceContext, service: TaskServiceR
       const timestamp = now();
 
       if (existingTemplate) {
-        // File-first: remove configuration/task-templates/<id>.json before soft-delete.
+        // File-first: remove configuration/task-templates/<id>/ before soft-delete.
         await deleteTemplateFile(options.config, id);
 
         return Promise.resolve(

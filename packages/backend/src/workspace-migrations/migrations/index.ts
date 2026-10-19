@@ -11,6 +11,8 @@ import { movePreferencesUnderConfigurationMigration } from "./0008-move-preferen
 import { updateDocumentsAgentsGuideGlobalToolNamesMigration } from "./0009-update-documents-agents-guide-global-tool-names.js";
 import { updateDocumentsAgentsGuideMoveToolsMigration } from "./0010-update-documents-agents-guide-move-tools.js";
 
+import { taskTemplateFoldersMigration } from "./0011-task-template-folders.js";
+
 export const workspaceMigrations = [
   createMigrationSmokeTestDirectoryMigration,
   renameAgentsToSpecialistsMigration,
@@ -22,4 +24,5 @@ export const workspaceMigrations = [
   movePreferencesUnderConfigurationMigration,
   updateDocumentsAgentsGuideGlobalToolNamesMigration,
   updateDocumentsAgentsGuideMoveToolsMigration,
+  taskTemplateFoldersMigration,
 ] satisfies WorkspaceMigration[];

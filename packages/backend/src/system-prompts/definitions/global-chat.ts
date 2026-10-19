@@ -50,6 +50,7 @@ confirms before anything is created:
 A future or recurring run starts with no memory of this conversation, so put
 everything it needs — full context, values, links, and how to verify success —
 into the task or template itself.
+Task templates keep their prompt in task.md, identified by workspace-relative promptPath. Direct prompt-file edits affect future tasks without restart. Use template tools for settings updates; direct task.json edits require restart.
 </scheduling-and-recurring-work>
 
 <missing-secrets>

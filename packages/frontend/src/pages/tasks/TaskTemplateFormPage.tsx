@@ -8,6 +8,7 @@ import { TaskPromptComposer } from "@/components/tasks/TaskPromptComposer";
 import { formatRepeatSummary, formatToken } from "@/components/tasks/task-format";
 import { useSpecialistCatalogQuery, useSpecialistsQuery } from "@/hooks/use-specialists-query";
 import { useTaskMutations, useTaskTemplateQuery } from "@/hooks/use-tasks-query";
+import { buildFileManagerHref } from "@/lib/file-manager-href";
 import type { CreateTaskTemplateInput, Specialist, TaskTemplate } from "@cc/shared/schemas";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
@@ -49,28 +50,41 @@ export function TaskTemplateForm(props: {
   submitLabel: string;
   title: string;
   onCancel: () => void;
-  onSubmit: (input: CreateTaskTemplateInput) => void;
+  onSubmit: (
+    input: CreateTaskTemplateInput,
+    promptUpdate?: { expectedPromptRevision: string },
+  ) => void;
 }) {
   const [form, setForm] = useState<FormState>(() =>
     templateToForm(props.initialTemplate, props.prefill),
   );
+  const [baseline, setBaseline] = useState(props.initialTemplate);
+  const [dirty, setDirty] = useState(false);
   const catalogQuery = useSpecialistCatalogQuery();
   const selectedAgent = props.agents.find((agent) => agent.id === form.agentId);
   const templateSkills = useTaskComposerSkills(selectedAgent, catalogQuery.data);
   const timezones = useMemo(() => listTimezones(), []);
 
   useEffect(() => {
-    if (props.initialTemplate) {
+    if (props.initialTemplate && (!dirty || props.initialTemplate.id !== baseline?.id)) {
       setForm(templateToForm(props.initialTemplate));
+      setBaseline(props.initialTemplate);
+      setDirty(false);
     }
-  }, [props.initialTemplate]);
+  }, [props.initialTemplate, dirty, baseline?.id]);
 
   return (
     <form
       className="cc-panel grid gap-4 p-5"
       onSubmit={(event) => {
         event.preventDefault();
-        props.onSubmit(formToTemplateInput(form));
+        const promptChanged =
+          baseline &&
+          JSON.stringify(form.prompt) !== JSON.stringify(templateToForm(baseline).prompt);
+        props.onSubmit(
+          formToTemplateInput(form),
+          promptChanged ? { expectedPromptRevision: baseline.promptRevision } : undefined,
+        );
       }}
     >
       <div>
@@ -124,6 +138,21 @@ export function TaskTemplateForm(props: {
             Use # to mention workspace files and / to pick a skill available to the selected agent.
           </p>
         </div>
+        {baseline ? (
+          <a
+            className={buttonVariants({ variant: "secondary" })}
+            data-testid="task-template-edit-file"
+            href={buildFileManagerHref({ path: baseline.promptPath, openInEditor: true })}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Edit as file
+          </a>
+        ) : (
+          <p className="text-xs text-text-secondary">
+            Save the template to edit its prompt as a file.
+          </p>
+        )}
         <TaskPromptComposer
           agentId={form.agentId || undefined}
           disabled={!form.agentId}
@@ -280,6 +309,7 @@ export function TaskTemplateForm(props: {
   );
 
   function updateForm(patch: Partial<FormState>) {
+    setDirty(true);
     setForm((current) => ({ ...current, ...patch }));
   }
 }
@@ -504,9 +534,13 @@ export function TaskTemplateFormPage(props: { mode?: "create" | "edit" } = {}) {
           submitLabel="Save template"
           title="Edit task template"
           onCancel={() => void navigate(`/tasks?view=templates&template=${template.id}`)}
-          onSubmit={(input) => {
+          onSubmit={(input, promptUpdate) => {
+            const { description, ...settings } = input;
             mutations.updateTemplate.mutate(
-              { id: template.id, input },
+              {
+                id: template.id,
+                input: { ...settings, ...(promptUpdate ? { description, ...promptUpdate } : {}) },
+              },
               {
                 onSuccess: (updated) =>
                   void navigate(`/tasks?view=templates&template=${updated.id}`),

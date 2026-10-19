@@ -124,14 +124,14 @@ export const draftSelfTaskUpdateToolMetadata = {
 export const draftSelfTaskTemplateToolMetadata = {
   name: "draft_self_task_template",
   description:
-    "Open an operator review form to create a reusable CommandsCenter task template assigned to you. A template captures a task title, description, and acceptance criteria, and can optionally carry a recurrence schedule to act as a cron job that runs on a fixed interval. Use `todos` to propose acceptance criteria (the operator's definition of done): each is shown to the running agent as a criterion to satisfy, but only the operator can check them off during review. Execution pauses until the operator approves. Use this only in chat, only when you want to set up a persistent, reusable task definition for yourself and need operator review before creation. Do not attempt to pass a defaultAgentId — the template is always assigned to you.",
+    "Open an operator review form to create a reusable CommandsCenter task template assigned to you. A template captures a task title, description, and acceptance criteria, and can optionally carry a recurrence schedule to act as a cron job that runs on a fixed interval. Use `todos` to propose acceptance criteria (the operator's definition of done): each is shown to the running agent as a criterion to satisfy, but only the operator can check them off during review. Execution pauses until the operator approves. Use this only in chat, only when you want to set up a persistent, reusable task definition for yourself and need operator review before creation. Do not attempt to pass a defaultAgentId — the template is always assigned to you. Templates store the prompt in task.md; promptPath is workspace-relative. Use template tools for settings changes so they take effect immediately; direct task.json edits require restart. You may edit task.md directly for future tasks. When updating description through a tool, pass expectedPromptRevision from the latest template read to detect conflicting edits.",
   context: "chat",
 } as const;
 
 export const draftSelfTaskTemplateUpdateToolMetadata = {
   name: "draft_self_task_template_update",
   description:
-    "Open an operator review form to edit one of your own CommandsCenter task templates. Execution pauses until the operator reviews and confirms the proposed changes. Use this only in chat, only when you want to modify a template assigned to you and need operator approval before the update is saved. Will fail if the specified template belongs to a different specialist. Do not call this to update another specialist's template.",
+    "Open an operator review form to edit one of your own CommandsCenter task templates. Execution pauses until the operator reviews and confirms the proposed changes. Use this only in chat, only when you want to modify a template assigned to you and need operator approval before the update is saved. Will fail if the specified template belongs to a different specialist. Do not call this to update another specialist's template. Templates store the prompt in task.md; promptPath is workspace-relative. Use template tools for settings changes so they take effect immediately; direct task.json edits require restart. You may edit task.md directly for future tasks. When updating description through a tool, pass expectedPromptRevision from the latest template read to detect conflicting edits.",
   context: "chat",
 } as const;
 
@@ -436,7 +436,13 @@ export function createSelfTaskLiveToolDefinitions(options: SelfTaskLiveToolOptio
             update["title"] = reviewed["title"];
           }
           if (presentedFields.has("description") && "description" in reviewed) {
-            update["description"] = emptyToUndefined(reviewed["description"]) ?? "";
+            const description = emptyToUndefined(reviewed["description"]) ?? "";
+            if (description !== current.description) {
+              update["description"] = description;
+              update["expectedPromptRevision"] = current.promptRevision;
+            } else {
+              delete update["description"];
+            }
           }
 
           const template = await options.taskService.updateTemplate(
