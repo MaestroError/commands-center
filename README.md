@@ -116,7 +116,11 @@ When CC creates a new workspace directory, it seeds a `.gitignore` that excludes
 credentials, runtime state, private documents and memory, specialist playgrounds,
 generated engine/browser state, dependencies, caches and build output. Portable
 configuration, task templates, skills and custom tools remain trackable unless
-they match an ignore rule. Review files before publishing a workspace, especially
+they match an ignore rule. Root and specialist `opencode.jsonc` files are ignored
+because generated MCP headers can contain credentials. Specialist-local
+`.opencode/skills` and `.opencode/tools` stay trackable; only generated `cc-tools`
+wrappers are excluded within `.opencode`. These rules also cover archived specialists.
+Review files before publishing a workspace, especially
 configuration containing inline credentials or custom data locations.
 
 Existing directories (even empty ones) are left alone. After initialization, the

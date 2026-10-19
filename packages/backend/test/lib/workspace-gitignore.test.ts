@@ -69,6 +69,9 @@ describe("initial workspace gitignore", () => {
       "tmp/upload.txt",
       "update-history.json",
       "configuration/secrets.json",
+      "opencode.jsonc",
+      "specialists/test/opencode.jsonc",
+      "specialists/.archived/old/opencode.jsonc",
       "Documents/private.md",
       "specialists/test/Documents/private.md",
       "specialists/test/memory/notes.md",
@@ -78,6 +81,7 @@ describe("initial workspace gitignore", () => {
       "specialists/test/nested/playground/file.md",
       "specialists/.archived/old/memory/private.md",
       "specialists/test/.opencode/cc-tools/tool.ts",
+      "specialists/.archived/old/.opencode/cc-tools/tool.ts",
       "specialists/test/.playwright-mcp/state.json",
       ".env",
       ".env.local",
@@ -114,6 +118,10 @@ describe("initial workspace gitignore", () => {
       "custom-tools/example/tool.ts",
       "specialists/test/AGENTS.md",
       "specialists/test/specialist.json",
+      "specialists/test/.opencode/skills/local/SKILL.md",
+      "specialists/test/.opencode/tools/local.ts",
+      "specialists/.archived/old/.opencode/skills/local/SKILL.md",
+      "specialists/.archived/old/.opencode/tools/local.ts",
       "README.md",
     ];
     const result = await execFileAsync("git", [

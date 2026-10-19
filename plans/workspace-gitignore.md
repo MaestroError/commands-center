@@ -25,3 +25,12 @@ No git initialization, index changes, or changes to live workspace files.
 - All package typechecks, targeted ESLint --fix and formatting checks passed.
 - Real Git checks verify ignored private/runtime paths and trackable portable assets.
 - No migration, existing workspace updates, commits or pushes performed.
+
+## PR review follow-up
+
+- [x] Ignore root and specialist opencode.jsonc files, including archived specialists.
+- [x] Ignore only generated .opencode/cc-tools wrappers; retain local skills/tools.
+- [x] Extend real Git regression checks, update documentation, and run lint/tests.
+
+Review regression: the expanded Git check failed before the rule changes and
+passed afterward. All 8 bootstrap/ignore tests, ESLint and formatting passed.

@@ -7,6 +7,8 @@ export const DEFAULT_WORKSPACE_GITIGNORE = `# CommandsCenter runtime state and c
 /tmp/
 /update-history.json
 /configuration/secrets.json
+/opencode.jsonc
+/specialists/**/opencode.jsonc
 
 # Operator and specialist content that may contain private context
 /Documents/
@@ -16,7 +18,7 @@ export const DEFAULT_WORKSPACE_GITIGNORE = `# CommandsCenter runtime state and c
 /specialists/**/playground/
 
 # Generated per-specialist OpenCode and browser state
-/specialists/**/.opencode/
+/specialists/**/.opencode/cc-tools/
 /specialists/**/.playwright-mcp/
 
 # Local secrets
