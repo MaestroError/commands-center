@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { BadRequestError, ConflictError } from "../../lib/api-error.js";
+import { withFileMutationLock } from "../../lib/file-mutation-lock.js";
 import type { RuntimeConfig } from "../../lib/runtime-config.js";
 
 export function templatePromptPath(config: RuntimeConfig, id: string): string {
@@ -48,19 +49,21 @@ export async function writeTemplatePrompt(
   if (local === ".." || local.startsWith(`..${sep}`) || isAbsolute(local)) {
     throw new BadRequestError("Template prompt must be inside the workspace.");
   }
-  if (expectedRevision !== undefined) {
-    const current = await readTemplatePrompt(config, path);
-    if (templatePromptRevision(current) !== expectedRevision) {
-      throw new ConflictError(
-        "The template prompt changed on disk. Reload it before saving your edits.",
-      );
+  await withFileMutationLock(path, async () => {
+    if (expectedRevision !== undefined) {
+      const current = await readTemplatePrompt(config, path);
+      if (templatePromptRevision(current) !== expectedRevision) {
+        throw new ConflictError(
+          "The template prompt changed on disk. Reload it before saving your edits.",
+        );
+      }
     }
-  }
-  const temporary = `${path}.${randomUUID()}.tmp`;
-  try {
-    await writeFile(temporary, content, "utf8");
-    await rename(temporary, path);
-  } finally {
-    await rm(temporary, { force: true });
-  }
+    const temporary = `${path}.${randomUUID()}.tmp`;
+    try {
+      await writeFile(temporary, content, "utf8");
+      await rename(temporary, path);
+    } finally {
+      await rm(temporary, { force: true });
+    }
+  });
 }

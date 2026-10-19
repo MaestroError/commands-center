@@ -1,3 +1,5 @@
+import { rm, mkdir } from "node:fs/promises";
+import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import type { AppDb } from "../../src/db/client";
@@ -760,6 +762,82 @@ describe("createTaskSchedulerService", () => {
       });
     } finally {
       schedulerService.stop();
+      await testDb.cleanup();
+    }
+  });
+
+  it.each(["missing", "unreadable", "disabled"])(
+    "continues healthy due work beside a template with a %s prompt",
+    async (failure) => {
+      const testDb = await createTestDatabase();
+      const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+      const executionService = createTaskExecutionService({ taskService });
+      const scheduler = createTaskSchedulerService({
+        db: testDb.client.db,
+        taskService,
+        executionService,
+      });
+      try {
+        const agent = await insertAgent(testDb.client.db);
+        const recurrence = {
+          mode: "recurring" as const,
+          anchorAt: "2026-06-01T09:00:00.000Z",
+          timezone: "UTC",
+          repeatRule: { frequency: "hour" as const, interval: 1 },
+        };
+        const broken = await taskService.createTemplate({
+          defaultAgentId: agent.id,
+          title: "Broken prompt",
+          enabled: failure !== "disabled",
+          recurrence,
+        });
+        const healthy = await taskService.createTemplate({
+          defaultAgentId: agent.id,
+          title: "Healthy prompt",
+          description: "Healthy content",
+          recurrence,
+        });
+        await scheduler.reconcile(new Date("2026-06-01T08:00:00.000Z"));
+        const path = resolve(testDb.config.paths.workspaceDir, broken.promptPath);
+        await rm(path);
+        if (failure === "unreadable") await mkdir(path);
+        await scheduler.tick(new Date("2026-06-01T10:30:00.000Z"));
+        expect(await taskService.listTemplateTasks(healthy.id)).toHaveLength(1);
+      } finally {
+        scheduler.stop();
+        await testDb.cleanup();
+      }
+    },
+  );
+
+  it("records an actionable scheduler error when a due prompt is missing", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const scheduler = createTaskSchedulerService({
+      db: testDb.client.db,
+      taskService,
+      executionService: createTaskExecutionService({ taskService }),
+    });
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const template = await taskService.createTemplate({
+        defaultAgentId: agent.id,
+        title: "Missing prompt",
+        recurrence: {
+          mode: "recurring",
+          anchorAt: "2026-06-01T09:00:00.000Z",
+          timezone: "UTC",
+          repeatRule: { frequency: "hour", interval: 1 },
+        },
+      });
+      await scheduler.reconcile(new Date("2026-06-01T08:00:00.000Z"));
+      await rm(resolve(testDb.config.paths.workspaceDir, template.promptPath));
+      await scheduler.tick(new Date("2026-06-01T10:30:00.000Z"));
+      const state = (await scheduler.listStates()).find((entry) => entry.taskId === template.id);
+      expect(state?.lastError).toContain("Template prompt is missing");
+      expect(state?.nextRunAt).toBe("2026-06-01T11:00:00.000Z");
+    } finally {
+      scheduler.stop();
       await testDb.cleanup();
     }
   });

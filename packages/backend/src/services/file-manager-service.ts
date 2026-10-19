@@ -2,6 +2,7 @@ import { access, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "n
 import { basename, dirname, extname, relative, resolve, sep } from "node:path";
 import { createHash } from "node:crypto";
 
+import { withFileMutationLock } from "../lib/file-mutation-lock.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from "../lib/api-error.js";
 import type {
@@ -454,50 +455,52 @@ export function createFileManagerService(options: { config: RuntimeConfig }) {
       }
 
       const absolutePath = resolveEntryPath(root, input.path);
-      const stats = await statOrNotFound(absolutePath);
+      return withFileMutationLock(absolutePath, async () => {
+        const stats = await statOrNotFound(absolutePath);
 
-      if (!stats.isFile()) {
-        throw new BadRequestError("Selected entry is not a file.");
-      }
-
-      const expected = input.expectedRevision;
-      const fastMatch =
-        Math.trunc(stats.mtimeMs) === Math.trunc(expected.mtimeMs) &&
-        stats.size === expected.sizeBytes;
-
-      if (!fastMatch) {
-        const currentBuffer = await readFile(absolutePath);
-        const currentSha = hashBuffer(currentBuffer);
-
-        if (!expected.sha256 || expected.sha256 !== currentSha) {
-          throw new ConflictError(
-            "The file changed on disk after it was opened. Reload to see the latest contents or overwrite to keep your changes.",
-            {
-              currentRevision: {
-                mtimeMs: stats.mtimeMs,
-                sizeBytes: stats.size,
-                sha256: currentSha,
-              } satisfies FileManagerFileRevision,
-            },
-          );
+        if (!stats.isFile()) {
+          throw new BadRequestError("Selected entry is not a file.");
         }
-      }
 
-      const data =
-        input.encoding === "base64" ? Buffer.from(input.content, "base64") : input.content;
-      await writeFile(absolutePath, data);
+        const expected = input.expectedRevision;
+        const fastMatch =
+          Math.trunc(stats.mtimeMs) === Math.trunc(expected.mtimeMs) &&
+          stats.size === expected.sizeBytes;
 
-      const updatedStats = await stat(absolutePath);
-      const updatedBuffer = await readFile(absolutePath);
+        if (expected.sha256 || !fastMatch) {
+          const currentBuffer = await readFile(absolutePath);
+          const currentSha = hashBuffer(currentBuffer);
 
-      return {
-        path: toRelativePath(root, absolutePath),
-        revision: {
-          mtimeMs: updatedStats.mtimeMs,
-          sizeBytes: updatedStats.size,
-          sha256: hashBuffer(updatedBuffer),
-        },
-      };
+          if (!expected.sha256 || expected.sha256 !== currentSha) {
+            throw new ConflictError(
+              "The file changed on disk after it was opened. Reload to see the latest contents or overwrite to keep your changes.",
+              {
+                currentRevision: {
+                  mtimeMs: stats.mtimeMs,
+                  sizeBytes: stats.size,
+                  sha256: currentSha,
+                } satisfies FileManagerFileRevision,
+              },
+            );
+          }
+        }
+
+        const data =
+          input.encoding === "base64" ? Buffer.from(input.content, "base64") : input.content;
+        await writeFile(absolutePath, data);
+
+        const updatedStats = await stat(absolutePath);
+        const updatedBuffer = await readFile(absolutePath);
+
+        return {
+          path: toRelativePath(root, absolutePath),
+          revision: {
+            mtimeMs: updatedStats.mtimeMs,
+            sizeBytes: updatedStats.size,
+            sha256: hashBuffer(updatedBuffer),
+          },
+        };
+      });
     },
 
     async uploadEntries(

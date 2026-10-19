@@ -1,4 +1,4 @@
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, stat, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -169,6 +169,31 @@ describe("file-manager-service writeFileContent", () => {
           currentRevision: expect.objectContaining({ sizeBytes: "external-change".length }),
         }),
       });
+    } finally {
+      await ctx.testDb.cleanup();
+    }
+  });
+
+  it("rejects changed content even when size and modification time match", async () => {
+    const ctx = await setupService();
+    try {
+      const path = join(ctx.testDb.config.paths.workspaceDir, "same-size.md");
+      await writeFile(path, "first");
+      const initial = await ctx.service.readFileContent(ctx.workspaceRoot, "same-size.md");
+      await writeFile(path, "other");
+      await utimes(path, new Date(), new Date(initial.revision.mtimeMs));
+      await expect(
+        ctx.service.writeFileContent(
+          ctx.workspaceRoot,
+          {
+            root: "workspace",
+            path: "same-size.md",
+            content: "stale",
+            expectedRevision: initial.revision,
+          },
+          { allowHostFilesystemEdits: false },
+        ),
+      ).rejects.toMatchObject({ statusCode: 409 });
     } finally {
       await ctx.testDb.cleanup();
     }

@@ -93,7 +93,7 @@ export async function deleteTemplateFile(config: RuntimeConfig, id: string): Pro
 export const taskTemplateReconciler: WorkspaceReconciler = {
   name: "task-templates",
 
-  async reconcile({ config, db }) {
+  async reconcile({ config, db, logger }) {
     const dir = resolve(config.paths.subdirectories.configuration, "task-templates");
 
     let filenames: string[];
@@ -110,15 +110,26 @@ export const taskTemplateReconciler: WorkspaceReconciler = {
 
     for (const filename of filenames) {
       const path = resolve(dir, filename, "task.json");
-      const data = taskTemplateFileSchema.parse(JSON.parse(await readFile(path, "utf8")));
-      const expectedPath = relative(config.paths.workspaceDir, templatePromptPath(config, filename))
-        .split("\\")
-        .join("/");
-      if (data.id !== filename || data.promptPath !== expectedPath) {
-        throw new Error(`Invalid task template identity or promptPath in ${path}`);
+      fileIds.add(filename);
+      let data: z.infer<typeof taskTemplateFileSchema>;
+      try {
+        data = taskTemplateFileSchema.parse(JSON.parse(await readFile(path, "utf8")));
+        const expectedPath = relative(
+          config.paths.workspaceDir,
+          templatePromptPath(config, filename),
+        )
+          .split("\\")
+          .join("/");
+        if (data.id !== filename || data.promptPath !== expectedPath) {
+          throw new Error(`Invalid task template identity or promptPath in ${path}`);
+        }
+      } catch (error) {
+        logger.warn(
+          { err: error, path, templateId: filename },
+          "Skipping invalid task template settings",
+        );
+        continue;
       }
-
-      fileIds.add(data.id);
 
       const enabled = data.enabled;
       const recurrence = data.recurrence;

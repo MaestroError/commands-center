@@ -32,6 +32,8 @@ import {
   mapTaskRunsWithReplyState,
   mapTaskSubtask,
   mapTaskTemplate,
+  mapTaskTemplateMetadata,
+  type TaskTemplateMetadata,
   mapTemplateAsTask,
 } from "./mappers.js";
 import { deriveSubtaskStatus } from "./status.js";
@@ -107,6 +109,18 @@ export function createTaskReadOps(ctx: TaskServiceContext, service: TaskServiceR
       return taskTemplateListSchema.parse(
         await Promise.all(rows.map((row) => mapTaskTemplate(row, options.config))),
       );
+    },
+
+    async listTemplateMetadata(): Promise<TaskTemplateMetadata[]> {
+      const rows = await options.db.query.task_templates.findMany({
+        where: (table, operators) => operators.isNull(table.deleted_at),
+      });
+      return rows.map((row) => mapTaskTemplateMetadata(row, options.config));
+    },
+
+    async getTemplateMetadata(id: string): Promise<TaskTemplateMetadata | undefined> {
+      const row = await getTemplateRow(id);
+      return row ? mapTaskTemplateMetadata(row, options.config) : undefined;
     },
 
     async getTemplate(id: string): Promise<TaskTemplate | undefined> {

@@ -6,6 +6,11 @@ import { eq } from "drizzle-orm";
 import pino from "pino";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { agents, task_templates } from "../../src/db/schema/index.js";
+import {
+  createFileManagerService,
+  resolveFileManagerRoot,
+} from "../../src/services/file-manager-service.js";
+import { ConflictError } from "../../src/lib/api-error.js";
 import { createTaskService } from "../../src/services/task-service.js";
 import {
   taskTemplateReconciler,
@@ -112,6 +117,51 @@ describe("file-backed task template prompts", () => {
     expect((await service.getTemplate(template.id))?.description).toBe("New prompt");
   });
 
+  it("rejects one of two concurrent saves using the same prompt revision", async () => {
+    const template = await create();
+    const results = await Promise.allSettled(
+      ["First edit", "Second edit"].map((description) =>
+        service.updateTemplate(template.id, {
+          description,
+          expectedPromptRevision: template.promptRevision,
+        }),
+      ),
+    );
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(results.find((result) => result.status === "rejected")).toMatchObject({
+      reason: expect.any(ConflictError),
+    });
+    const winner = results.find((result) => result.status === "fulfilled");
+    expect((await service.getTemplate(template.id))?.description).toBe(winner?.value?.description);
+  });
+
+  it("coordinates concurrent file-editor and template saves", async () => {
+    const template = await create();
+    const files = createFileManagerService({ config: database.config });
+    const root = resolveFileManagerRoot({ kind: "workspace", config: database.config });
+    const opened = await files.readFileContent(root, template.promptPath);
+    const results = await Promise.allSettled([
+      files.writeFileContent(
+        root,
+        {
+          path: template.promptPath,
+          content: "File editor edit",
+          root: "workspace",
+          expectedRevision: opened.revision,
+        },
+        { allowHostFilesystemEdits: false },
+      ),
+      service.updateTemplate(template.id, {
+        description: "Template edit",
+        expectedPromptRevision: template.promptRevision,
+      }),
+    ]);
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(results.find((result) => result.status === "rejected")).toMatchObject({
+      reason: expect.any(ConflictError),
+    });
+  });
+
   it("accepts prompt edits using the current revision", async () => {
     const template = await create();
     const updated = await service.updateTemplate(template.id, {
@@ -141,8 +191,68 @@ describe("file-backed task template prompts", () => {
     expect((await service.getTemplate(template.id))?.description).toBe(template.description);
   });
 
+  it.each(["missing", "malformed", "invalid", "directory", "identity"])(
+    "reconciles healthy templates after %s settings on a fresh database",
+    async (failure) => {
+      const template = await create();
+      const brokenPath = resolve(
+        database.config.paths.subdirectories.configuration,
+        "task-templates",
+        "000-broken",
+        "task.json",
+      );
+      await mkdir(dirname(brokenPath), { recursive: true });
+      if (failure === "malformed") await writeFile(brokenPath, "{");
+      if (failure === "invalid") await writeFile(brokenPath, "{}");
+      if (failure === "directory") await mkdir(brokenPath);
+      if (failure === "identity")
+        await writeFile(brokenPath, await readFile(templateFilePath(database.config, template.id)));
+      await database.client.db.delete(task_templates);
+      const logs: string[] = [];
+      await taskTemplateReconciler.reconcile({
+        config: database.config,
+        db: database.client.db,
+        logger: pino(
+          {},
+          {
+            write: (line: string) => {
+              logs.push(line);
+            },
+          },
+        ),
+      });
+      expect((await service.getTemplate(template.id))?.description).toBe(template.description);
+      expect(logs.some((line) => line.includes("Skipping invalid task template settings"))).toBe(
+        true,
+      );
+    },
+  );
+
+  it.each(["missing", "malformed", "invalid"])(
+    "retains the existing row for %s settings",
+    async (failure) => {
+      const template = await create();
+      const path = templateFilePath(database.config, template.id);
+      if (failure === "missing") await rm(path);
+      else await writeFile(path, failure === "malformed" ? "{" : "{}");
+      await taskTemplateReconciler.reconcile({
+        config: database.config,
+        db: database.client.db,
+        logger: pino({ enabled: false }),
+      });
+      expect((await service.getTemplate(template.id))?.id).toBe(template.id);
+    },
+  );
+
   it("resolves the prompt after moving the workspace", async () => {
     const template = await create();
+    const broken = resolve(
+      database.config.paths.subdirectories.configuration,
+      "task-templates",
+      "000-broken",
+    );
+    await mkdir(broken);
+    await writeFile(resolve(broken, "task.json"), "{");
     const relocated = resolve(database.cwd, "relocated");
     await cp(database.config.paths.workspaceDir, relocated, { recursive: true });
     await rm(database.config.paths.workspaceDir, { recursive: true });

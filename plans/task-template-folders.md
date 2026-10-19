@@ -87,7 +87,17 @@ already generated. Those need separate execution and snapshot semantics later.
 - The file-manager route and existing Monaco editor are reused without changing
   their implementation. No dependencies added.
 
-## Verification
+## PR review follow-up
+
+- [x] Serialize prompt revision checks and writes across template and file-editor saves; test concurrent saves.
+- [x] Use prompt-free scheduler metadata and isolate failures to the affected template; test missing prompts alongside healthy due work.
+- [x] Log and skip individual invalid template settings while retaining their IDs during orphan cleanup; test fresh recovery and relocation.
+- [x] Run lint, typechecks and backend tests.
+
+Verification: 1,679 backend tests passed, including concurrent-save and recovery
+regressions. All package typechecks, ESLint --fix and formatting checks passed.
+
+## Original verification
 
 - Package tests: 3,539 passed (backend 1,662; frontend 1,598; shared 234; CLI 45).
 - Embedded browser suite: 27/28 passed in the full run; MCP assignment rename

@@ -154,20 +154,23 @@ export async function mapTemplateAsTask(
   });
 }
 
-export async function mapTaskTemplate(
+export type TaskTemplateMetadata = Omit<TaskTemplate, "description" | "promptRevision">;
+const taskTemplateMetadataSchema = taskTemplateSchema.omit({
+  description: true,
+  promptRevision: true,
+});
+
+export function mapTaskTemplateMetadata(
   row: typeof task_templates.$inferSelect,
   config: RuntimeConfig,
-): Promise<TaskTemplate> {
-  const description = await readTemplatePrompt(config, row.prompt_path);
-  return taskTemplateSchema.parse({
+): TaskTemplateMetadata {
+  return taskTemplateMetadataSchema.parse({
     id: row.id,
     defaultAgentId: row.default_agent_id ?? row.agent_id,
     model: row.model ?? undefined,
     fallbackModels: parseFallbackModels(row.fallback_models),
     title: row.title,
-    description,
     promptPath: relative(config.paths.workspaceDir, row.prompt_path).split("\\").join("/"),
-    promptRevision: templatePromptRevision(description),
     todos: parseTaskTodos(row.todos_json),
     recurrence: row.recurrence_json
       ? recurringTaskScheduleSchema.parse(JSON.parse(row.recurrence_json))
@@ -182,6 +185,18 @@ export async function mapTaskTemplate(
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   });
+}
+
+export async function mapTaskTemplate(
+  row: typeof task_templates.$inferSelect,
+  config: RuntimeConfig,
+): Promise<TaskTemplate> {
+  const description = await readTemplatePrompt(config, row.prompt_path);
+  return {
+    ...mapTaskTemplateMetadata(row, config),
+    description,
+    promptRevision: templatePromptRevision(description),
+  };
 }
 
 export function mapTaskSubtask(row: typeof task_subtasks.$inferSelect): TaskSubtask {
