@@ -120,6 +120,11 @@ they match an ignore rule. Root and specialist `opencode.jsonc` files are ignore
 because generated MCP headers can contain credentials. Specialist-local
 `.opencode/skills` and `.opencode/tools` stay trackable; only generated `cc-tools`
 wrappers are excluded within `.opencode`. These rules also cover archived specialists.
+CC's internal MCP bearer tokens are written directly into specialist configs,
+even when provider secrets use environment variables. Managed specialist settings
+are regenerated from portable configuration; hand-written overrides stored only
+in `opencode.jsonc` will not be included in a Git clone. Preserve a credential-free
+copy separately if you need to version those overrides.
 Review files before publishing a workspace, especially
 configuration containing inline credentials or custom data locations.
 
@@ -128,6 +133,10 @@ Existing directories (even empty ones) are left alone. After initialization, the
 default apply only to newly created workspaces. **Ignore rules do not untrack files
 already committed to Git or remove them from repository history.** Review and
 remove sensitive tracked files separately; rotate any exposed credentials.
+
+CC text search ignores Git exclusion rules, so ignored documents, memory and
+playgrounds remain searchable. Explicit runtime/dependency exclusions still apply,
+and `.ignore` or `.rgignore` files can control search visibility separately.
 
 The embedded engine stores its database, credentials, configuration and caches
 under `<workspace>/.cc/opencode-v2/`. Its npm cache lives inside that directory and

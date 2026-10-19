@@ -20,6 +20,7 @@ export async function searchWorkspaceText(
     [
       "--json",
       "--no-config",
+      "--no-ignore-vcs",
       "--hidden",
       "--glob",
       "!.git",

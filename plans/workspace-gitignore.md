@@ -34,3 +34,15 @@ No git initialization, index changes, or changes to live workspace files.
 
 Review regression: the expanded Git check failed before the rule changes and
 passed afterward. All 8 bootstrap/ignore tests, ESLint and formatting passed.
+
+## Search review follow-up
+
+- [x] Reproduce Git ignore rules hiding private workspace content from app search.
+- [x] Disable VCS ignore handling in CC text search while retaining explicit runtime/dependency exclusions.
+- [x] Test workspace and specialist search roots with Git initialized and seeded ignore rules.
+- [x] Clarify generated opencode.jsonc credentials and Git backup implications; retain active rules because CC emits literal internal MCP tokens.
+- [x] Run lint, types and relevant tests, update PR and request Copilot review again.
+
+Search review verification: regression reproduced before the fix; all 22 text-search
+and workspace bootstrap/ignore tests pass after it. Git ignores no longer affect
+app search; explicit runtime exclusions and search-specific ignores remain effective.

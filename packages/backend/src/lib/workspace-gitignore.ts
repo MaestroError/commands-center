@@ -7,6 +7,11 @@ export const DEFAULT_WORKSPACE_GITIGNORE = `# CommandsCenter runtime state and c
 /tmp/
 /update-history.json
 /configuration/secrets.json
+
+# CC writes literal MCP bearer tokens into generated specialist configs.
+# Root config may also contain literal MCP headers; env references are not universal.
+# CC-managed specialist settings are regenerated from portable configuration.
+# Review credentials before tracking hand-written overrides in these files.
 /opencode.jsonc
 /specialists/**/opencode.jsonc
 
