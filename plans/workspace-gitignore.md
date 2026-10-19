@@ -46,3 +46,10 @@ passed afterward. All 8 bootstrap/ignore tests, ESLint and formatting passed.
 Search review verification: regression reproduced before the fix; all 22 text-search
 and workspace bootstrap/ignore tests pass after it. Git ignores no longer affect
 app search; explicit runtime exclusions and search-specific ignores remain effective.
+
+## Expanded delivery scope
+
+The operator requested that internal CC tools move from MCP to direct SDK tools
+in this same PR, together with commented-out opencode.jsonc ignore rules. See
+[embedded-cc-tools.md](embedded-cc-tools.md) for the proposed implementation and
+acceptance plan. The current active exclusions remain until that work is complete.
