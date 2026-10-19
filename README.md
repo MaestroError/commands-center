@@ -112,6 +112,19 @@ CC_SECRET_KEY=replace-with-a-long-random-secret
 
 SQLite is stored at `$CC_DATA_DIR/cc.db` (default: `~/.cc/data/cc.db`). Set `CC_DATA_DIR` to move disposable runtime data to a different location. PostgreSQL primary mode is not part of the current runtime.
 
+When CC creates a new workspace directory, it seeds a `.gitignore` that excludes
+credentials, runtime state, private documents and memory, specialist playgrounds,
+generated engine/browser state, dependencies, caches and build output. Portable
+configuration, task templates, skills and custom tools remain trackable unless
+they match an ignore rule. Review files before publishing a workspace, especially
+configuration containing inline credentials or custom data locations.
+
+Existing directories (even empty ones) are left alone. After initialization, the
+`.gitignore` is yours: CC does not update, restore or migrate it. Changes to the
+default apply only to newly created workspaces. **Ignore rules do not untrack files
+already committed to Git or remove them from repository history.** Review and
+remove sensitive tracked files separately; rotate any exposed credentials.
+
 The embedded engine stores its database, credentials, configuration and caches
 under `<workspace>/.cc/opencode-v2/`. Its npm cache lives inside that directory and
 is inherited by engine-launched MCP processes. Old daemon state/cache overrides
