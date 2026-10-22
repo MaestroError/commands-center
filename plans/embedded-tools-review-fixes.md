@@ -11,3 +11,12 @@
 No workspace gitignore changes needed: existing migration backup exclusions cover these files. Never update live workspace gitignore files.
 
 Validation: 95 backend tests and 9 component tests passed; ESLint --fix and all package typechecks passed. JSONC parser approved by operator.
+
+## Second review
+
+- [x] Resolve inherited MCP defaults through merged task settings.
+- [x] Preserve wildcard CC permission precedence in snapshots and picker initialization.
+- [x] Keep task ownership separate from the form's effective assignee.
+- [ ] Run regression tests and lint/typechecks, push, and request Copilot again.
+
+Second-review validation: 18 backend and 23 frontend regression tests passed, ESLint --fix passed, and all package typechecks passed.

@@ -34,10 +34,17 @@ export function TaskToolPermissions(props: {
         : group.enabledByDefault;
       return group.tools.map((tool) => {
         const pattern = `${group.name}_${tool.name}`;
-        const rule = inherited.appToolPermissions?.find((entry) => entry.pattern === pattern);
+        const action = resolveMcpToolDefault(
+          {
+            toolPermissions: inherited.appToolPermissions,
+            mcpServers: selection ? [selection] : [],
+          },
+          group.name,
+          { id: pattern, name: tool.name },
+        );
         return {
           pattern,
-          action: groupEnabled && rule?.action !== "deny" ? ("allow" as const) : ("deny" as const),
+          action: groupEnabled && action !== "deny" ? ("allow" as const) : ("deny" as const),
         };
       });
     });

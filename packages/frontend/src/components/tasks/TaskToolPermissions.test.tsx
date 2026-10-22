@@ -192,3 +192,42 @@ describe("legacy MCP matrix initialization", () => {
     ]);
   });
 });
+
+describe("inherited CC wildcard defaults", () => {
+  it.each([
+    { rules: [{ pattern: "cc_test_*", action: "deny" as const }], expected: "deny" },
+    {
+      rules: [
+        { pattern: "cc_test_*", action: "deny" as const },
+        { pattern: "cc_test_task", action: "ask" as const },
+      ],
+      expected: "allow",
+    },
+    {
+      rules: [
+        { pattern: "cc_test_task", action: "allow" as const },
+        { pattern: "cc_test_*", action: "deny" as const },
+      ],
+      expected: "deny",
+    },
+  ])("initializes the matrix with ordered rules: %j", async ({ rules, expected }) => {
+    const changed = vi.fn();
+    render(
+      <Harness
+        changed={changed}
+        agent={{
+          ...specialist,
+          capabilities: {
+            ...specialist.capabilities,
+            appMcpServers: [{ name: "cc_test", enabled: true, action: "allow" }],
+            appToolPermissions: rules,
+          },
+        }}
+      />,
+    );
+    await userEvent.click(screen.getByRole("switch", { name: "Change available tools" }));
+    expect(changed.mock.lastCall?.[0].appToolPermissions).toEqual([
+      { pattern: "cc_test_task", action: expected },
+    ]);
+  });
+});

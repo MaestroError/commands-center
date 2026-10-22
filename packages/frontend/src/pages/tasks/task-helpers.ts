@@ -247,6 +247,7 @@ export function formatTaskContextSummary(task: Task): string {
 }
 
 export type FormState = {
+  ownerAgentId?: string;
   permissionProfile?: TaskPermissionProfile;
   agentId: string;
   /** Optional qualified `provider/model` override; empty = use the specialist default. */
@@ -301,7 +302,8 @@ export type TaskView = (typeof TASK_VIEWS)[number];
 export function taskToForm(task?: Task, prefill?: TaskCreationPrefill): FormState {
   return {
     permissionProfile: normalizeCcTaskProfile(task?.permissionProfile),
-    agentId: task?.agentId ?? prefill?.agentId ?? "",
+    ownerAgentId: task?.agentId,
+    agentId: task?.defaultAgentId ?? task?.agentId ?? prefill?.agentId ?? "",
     model: task?.model ?? "",
     fallbackModels: task?.fallbackModels ?? [],
     title: task?.title ?? prefill?.title ?? "",
@@ -429,7 +431,8 @@ export function formToTaskInput(form: FormState): CreateTaskInput | UpdateTaskIn
   const description = buildTaskPromptText(form.prompt);
   const input: CreateTaskInput | UpdateTaskInput = {
     permissionProfile: form.permissionProfile,
-    agentId: form.agentId,
+    agentId: form.ownerAgentId ?? form.agentId,
+    defaultAgentId: form.agentId,
     model: form.model ? form.model : null,
     fallbackModels: normalizeTaskFallbackModels(form.fallbackModels, form.model),
     title: readTaskTitle(form.title, description),

@@ -72,7 +72,7 @@ export function createTaskPermissionService(options: {
         server.available
           ? server.tools.map((tool) => {
               const override = task.permissionProfile?.mcpToolPermissions;
-              const exact = (override ?? agent.capabilities.mcpToolPermissions)?.find(
+              const exact = override?.find(
                 (rule) => rule.server === server.server && rule.tool === tool.name,
               );
               const action =
@@ -260,12 +260,21 @@ function filterAppToolsForTaskRun(
       : group.enabledByDefault;
     return group.catalogTools.map((tool) => {
       const pattern = buildCcManagedToolPermissionPattern(group.name, tool.name);
+      const inheritedAction = resolveMcpToolDefault(
+        {
+          toolPermissions: permissions.appToolPermissions,
+          mcpServers: selection ? [selection] : [],
+        },
+        group.name,
+        { id: pattern, name: tool.name },
+      );
       const rule = permissions.appToolPermissions?.find((entry) => entry.pattern === pattern);
       const action =
         !enabled || deniedPatterns.has(pattern)
           ? ("deny" as const)
-          : (rule?.action ??
-            (hasToolOverride ? ("deny" as const) : (selection?.action ?? ("allow" as const))));
+          : hasToolOverride
+            ? (rule?.action ?? "deny")
+            : inheritedAction;
       return { pattern, action };
     });
   });

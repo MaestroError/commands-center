@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import type { TaskRun, TaskTemplate } from "@cc/shared/schemas";
+import type { Task, TaskRun, TaskTemplate } from "@cc/shared/schemas";
 
 import {
   aggregateRunArtifacts,
+  taskToForm,
+  formToTaskInput,
   formToTemplateInput,
   getTaskTemplateCreationPrefill,
   readCardClassName,
@@ -153,3 +155,27 @@ function templateWithMcpConfig(): TaskTemplate {
     updatedAt: "2026-01-01T00:00:00.000Z",
   };
 }
+
+describe("task form assignment", () => {
+  const task = {
+    agentId: "owner",
+    defaultAgentId: "assignee",
+    description: "Work",
+    todos: [],
+  } as unknown as Task;
+  it("initializes catalog selection from the assignee", () => {
+    expect(taskToForm(task).agentId).toBe("assignee");
+  });
+  it("preserves ownership when reassigning the task", () => {
+    expect(formToTaskInput({ ...taskToForm(task), agentId: "replacement" })).toMatchObject({
+      agentId: "owner",
+      defaultAgentId: "replacement",
+    });
+  });
+  it("sets both owner and assignee when creating a task", () => {
+    expect(formToTaskInput({ ...taskToForm(), agentId: "new-agent" })).toMatchObject({
+      agentId: "new-agent",
+      defaultAgentId: "new-agent",
+    });
+  });
+});
