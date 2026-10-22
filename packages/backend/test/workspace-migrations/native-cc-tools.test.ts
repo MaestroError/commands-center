@@ -1,4 +1,4 @@
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -47,6 +47,43 @@ describe("native CC tool configuration migration", () => {
   afterEach(async () => db.cleanup());
   const context = () => ({ config: db.config, logger: createLogger(db.config) });
 
+  it("migrates JSONC with comments and trailing commas", async () => {
+    await writeFile(paths[0]!, `// configuration\n${original.slice(0, -1)},}`);
+    await nativeCcToolsMigration.up(context());
+    expect(await readFile(paths[0]!, "utf8")).not.toContain("test-only");
+  });
+  it("restores original JSONC text on rollback", async () => {
+    const jsonc = `/* operator comment */\n${original.slice(0, -1)},}`;
+    await writeFile(paths[0]!, jsonc);
+    await nativeCcToolsMigration.up(context());
+    await nativeCcToolsMigration.down(context());
+    expect(await readFile(paths[0]!, "utf8")).toBe(jsonc);
+  });
+  it("leaves archived JSONC without generated entries unchanged", async () => {
+    const jsonc = '// manual settings\n{"model":"test",}';
+    await writeFile(paths[2]!, jsonc);
+    await nativeCcToolsMigration.up(context());
+    expect(await readFile(paths[2]!, "utf8")).toBe(jsonc);
+  });
+  it("rejects malformed JSONC without accepting the parser partial result", async () => {
+    const malformed = original + " trailing garbage";
+    await writeFile(paths[0]!, malformed);
+    await expect(nativeCcToolsMigration.up(context())).rejects.toThrow("Invalid JSONC");
+    expect(await readFile(paths[0]!, "utf8")).toBe(malformed);
+  });
+  it("restricts credential-bearing backup permissions", async () => {
+    await nativeCcToolsMigration.up(context());
+    const backup = join(
+      db.config.paths.workspaceDir,
+      ".cc-migrations",
+      "0012-native-cc-tools.json",
+    );
+    expect((await stat(backup)).mode & 0o777).toBe(0o600);
+  });
+  it("keeps rewritten configs private", async () => {
+    await nativeCcToolsMigration.up(context());
+    expect((await stat(paths[0]!)).mode & 0o777).toBe(0o600);
+  });
   it("removes generated entries from root and active and archived configs", async () => {
     await nativeCcToolsMigration.up(context());
     for (const path of paths) expect(await readFile(path, "utf8")).not.toContain("test-only");

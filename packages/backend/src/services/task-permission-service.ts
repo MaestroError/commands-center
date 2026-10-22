@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { resolveMcpToolDefault } from "@cc/shared/schemas";
 import type { McpToolPermissionService } from "./mcp-tool-permission-service.js";
 import {
@@ -42,6 +43,7 @@ export function createTaskPermissionService(options: {
   opencodeService: Pick<OpenCodeService, "dispose">;
   customToolService?: CustomToolService;
   mcpTools?: McpToolPermissionService;
+  initializeMcpTools?: (directory: string) => Promise<unknown>;
 }) {
   const registry = createCcManagedMcpServerRegistry({
     customToolService:
@@ -61,6 +63,9 @@ export function createTaskPermissionService(options: {
         merged,
         registry,
         task.permissionProfile?.appToolPermissions !== undefined,
+      );
+      await options.initializeMcpTools?.(
+        join(options.config.paths.subdirectories.specialists, agent.slug),
       );
       const catalog = await options.mcpTools?.catalog(task.agentId);
       const mcpToolPermissions = catalog?.flatMap((server) =>

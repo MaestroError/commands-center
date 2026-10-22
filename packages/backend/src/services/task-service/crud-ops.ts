@@ -1,4 +1,4 @@
-import { taskPermissionProfileSchema } from "@cc/shared/schemas";
+import { type TaskPermissionProfile, taskPermissionProfileSchema } from "@cc/shared/schemas";
 // createTaskCrudOps: task-service methods split out of the god-file (issue #99).
 
 import type { TaskServiceRef } from "../task-service.js";
@@ -37,7 +37,7 @@ export function createTaskCrudOps(ctx: TaskServiceContext, service: TaskServiceR
       const parsed = createTaskInputSchema.parse(input);
       await requireActiveAgent(parsed.agentId);
       await options.mcpToolPermissions?.validate(
-        parsed.agentId,
+        parsed.defaultAgentId ?? parsed.agentId,
         parsed.permissionProfile?.mcpToolPermissions,
       );
       await enforceTaskLimit();
@@ -129,7 +129,7 @@ export function createTaskCrudOps(ctx: TaskServiceContext, service: TaskServiceR
             content: todo.content,
             status: todo.status,
           })),
-          permissionProfile: task.permissionProfile,
+          permissionProfile: normalizeCopiedPermissions(task.permissionProfile),
           enabled: false,
         });
       }
@@ -152,7 +152,7 @@ export function createTaskCrudOps(ctx: TaskServiceContext, service: TaskServiceR
           content: todo.content,
           status: todo.status,
         })),
-        permissionProfile: task.permissionProfile,
+        permissionProfile: normalizeCopiedPermissions(task.permissionProfile),
         enabled: false,
       });
     },
@@ -176,15 +176,20 @@ export function createTaskCrudOps(ctx: TaskServiceContext, service: TaskServiceR
       const previousProfile = taskPermissionProfileSchema.parse(
         JSON.parse(existing.permission_profile_json ?? "{}"),
       );
-      if (parsed.permissionProfile !== undefined || parsed.agentId !== undefined)
+      const previousAssignee = existing.default_agent_id ?? existing.agent_id;
+      const assignee =
+        parsed.defaultAgentId ?? existing.default_agent_id ?? parsed.agentId ?? existing.agent_id;
+      if (
+        parsed.permissionProfile !== undefined ||
+        parsed.agentId !== undefined ||
+        parsed.defaultAgentId !== undefined
+      )
         await options.mcpToolPermissions?.validate(
-          parsed.agentId ?? existing.agent_id,
+          assignee,
           parsed.permissionProfile === undefined
             ? previousProfile.mcpToolPermissions
             : parsed.permissionProfile?.mcpToolPermissions,
-          parsed.agentId && parsed.agentId !== existing.agent_id
-            ? []
-            : previousProfile.mcpToolPermissions,
+          assignee !== previousAssignee ? [] : previousProfile.mcpToolPermissions,
         );
       const timestamp = now();
       const archived = parsed.status === "archived" ? true : existing.archived;
@@ -447,5 +452,26 @@ export function createTaskCrudOps(ctx: TaskServiceContext, service: TaskServiceR
 
       return row !== undefined;
     },
+  };
+}
+
+function normalizeCopiedPermissions(
+  profile: TaskPermissionProfile | undefined,
+): TaskPermissionProfile | undefined {
+  if (!profile) return undefined;
+  return {
+    ...profile,
+    appMcpServers: profile.appMcpServers?.map((rule) => ({
+      ...rule,
+      action: rule.action === "ask" ? "allow" : rule.action,
+    })),
+    appToolPermissions: profile.appToolPermissions?.map((rule) => ({
+      ...rule,
+      action: rule.action === "ask" ? "allow" : rule.action,
+    })),
+    mcpToolPermissions: profile.mcpToolPermissions?.map((rule) => ({
+      ...rule,
+      action: rule.action === "ask" ? "allow" : rule.action,
+    })),
   };
 }

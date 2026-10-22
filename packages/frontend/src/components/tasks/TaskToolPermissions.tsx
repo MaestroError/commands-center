@@ -55,8 +55,18 @@ export function TaskToolPermissions(props: {
               server: server.server,
               tool: tool.name,
               action:
-                resolveMcpToolDefault(props.specialist?.capabilities, server.server, tool) ===
-                "deny"
+                resolveMcpToolDefault(
+                  {
+                    ...props.specialist?.capabilities,
+                    toolPermissions:
+                      props.value?.toolPermissions ??
+                      props.specialist?.capabilities.toolPermissions,
+                    mcpServers:
+                      props.value?.mcpServers ?? props.specialist?.capabilities.mcpServers,
+                  },
+                  server.server,
+                  tool,
+                ) === "deny"
                   ? ("deny" as const)
                   : ("allow" as const),
             };

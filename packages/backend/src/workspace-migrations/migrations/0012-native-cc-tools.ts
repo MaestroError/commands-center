@@ -1,8 +1,9 @@
-import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 import { z } from "zod";
+import { parse, type ParseError } from "jsonc-parser";
 
-import { writeConfigFileAtomic } from "../../lib/config-file.js";
 import { CC_MANAGED_GROUP_METAS } from "../../mcp/cc-managed/group-metadata.js";
 import type { WorkspaceMigration } from "../types.js";
 
@@ -58,7 +59,10 @@ export const nativeCcToolsMigration: WorkspaceMigration = {
         const path = join(location, "opencode.jsonc");
         const before = await optionalFile(path);
         if (before === undefined) continue;
-        const data = z.record(z.string(), z.unknown()).parse(JSON.parse(before));
+        const errors: ParseError[] = [];
+        const parsedConfig: unknown = parse(before, errors, { allowTrailingComma: true });
+        if (errors.length > 0) throw new Error(`Invalid JSONC configuration: ${path}`);
+        const data = z.record(z.string(), z.unknown()).parse(parsedConfig);
         if (!data["mcp"]) continue;
         const mcp = z.record(z.string(), z.unknown()).parse(data["mcp"]);
         const servers = z.record(z.string(), z.unknown()).parse(mcp["servers"] ?? {});
@@ -79,7 +83,7 @@ export const nativeCcToolsMigration: WorkspaceMigration = {
           });
       }
       backupSchema.parse(backup);
-      await writeConfigFileAtomic(backupPath, backup);
+      await writePrivateFile(backupPath, `${JSON.stringify(backup, null, 2)}\n`);
     }
     for (const file of backup.files) {
       const path = join(root, file.path);
@@ -87,7 +91,7 @@ export const nativeCcToolsMigration: WorkspaceMigration = {
       if (current === file.after) continue;
       if (current !== file.before)
         throw new Error(`Conflicting native tool migration file: ${file.path}`);
-      await writeConfigFileAtomic(path, JSON.parse(file.after) as unknown);
+      await writePrivateFile(path, file.after);
     }
     const auth = await optionalFile(authPath);
     if (auth !== undefined && auth !== backup.auth)
@@ -108,10 +112,21 @@ export const nativeCcToolsMigration: WorkspaceMigration = {
     const auth = await optionalFile(authPath);
     if (auth !== undefined && auth !== backup.auth)
       throw new Error("Cannot roll back changed MCP credentials.");
-    for (const file of backup.files) await writeFile(join(root, file.path), file.before, "utf8");
+    for (const file of backup.files) await writePrivateFile(join(root, file.path), file.before);
     if (backup.auth !== undefined) {
       await mkdir(dirname(authPath), { recursive: true });
-      await writeFile(authPath, backup.auth, { mode: 0o600 });
+      await writePrivateFile(authPath, backup.auth);
     }
   },
 };
+
+async function writePrivateFile(path: string, content: string): Promise<void> {
+  await mkdir(dirname(path), { recursive: true });
+  const temporary = `${path}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(temporary, content, { encoding: "utf8", mode: 0o600, flag: "wx" });
+    await rename(temporary, path);
+  } finally {
+    await rm(temporary, { force: true });
+  }
+}

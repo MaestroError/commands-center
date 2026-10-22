@@ -271,6 +271,7 @@ export async function startServerRuntime(
     );
     const taskPermissionService = createTaskPermissionService({
       mcpTools: mcpToolPermissions,
+      initializeMcpTools: (directory) => embeddedRuntime.host.listTools(directory),
       db: database.db,
       config,
       opencodeService,

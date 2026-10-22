@@ -264,6 +264,11 @@ describe("MCP task snapshots", () => {
   for (const [label, override, expected] of [
     ["inherits ask as allow", undefined, "allow"],
     [
+      "keeps explicit allow after cold inventory initialization",
+      [{ server: "github", tool: "read", action: "allow" as const }],
+      "allow",
+    ],
+    [
       "honors explicit denial",
       [{ server: "github", tool: "read", action: "deny" as const }],
       "deny",
@@ -282,19 +287,28 @@ describe("MCP task snapshots", () => {
           title: "MCP",
           permissionProfile: override ? { mcpToolPermissions: [...override] } : undefined,
         });
+        let initialized = false;
         const service = createTaskPermissionService({
           db: testDb.client.db,
           config: testDb.config,
           opencodeService: {} as OpenCodeService,
+          initializeMcpTools: () => {
+            initialized = true;
+            return Promise.resolve();
+          },
           mcpTools: {
             catalog: () =>
-              Promise.resolve([
-                {
-                  server: "github",
-                  available: true,
-                  tools: [{ id: "github_read", name: "read", description: "Read" }],
-                },
-              ]),
+              Promise.resolve(
+                initialized
+                  ? [
+                      {
+                        server: "github",
+                        available: true,
+                        tools: [{ id: "github_read", name: "read", description: "Read" }],
+                      },
+                    ]
+                  : [],
+              ),
             validate: async () => {},
           },
         });

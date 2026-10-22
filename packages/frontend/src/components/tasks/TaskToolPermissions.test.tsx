@@ -157,3 +157,38 @@ describe("task CC tool controls", () => {
     );
   });
 });
+
+describe("legacy MCP matrix initialization", () => {
+  it.each([
+    { toolPermissions: [{ pattern: "mail_*", action: "deny" as const }] },
+    { mcpServers: [{ name: "mail", enabled: true, action: "deny" as const }] },
+    { mcpServers: [{ name: "mail", enabled: false, action: "allow" as const }] },
+  ])("preserves task denial %j", async (value) => {
+    const changed = vi.fn();
+    render(
+      <TaskToolPermissions
+        catalog={catalog}
+        specialist={{
+          ...specialist,
+          capabilities: {
+            ...specialist.capabilities,
+            mcpServers: [{ name: "mail", enabled: true, action: "allow" }],
+          },
+        }}
+        value={value}
+        mcpCatalog={[
+          {
+            server: "mail",
+            available: true,
+            tools: [{ id: "mail_read", name: "read", description: "Read" }],
+          },
+        ]}
+        onChange={changed}
+      />,
+    );
+    await userEvent.click(screen.getByRole("switch", { name: "Change available tools" }));
+    expect(changed.mock.lastCall?.[0].mcpToolPermissions).toEqual([
+      { server: "mail", tool: "read", action: "deny" },
+    ]);
+  });
+});
