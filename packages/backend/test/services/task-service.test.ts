@@ -14,13 +14,14 @@ import { createTestDatabase } from "../helpers/db";
 import { agents, conversations, task_runs, task_templates } from "../../src/db/schema/index";
 
 describe("createTaskService", () => {
-  it("recovers CC tool overrides from portable template files", async () => {
+  it("recovers tool overrides from portable template files", async () => {
     const testDb = await createTestDatabase();
     const service = createTaskService({ db: testDb.client.db, config: testDb.config });
     try {
       const agent = await insertAgent(testDb.client.db);
       const permissionProfile = {
         appToolPermissions: [{ pattern: "cc_default_set_task_result", action: "allow" as const }],
+        mcpToolPermissions: [{ server: "mail", tool: "send", action: "deny" as const }],
         customTools: ["retained"],
       };
       const template = await service.createTemplate({
@@ -49,6 +50,7 @@ describe("createTaskService", () => {
       const agent = await insertAgent(testDb.client.db);
       const permissionProfile = {
         appToolPermissions: [{ pattern: "cc_default_set_task_result", action: "allow" as const }],
+        mcpToolPermissions: [{ server: "mail", tool: "send", action: "deny" as const }],
       };
       const template = await service.createTemplate({
         defaultAgentId: agent.id,

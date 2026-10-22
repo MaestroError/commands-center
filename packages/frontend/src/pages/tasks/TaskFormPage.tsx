@@ -1,3 +1,4 @@
+import { useMcpToolCatalog } from "@/hooks/use-mcp-tool-catalog";
 import { TaskToolPermissions } from "@/components/tasks/TaskToolPermissions";
 // Split out of TasksPage.tsx (issue #99).
 
@@ -45,6 +46,7 @@ export function TaskFormPage(props: { mode: "create" | "edit" }) {
   const agents = agentsQuery.data ?? [];
   const prefill = getTaskCreationPrefill(location.state);
   const [form, setForm] = useState<FormState>(() => taskToForm(task, prefill));
+  const mcpCatalog = useMcpToolCatalog(form.agentId, Boolean(form.agentId));
   const selectedAgent = agents.find((agent) => agent.id === form.agentId);
   const taskSkills = useTaskComposerSkills(selectedAgent, catalogQuery.data);
 
@@ -207,6 +209,8 @@ export function TaskFormPage(props: { mode: "create" | "edit" }) {
               </div>
 
               <TaskToolPermissions
+                mcpCatalog={mcpCatalog.data}
+                mcpError={mcpCatalog.error?.message}
                 specialist={selectedAgent}
                 catalog={catalogQuery.data}
                 value={form.permissionProfile}

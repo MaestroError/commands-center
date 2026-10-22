@@ -1087,6 +1087,10 @@ function normalizeCcTaskProfile(
   if (!profile) return undefined;
   return {
     ...profile,
+    mcpToolPermissions: profile.mcpToolPermissions?.map((rule) => ({
+      ...rule,
+      action: rule.action === "ask" ? "allow" : rule.action,
+    })),
     appMcpServers: profile.appMcpServers?.map((rule) => ({
       ...rule,
       action: rule.action === "ask" ? "allow" : rule.action,

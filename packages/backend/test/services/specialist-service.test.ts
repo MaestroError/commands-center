@@ -14,6 +14,35 @@ describe("createSpecialistService", () => {
     vi.restoreAllMocks();
   });
 
+  it("discovers tools in the specialist workspace when opening its editor", async () => {
+    const testDb = await createTestDatabase();
+    const discoverMcpCatalog = vi.fn(() => Promise.resolve([]));
+    const readMcpCatalog = vi.fn(() => Promise.resolve([]));
+    const service = createSpecialistService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService(),
+      discoverMcpCatalog,
+      readMcpCatalog,
+    });
+    try {
+      const agent = await service.create({
+        name: "Catalog tester",
+        role: "Test discovery",
+        instructions: "Test discovery",
+        defaultModel: "openai/gpt-4.1",
+        capabilities: {},
+      });
+      await service.getMcpToolCatalog(agent.id);
+      expect(discoverMcpCatalog).toHaveBeenCalledWith(
+        join(testDb.config.paths.subdirectories.specialists, agent.slug),
+      );
+      expect(readMcpCatalog).not.toHaveBeenCalled();
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("creates an agent record and portable workspace files", async () => {
     const testDb = await createTestDatabase();
     const skillRoot = await createSkill(testDb.cwd, "reviewer", "Code review helper");

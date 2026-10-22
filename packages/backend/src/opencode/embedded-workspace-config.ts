@@ -1,3 +1,4 @@
+import { mcpPermissionAction, mcpRuntimeToolId } from "./embedded-mcp-permissions.js";
 import { z } from "zod";
 import { CC_MANAGED_GROUP_METAS } from "../mcp/cc-managed/group-metadata.js";
 
@@ -109,6 +110,21 @@ export function renderEmbeddedWorkspace(
       effect: rule.action,
     })),
   ];
+  for (const server of input.capabilities.mcpServers ?? []) {
+    permissions.push({
+      action: `cc_mcp:${encodeURIComponent(server.name)}:*`,
+      resource: "*",
+      effect: server.enabled === false ? "deny" : server.action,
+    });
+  }
+  for (const rule of input.capabilities.mcpToolPermissions ?? []) {
+    for (const action of [
+      mcpPermissionAction(rule.server, rule.tool),
+      mcpRuntimeToolId(rule.server, rule.tool),
+    ]) {
+      permissions.push({ action, resource: "*", effect: rule.action });
+    }
+  }
   return {
     rulesMarkdown: renderOpenCodeRules(input),
     configJsonc: `${JSON.stringify(

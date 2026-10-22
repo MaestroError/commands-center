@@ -50,6 +50,7 @@ export function normalizeSpecialistCapabilities(
     workspaceSkills: capabilities.workspaceSkills ?? [],
     customTools: capabilities.customTools ?? [],
     mcpServers: dedupeMcpServers(nextMcpServers),
+    mcpToolPermissions: capabilities.mcpToolPermissions,
     toolPermissions: (capabilities.toolPermissions ?? []).filter(
       (rule) => !matchesAnyMcpPrefix(rule.pattern, staleNames),
     ),
@@ -69,6 +70,7 @@ export function removeMcpReferences(
     workspaceSkills: capabilities.workspaceSkills ?? [],
     customTools: capabilities.customTools ?? [],
     mcpServers: (capabilities.mcpServers ?? []).filter((server) => server.name !== mcpName),
+    mcpToolPermissions: capabilities.mcpToolPermissions,
     toolPermissions: (capabilities.toolPermissions ?? []).filter(
       (rule) => !matchesMcpPrefix(rule.pattern, mcpName),
     ),
@@ -90,6 +92,9 @@ export function renameMcpReferences(
       (capabilities.mcpServers ?? []).map((server) =>
         server.name === previousName ? { ...server, name: nextName } : server,
       ),
+    ),
+    mcpToolPermissions: capabilities.mcpToolPermissions?.map((rule) =>
+      rule.server === previousName ? { ...rule, server: nextName } : rule,
     ),
     toolPermissions: (capabilities.toolPermissions ?? []).map((rule) => ({
       ...rule,

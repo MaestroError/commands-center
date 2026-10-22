@@ -1,3 +1,6 @@
+import { resolveMcpToolDefault } from "@cc/shared/schemas";
+import { McpToolGroups } from "@/components/specialists/McpToolGroups";
+import type { McpToolCatalog } from "@cc/shared/schemas";
 import { Switch } from "@/components/common/Switch";
 import { CcToolGroups } from "@/components/specialists/CcToolGroups";
 import type { Specialist, SpecialistCatalog, TaskPermissionProfile } from "@cc/shared/schemas";
@@ -5,6 +8,8 @@ import type { Specialist, SpecialistCatalog, TaskPermissionProfile } from "@cc/s
 export function TaskToolPermissions(props: {
   specialist?: Specialist;
   catalog?: SpecialistCatalog;
+  mcpCatalog?: McpToolCatalog;
+  mcpError?: string;
   value?: TaskPermissionProfile;
   onChange: (profile: TaskPermissionProfile) => void;
 }) {
@@ -12,7 +17,9 @@ export function TaskToolPermissions(props: {
     .map((group) => ({ ...group, tools: group.tools.filter((tool) => tool.context !== "chat") }))
     .filter((group) => group.tools.length > 0);
   const enabled =
-    props.value?.appToolPermissions !== undefined || props.value?.appMcpServers !== undefined;
+    props.value?.appToolPermissions !== undefined ||
+    props.value?.appMcpServers !== undefined ||
+    props.value?.mcpToolPermissions !== undefined;
   const inherited = {
     appMcpServers: props.value?.appMcpServers ?? props.specialist?.capabilities.appMcpServers,
     appToolPermissions:
@@ -34,6 +41,28 @@ export function TaskToolPermissions(props: {
         };
       });
     });
+  const connectedMcp = props.mcpCatalog?.filter((server) =>
+    props.specialist?.capabilities.mcpServers.some(
+      (entry) => entry.name === server.server && entry.enabled !== false,
+    ),
+  );
+  const mcpRules =
+    props.value?.mcpToolPermissions ??
+    connectedMcp?.flatMap((server) =>
+      server.available
+        ? server.tools.map((tool) => {
+            return {
+              server: server.server,
+              tool: tool.name,
+              action:
+                resolveMcpToolDefault(props.specialist?.capabilities, server.server, tool) ===
+                "deny"
+                  ? ("deny" as const)
+                  : ("allow" as const),
+            };
+          })
+        : [],
+    );
   function save(nextRules: NonNullable<TaskPermissionProfile["appToolPermissions"]>) {
     props.onChange({ ...props.value, appMcpServers: undefined, appToolPermissions: nextRules });
   }
@@ -44,8 +73,8 @@ export function TaskToolPermissions(props: {
           <h2 className="font-semibold text-text-primary">Change available tools</h2>
           <p className="mt-1 text-sm text-text-secondary">
             {enabled
-              ? "Choose which CC tools this task can use. Changes apply to future runs."
-              : "Inherit the assigned specialist’s CC tools when the run starts."}
+              ? "Choose which tools this task can use. Changes apply to future runs."
+              : "Inherit the assigned specialist’s tools when the run starts."}
           </p>
         </div>
         <Switch
@@ -53,10 +82,17 @@ export function TaskToolPermissions(props: {
           checked={enabled}
           disabled={!props.specialist || !props.catalog}
           onChange={(checked) => {
-            if (checked) save(rules);
+            if (checked)
+              props.onChange({
+                ...props.value,
+                appMcpServers: undefined,
+                appToolPermissions: rules,
+                mcpToolPermissions: mcpRules,
+              });
             else
               props.onChange({
                 ...props.value,
+                mcpToolPermissions: undefined,
                 appMcpServers: undefined,
                 appToolPermissions: undefined,
               });
@@ -68,19 +104,31 @@ export function TaskToolPermissions(props: {
         are unavailable.
       </p>
       {enabled ? (
-        <CcToolGroups
-          groups={groups}
-          capabilities={{ appToolPermissions: rules }}
-          taskMode
-          onGroupChange={() => {}}
-          onToolChange={(group, tool, allowed) => {
-            const pattern = `${group}_${tool}`;
-            save([
-              ...rules.filter((rule) => rule.pattern !== pattern),
-              { pattern, action: allowed ? "allow" : "deny" },
-            ]);
-          }}
-        />
+        <>
+          <CcToolGroups
+            groups={groups}
+            capabilities={{ appToolPermissions: rules }}
+            taskMode
+            onGroupChange={() => {}}
+            onToolChange={(group, tool, action) => {
+              const pattern = `${group}_${tool}`;
+              save([
+                ...rules.filter((rule) => rule.pattern !== pattern),
+                { pattern, action: action === "deny" ? "deny" : "allow" },
+              ]);
+            }}
+          />
+          <McpToolGroups
+            catalog={connectedMcp}
+            error={props.mcpError}
+            capabilities={props.specialist?.capabilities}
+            rules={mcpRules}
+            taskMode
+            onChange={(mcpToolPermissions) =>
+              props.onChange({ ...props.value, mcpToolPermissions })
+            }
+          />
+        </>
       ) : null}
     </section>
   );

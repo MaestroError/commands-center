@@ -888,7 +888,10 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
       subtaskId,
       trigger: { ...parsed, context: triggerContext },
     });
-    const effectivePermissions = await options.taskPermissionService?.compute(task);
+    const effectivePermissions = await options.taskPermissionService?.compute({
+      ...task,
+      agentId: runAgentId,
+    });
     const run = await options.taskService.queueTask({
       id: taskRunId,
       taskId: task.id,

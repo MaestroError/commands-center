@@ -1,3 +1,4 @@
+import { discoverEmbeddedMcpCatalog, readEmbeddedMcpCatalog } from "./embedded-mcp-catalog.js";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -70,6 +71,8 @@ export function createEmbeddedWorkspaceServices(options: {
       oauthCallbacks: runtime.callbacks,
     });
   const specialists = createSpecialistService({
+    discoverMcpCatalog: (directory) => discoverEmbeddedMcpCatalog(runtime.host, directory),
+    readMcpCatalog: (directory) => readEmbeddedMcpCatalog(runtime.host, directory),
     config,
     db,
     opencodeService: engine,

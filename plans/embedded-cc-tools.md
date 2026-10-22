@@ -342,7 +342,7 @@ The database enforces one active task per specialist. Isolation acceptance uses
 successive tasks with different snapshots alongside a concurrent chat rather than
 relaxing that constraint; different specialists can still run concurrently.
 
-Phases 1–2 are complete on `codex/embedded-cc-tools`. Phase 3 is next.
+Phases 1–2 are committed on `codex/embedded-cc-tools`. Phase 3 is implemented; see its verification record below.
 
 ### Phase 2 acceptance criteria
 
@@ -442,18 +442,54 @@ if a server disconnects, report unavailable tools without silently reconnecting.
 
 ### Phase 3 implementation checklist
 
-- [ ] Extend connected MCP tool discovery metadata and grouped specialist controls
+- [x] Extend connected MCP tool discovery metadata and grouped specialist controls
       with per-tool allow/ask/deny; persist through existing portable settings.
-- [ ] Extend task/template tool controls and schemas with connected MCP tool
+- [x] Extend task/template tool controls and schemas with connected MCP tool
       allow/deny overrides, preserving the separate CC-tool settings.
-- [ ] Reuse Phase 2 run resolution/snapshots and enforce MCP catalog/execution
+- [x] Reuse Phase 2 run resolution/snapshots and enforce MCP catalog/execution
       permissions without any task-triggered connection changes.
-- [ ] Handle unavailable and changed catalogs without losing saved rules or
+- [x] Handle unavailable and changed catalogs without losing saved rules or
       granting newly discovered tools to an existing run.
-- [ ] Update API/MCP contracts, descriptions and documentation for both scopes.
-- [ ] Test specialist and all task/template create/edit flows, persistence and
+- [x] Update API/MCP contracts, descriptions and documentation for both scopes.
+- [x] Test specialist and all task/template create/edit flows, persistence and
       portable recovery; run ESLint with fixes, typechecks, relevant tests,
       built-app E2E and the design-system audit.
+
+### Implementation preparation (2026-10-19)
+
+Phases 1–2 were committed as `759859e1` before beginning Phase 3.
+
+Repository inspection confirmed two existing behaviors that Phase 3 must handle:
+
+- `EmbeddedOpenCodeHost.listTools()` connects pending servers. Add a separate
+  passive catalog reader for permission forms and save validation; do not reuse
+  this connecting reader for those operations. Keep connection management explicit.
+- The current MCP ID reader associates tools by string prefix. Use SDK namespace
+  metadata for ownership instead, and reject ambiguous normalized identities.
+  Include descriptions and distinguish an unavailable catalog from an empty one.
+- SDK Code Mode builds its internal catalog before the session context hook.
+  Removing direct entries in that hook cannot filter Code Mode's nested tools.
+  Resolve SDK permission rules before its snapshot, and enforce the immutable
+  task profile again on execution. Verify this with Code Mode calls, not only
+  direct tool calls. Test newly discovered servers as well as new tools.
+
+Implement in this order:
+
+1. [x] Add passive location-scoped discovery and canonical grouped metadata;
+       test empty, unavailable, disconnected and colliding catalogs without connects.
+2. [x] Add a distinct MCP tool override field to portable permission profiles;
+       preserve CC overrides and existing custom-script rules. Validate changed
+       selections against connected discovery while preserving unavailable saved rules.
+3. [x] Resolve immutable run rules and enforce catalog/execution permissions,
+       including child sessions, Code Mode and inherited ask-to-allow behavior.
+4. [x] Add grouped specialist defaults and task/template override controls;
+       reuse the existing permission selector and trusted session/profile resolver.
+5. [x] Verify schema/service tests, portable recovery, all four task/template
+       form flows, specialist chat approval, SDK execution, lint, types and E2E.
+
+The user approved the reuse refactors on 2026-10-20: extracting the
+existing specialist permission selector and sharing the trusted session/profile
+lookup between CC-tool and MCP-tool enforcement. Phase 3 implementation is complete.
 
 ### Phase 3 acceptance criteria
 
@@ -471,6 +507,55 @@ if a server disconnects, report unavailable tools without silently reconnecting.
   availability accurately and cannot expand an existing run's allowed tool set.
 - Template recovery and task generation preserve MCP overrides; editing them does
   not change CC-tool overrides, specialist defaults or custom-script permissions.
+
+### Phase 3 implementation record (2026-10-20)
+
+- Added canonical server/tool MCP permission entries separately from CC-tool and
+  legacy custom-script rules. Specialist defaults support allow/ask/deny; new
+  task/template inputs accept allow/deny only. Inherited ask resolves to allow.
+- Added passive location-scoped discovery, including namespace ownership,
+  descriptions, unavailable entries and collision rejection. Reading a catalog
+  does not initialize an unopened SDK location or explicitly connect a server.
+- Added grouped specialist controls and task/template overrides. On specialist
+  creation, defaults use connected global integrations; task controls use only
+  the selected specialist's connected servers. Existing unavailable entries can
+  be preserved or removed even while discovery is unavailable.
+- Reused the shared permission selector and trusted caller/profile lookup after
+  the user's confirmation. API and MCP mutation paths use the same validation.
+- Added immutable MCP run matrices and a dedicated SDK permission namespace to
+  prevent broad auto-approval from exposing newly discovered tools. Execution
+  checks resolve the persisted task owner, including child sessions, and require
+  task MCP connections to remain active. SDK tests cover direct and Code Mode
+  allow/deny, forged calls, child ownership and broad auto-approval.
+- Fixed MCP execution checks to retain the SDK location spelling rather than
+  substituting a canonical filesystem alias. Run defaults resolve from the
+  specialist actually assigned to that run, including execution overrides.
+- Extended existing portable template JSON and specialist configuration; no new
+  database columns, filesystem migrations or dependencies were needed. Generated
+  task profiles retain their copied settings after later template edits.
+- Updated README and schema descriptions. New files are source/tests and existing
+  ignored build outputs; no additional `.gitignore` entries were needed.
+
+Verification:
+
+- Backend: 162 test files, 1,769 tests passed; the final assigned-specialist
+  regression also passed in the 81-test execution-service suite.
+- Frontend: 153 test files, 1,607 tests passed.
+- Shared: 17 test files, 254 tests passed.
+- Typechecks, ESLint with fixes, design-system audit and diff whitespace checks pass.
+- Design-system browser regression: all 56 checks passed.
+- Built-app browser acceptance: all 38 scenarios passed, including specialist
+  creation/editing, chat ask approval, all task/template override forms and a
+  task granting an MCP tool denied by its specialist.
+- Final CLI build passed.
+
+Phase 3 changes remain uncommitted. Phases 1–2 are commit `759859e1`.
+
+Manual acceptance correction: editor catalog requests now initialize configured
+MCP connections through the existing SDK discovery path. A cold specialist
+location previously returned no tools even when the global integration showed
+Connected. Validation and execution retain passive reads. Verified Notion tools
+in the real local specialist editor; see `mcp-editor-discovery-fix.md`.
 
 ## Boundaries
 

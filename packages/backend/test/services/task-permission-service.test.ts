@@ -259,3 +259,89 @@ describe("explicit CC tool matrices", () => {
     }
   });
 });
+
+describe("MCP task snapshots", () => {
+  for (const [label, override, expected] of [
+    ["inherits ask as allow", undefined, "allow"],
+    [
+      "honors explicit denial",
+      [{ server: "github", tool: "read", action: "deny" as const }],
+      "deny",
+    ],
+    ["denies omitted tools in an explicit matrix", [], "deny"],
+  ] as const) {
+    it(label, async () => {
+      const testDb = await createTestDatabase();
+      try {
+        const agent = await insertAgent(testDb.client.db, {
+          mcpServers: [{ name: "github", enabled: true, action: "ask" }],
+        });
+        const tasks = createTaskService({ db: testDb.client.db, config: testDb.config });
+        const task = await tasks.create({
+          agentId: agent.id,
+          title: "MCP",
+          permissionProfile: override ? { mcpToolPermissions: [...override] } : undefined,
+        });
+        const service = createTaskPermissionService({
+          db: testDb.client.db,
+          config: testDb.config,
+          opencodeService: {} as OpenCodeService,
+          mcpTools: {
+            catalog: () =>
+              Promise.resolve([
+                {
+                  server: "github",
+                  available: true,
+                  tools: [{ id: "github_read", name: "read", description: "Read" }],
+                },
+              ]),
+            validate: async () => {},
+          },
+        });
+        expect((await service.compute(task)).mcpToolPermissions).toEqual([
+          { server: "github", tool: "read", action: expected },
+        ]);
+      } finally {
+        await testDb.cleanup();
+      }
+    });
+  }
+});
+
+describe("legacy task MCP overrides", () => {
+  it("retains a task wildcard denial when resolving the new MCP snapshot", async () => {
+    const testDb = await createTestDatabase();
+    try {
+      const agent = await insertAgent(testDb.client.db, {
+        mcpServers: [{ name: "github", enabled: true, action: "allow" }],
+      });
+      const tasks = createTaskService({ db: testDb.client.db, config: testDb.config });
+      const task = await tasks.create({
+        agentId: agent.id,
+        title: "Legacy MCP",
+        permissionProfile: { toolPermissions: [{ pattern: "github_*", action: "deny" }] },
+      });
+      const service = createTaskPermissionService({
+        db: testDb.client.db,
+        config: testDb.config,
+        opencodeService: {} as OpenCodeService,
+        mcpTools: {
+          catalog: () =>
+            Promise.resolve([
+              {
+                server: "github",
+                available: true,
+                tools: [{ id: "github_read", name: "read", description: "Read" }],
+              },
+            ]),
+          validate: async () => {},
+        },
+      });
+      expect((await service.compute(task)).mcpToolPermissions).toEqual([
+        { server: "github", tool: "read", action: "deny" },
+      ]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+});

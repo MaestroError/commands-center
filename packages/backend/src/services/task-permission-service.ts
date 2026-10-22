@@ -1,3 +1,5 @@
+import { resolveMcpToolDefault } from "@cc/shared/schemas";
+import type { McpToolPermissionService } from "./mcp-tool-permission-service.js";
 import {
   specialistCapabilitySelectionSchema,
   taskPermissionProfileSchema,
@@ -39,6 +41,7 @@ export function createTaskPermissionService(options: {
   config: RuntimeConfig;
   opencodeService: Pick<OpenCodeService, "dispose">;
   customToolService?: CustomToolService;
+  mcpTools?: McpToolPermissionService;
 }) {
   const registry = createCcManagedMcpServerRegistry({
     customToolService:
@@ -59,8 +62,34 @@ export function createTaskPermissionService(options: {
         registry,
         task.permissionProfile?.appToolPermissions !== undefined,
       );
+      const catalog = await options.mcpTools?.catalog(task.agentId);
+      const mcpToolPermissions = catalog?.flatMap((server) =>
+        server.available
+          ? server.tools.map((tool) => {
+              const override = task.permissionProfile?.mcpToolPermissions;
+              const exact = (override ?? agent.capabilities.mcpToolPermissions)?.find(
+                (rule) => rule.server === server.server && rule.tool === tool.name,
+              );
+              const action =
+                exact?.action ??
+                (override
+                  ? "deny"
+                  : resolveMcpToolDefault(
+                      { ...agent.capabilities, ...merged },
+                      server.server,
+                      tool,
+                    ));
+              return {
+                server: server.server,
+                tool: tool.name,
+                action: action === "ask" ? ("allow" as const) : action,
+              };
+            })
+          : [],
+      );
       const normalized = taskPermissionProfileSchema.parse({
         ...merged,
+        ...(mcpToolPermissions ? { mcpToolPermissions } : {}),
         mcpServers: normalizeServerActionsForTask(merged.mcpServers ?? [], diagnostics),
         appMcpServers: normalizeServerActionsForTask(appMcpServers, diagnostics),
         toolPermissions: normalizeRulesForTask(merged.toolPermissions ?? [], diagnostics),
@@ -108,6 +137,7 @@ export function mergeTaskPermissions(
   taskProfile: TaskPermissionProfile | undefined,
 ): TaskPermissionProfile {
   return taskPermissionProfileSchema.parse({
+    mcpToolPermissions: taskProfile?.mcpToolPermissions ?? agentCapabilities.mcpToolPermissions,
     customTools: taskProfile?.customTools ?? agentCapabilities.customTools,
     mcpServers: taskProfile?.mcpServers ?? agentCapabilities.mcpServers,
     appMcpServers: taskProfile?.appMcpServers ?? agentCapabilities.appMcpServers,

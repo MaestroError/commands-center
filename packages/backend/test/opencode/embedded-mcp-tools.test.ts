@@ -1,3 +1,8 @@
+import {
+  createEmbeddedMcpToolPolicy,
+  type EmbeddedMcpToolPolicy,
+} from "../../src/opencode/embedded-mcp-tool-policy.js";
+import { mcpSnapshotRules } from "../../src/opencode/embedded-mcp-permissions.js";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { join, dirname } from "node:path";
@@ -32,6 +37,7 @@ describe("embedded MCP and custom tools", () => {
   let host: EmbeddedOpenCodeHost;
   let directory: string;
   const catalogs = new Map<string, string[]>();
+  const mcpTools: { current?: EmbeddedMcpToolPolicy } = {};
   const ccTools: { current?: EmbeddedCcTools } = {};
   const server = createServer((request, response) => {
     const chunks: Buffer[] = [];
@@ -82,19 +88,29 @@ describe("embedded MCP and custom tools", () => {
         tools?: { function: { name: string } }[];
       };
       const prompt = input.messages?.findLast((message) => message.role === "user")?.content;
-      const marker = JSON.stringify(prompt).match(/CATALOG:([A-Za-z0-9_-]+)/)?.[1];
+      const marker = JSON.stringify(prompt ?? "").match(/CATALOG:([A-Za-z0-9_-]+)/)?.[1];
       if (marker && input.tools !== undefined)
         catalogs.set(
           marker,
           input.tools.map((tool) => tool.function.name),
         );
-      const target = JSON.stringify(prompt).match(/CALL:([A-Za-z0-9_-]+)/)?.[1];
+      const target = JSON.stringify(prompt ?? "").match(/CALL:([A-Za-z0-9_-]+)/)?.[1];
       const call = target && !input.messages?.some((message) => message.role === "tool");
       const message = call
         ? {
             role: "assistant",
             tool_calls: [
-              { id: "call-1", type: "function", function: { name: target, arguments: "{}" } },
+              {
+                id: "call-1",
+                type: "function",
+                function: {
+                  name: target,
+                  arguments:
+                    target === "execute"
+                      ? JSON.stringify({ code: "return await tools.local.greet({})" })
+                      : "{}",
+                },
+              },
             ],
           }
         : { role: "assistant", content: "Done" };
@@ -263,8 +279,14 @@ lines.on("line", (line) => {
     });
     host = await createEmbeddedOpenCodeHost({
       ccTools,
+      mcpTools,
       workspaceDirectory: db.config.paths.workspaceDir,
       sdkOptions: { models: { fetch: false }, fs: { fff: false, filewatcher: false } },
+    });
+    mcpTools.current = createEmbeddedMcpToolPolicy({
+      db: db.client.db,
+      specialistsDirectory: dirname(directory),
+      host,
     });
     ccTools.current = createEmbeddedCcToolService({
       db: db.client.db,
@@ -327,6 +349,7 @@ lines.on("line", (line) => {
   }
 
   it("lists actual MCP tools through the embedded plugin bridge", async () => {
+    await host.listTools(directory);
     expect(await createEmbeddedMcpService(host).listMcpToolIds(directory)).toContain("local_greet");
   });
   it("isolates native tool catalogs for concurrent sessions in the same location", async () => {
@@ -613,6 +636,131 @@ lines.on("line", (line) => {
       .poll(async () => (await host.permission.list({ sessionID })).length, { timeout: 10000 })
       .toBe(0);
   });
+  it("filters MCP discovery with an empty snapshot despite broad auto approval", async () => {
+    const session = await host.sessions.create({
+      location: { directory },
+      permissions: [
+        { action: "*", resource: "*", effect: "allow" },
+        ...mcpSnapshotRules({ mcpToolPermissions: [] }).map((rule) => ({
+          action: rule.permission,
+          resource: rule.pattern,
+          effect: rule.action,
+        })),
+      ],
+    });
+    await ownChat(session.id);
+    await host.sessions.prompt({ sessionID: session.id, text: "CATALOG:mcp-snapshot-empty" });
+    await messages(session.id);
+    expect(catalogs.get("mcp-snapshot-empty")).not.toContain("local_greet");
+  });
+  it("executes an explicitly allowed MCP snapshot tool", async () => {
+    const session = await host.sessions.create({
+      location: { directory },
+      permissions: [
+        { action: "*", resource: "*", effect: "allow" },
+        ...mcpSnapshotRules({
+          mcpToolPermissions: [{ server: "local", tool: "greet", action: "allow" }],
+        }).map((rule) => ({
+          action: rule.permission,
+          resource: rule.pattern,
+          effect: rule.action,
+        })),
+      ],
+    });
+    await ownChat(session.id);
+    await host.sessions.prompt({ sessionID: session.id, text: "CALL:local_greet" });
+    expect(await messages(session.id)).toContain("MCP:secret-from-env");
+  });
+  it("rejects forged task MCP calls even with broad session permission", async () => {
+    await host.mcp.connect({ location: { directory }, server: "local" });
+    const session = await host.sessions.create({
+      location: { directory },
+      permissions: [{ action: "*", resource: "*", effect: "allow" }],
+    });
+    const timestamp = new Date();
+    await db.client.db.insert(tasks).values({
+      id: "mcp-denied-task",
+      agent_id: "probe-agent",
+      title: "MCP test",
+      description: "",
+      context: "",
+      todos_json: "[]",
+      status: "backlog",
+      enabled: true,
+      archived: false,
+      created_at: timestamp,
+      updated_at: timestamp,
+    });
+    await db.client.db.insert(task_runs).values({
+      id: "mcp-denied-run",
+      task_id: "mcp-denied-task",
+      agent_id: "probe-agent",
+      opencode_session_id: session.id,
+      status: "running",
+      trigger_source: "manual",
+      rendered_prompt: "Test",
+      effective_permissions_json: JSON.stringify({ mcpToolPermissions: [] }),
+      created_at: timestamp,
+      updated_at: timestamp,
+    });
+    try {
+      await host.sessions.prompt({ sessionID: session.id, text: "CALL:local_greet" });
+      expect(await messages(session.id)).not.toContain("MCP:secret-from-env");
+    } finally {
+      await db.client.db
+        .update(task_runs)
+        .set({ status: "completed" })
+        .where(eq(task_runs.id, "mcp-denied-run"));
+    }
+  });
+  it("uses the task snapshot for a child session", async () => {
+    await host.mcp.connect({ location: { directory }, server: "local" });
+    const rules = [{ server: "local", tool: "greet", action: "allow" as const }];
+    const parent = await host.sessions.create({
+      location: { directory },
+      permissions: mcpSnapshotRules({ mcpToolPermissions: rules }).map((rule) => ({
+        action: rule.permission,
+        resource: rule.pattern,
+        effect: rule.action,
+      })),
+    });
+    const timestamp = new Date();
+    await db.client.db.insert(tasks).values({
+      id: "mcp-child-task",
+      agent_id: "probe-agent",
+      title: "MCP child",
+      description: "",
+      context: "",
+      todos_json: "[]",
+      status: "backlog",
+      enabled: true,
+      archived: false,
+      created_at: timestamp,
+      updated_at: timestamp,
+    });
+    await db.client.db.insert(task_runs).values({
+      id: "mcp-child-run",
+      task_id: "mcp-child-task",
+      agent_id: "probe-agent",
+      opencode_session_id: parent.id,
+      status: "running",
+      trigger_source: "manual",
+      rendered_prompt: "Test",
+      effective_permissions_json: JSON.stringify({ mcpToolPermissions: rules }),
+      created_at: timestamp,
+      updated_at: timestamp,
+    });
+    try {
+      const child = await host.sessions.create({ location: { directory }, parentID: parent.id });
+      await host.sessions.prompt({ sessionID: child.id, text: "CALL:local_greet" });
+      expect(await messages(child.id)).toContain("MCP:secret-from-env");
+    } finally {
+      await db.client.db
+        .update(task_runs)
+        .set({ status: "completed" })
+        .where(eq(task_runs.id, "mcp-child-run"));
+    }
+  });
   it("removes disconnected MCP tools from the live inventory", async () => {
     const mcp = createEmbeddedMcpService(host);
     await mcp.disconnect(directory, "local");
@@ -622,4 +770,40 @@ lines.on("line", (line) => {
       await mcp.connect(directory, "local");
     }
   });
+  for (const allowed of [false, true]) {
+    it(`${allowed ? "allows" : "denies"} MCP tools inside Code Mode using the snapshot`, async () => {
+      const path = join(directory, "opencode.jsonc");
+      const original = await readFile(path, "utf8");
+      await writeFile(path, original.replaceAll('"codemode": false', '"codemode": true'));
+      await host.reload();
+      try {
+        await host.model.list({ location: { directory } });
+        await host.mcp.connect({ location: { directory }, server: "local" });
+        await host.readTools(directory);
+        const session = await host.sessions.create({
+          location: { directory },
+          permissions: [
+            { action: "*", resource: "*", effect: "allow" },
+            ...mcpSnapshotRules({
+              mcpToolPermissions: allowed
+                ? [{ server: "local", tool: "greet", action: "allow" }]
+                : [],
+            }).map((rule) => ({
+              action: rule.permission,
+              resource: rule.pattern,
+              effect: rule.action,
+            })),
+          ],
+        });
+        await ownChat(session.id);
+        await host.sessions.prompt({ sessionID: session.id, text: "CALL:execute" });
+        const result = await messages(session.id);
+        if (allowed) expect(result).toContain("MCP:secret-from-env");
+        else expect(result).not.toContain("MCP:secret-from-env");
+      } finally {
+        await writeFile(path, original);
+        await host.reload();
+      }
+    });
+  }
 });

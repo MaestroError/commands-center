@@ -1,3 +1,4 @@
+import { mcpToolPermissionSchema } from "./specialists.js";
 import { z } from "zod";
 
 import {
@@ -182,6 +183,7 @@ export const taskPermissionProfileSchema = z.object({
   mcpServers: z.array(specialistMcpServerSchema).optional(),
   appMcpServers: z.array(specialistAppMcpServerSchema).optional(),
   toolPermissions: z.array(specialistPermissionRuleSchema).optional(),
+  mcpToolPermissions: z.array(mcpToolPermissionSchema).optional(),
   appToolPermissions: z.array(specialistPermissionRuleSchema).optional(),
   approvalPolicy: z.enum(["inherit", "auto_approve", "deny"]).optional(),
   diagnostics: z
@@ -200,6 +202,9 @@ const taskPermissionProfileInputSchema: z.ZodType<
   z.input<typeof taskPermissionProfileSchema>
 > = taskPermissionProfileSchema
   .extend({
+    mcpToolPermissions: z
+      .array(mcpToolPermissionSchema.extend({ action: z.enum(["allow", "deny"]) }))
+      .optional(),
     appMcpServers: z
       .array(specialistAppMcpServerSchema.extend({ action: z.enum(["allow", "deny"]) }))
       .optional(),
@@ -208,7 +213,7 @@ const taskPermissionProfileInputSchema: z.ZodType<
       .optional(),
   })
   .describe(
-    "CC-tool overrides use appToolPermissions as a complete allow/deny matrix. Omit both appToolPermissions and appMcpServers to inherit specialist CC defaults; an empty appToolPermissions array denies all CC tools. Preserve unrelated permission fields when editing.",
+    "CC-tool overrides use appToolPermissions as a complete allow/deny matrix. Omit both appToolPermissions and appMcpServers to inherit specialist CC defaults; an empty appToolPermissions array denies all CC tools. MCP overrides use mcpToolPermissions entries with canonical server and tool names and allow/deny actions; omitted tools are denied when this matrix is present. Omit mcpToolPermissions to inherit MCP defaults. Preserve unrelated permission fields when editing.",
   );
 
 export const queueTaskInputSchema = z.object({

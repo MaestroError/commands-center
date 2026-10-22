@@ -1,3 +1,9 @@
+import { createMcpToolPermissionService } from "../services/mcp-tool-permission-service.js";
+import { readEmbeddedMcpCatalog } from "../opencode/embedded-mcp-catalog.js";
+import {
+  createEmbeddedMcpToolPolicy,
+  type EmbeddedMcpToolPolicy,
+} from "../opencode/embedded-mcp-tool-policy.js";
 import { buildEmbeddedTaskPermissions } from "../opencode/embedded-task-permissions.js";
 import {
   createEmbeddedCcToolService,
@@ -189,9 +195,11 @@ export async function startServerRuntime(
     });
     logPublicBindingGuidance(config, logger);
 
+    const mcpTools: { current?: EmbeddedMcpToolPolicy } = {};
     const ccTools: { current?: EmbeddedCcTools } = {};
     const embeddedRuntime = await (options?.createEmbeddedRuntime ?? createEmbeddedRuntime)({
       ccTools,
+      mcpTools,
       workspaceDirectory: config.paths.workspaceDir,
       publicOrigin: config.security.publicOrigin,
       logger,
@@ -221,7 +229,17 @@ export async function startServerRuntime(
     );
     const liveRequestService = createLiveRequestService();
     cleanup.push(() => liveRequestService.dispose());
-    const taskService = createTaskService({ db: database.db, config });
+    const mcpToolPermissions = createMcpToolPermissionService({
+      db: database.db,
+      specialistsDirectory: config.paths.subdirectories.specialists,
+      readCatalog: (directory) => readEmbeddedMcpCatalog(embeddedRuntime.host, directory),
+    });
+    mcpTools.current = createEmbeddedMcpToolPolicy({
+      db: database.db,
+      specialistsDirectory: config.paths.subdirectories.specialists,
+      host: embeddedRuntime.host,
+    });
+    const taskService = createTaskService({ db: database.db, config, mcpToolPermissions });
     const taskContextAttachmentService = createTaskContextAttachmentService({
       config,
       taskService,
@@ -252,6 +270,7 @@ export async function startServerRuntime(
       () => sessionArchiveScheduler.stop(),
     );
     const taskPermissionService = createTaskPermissionService({
+      mcpTools: mcpToolPermissions,
       db: database.db,
       config,
       opencodeService,

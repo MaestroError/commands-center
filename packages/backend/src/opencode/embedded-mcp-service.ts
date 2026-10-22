@@ -13,7 +13,7 @@ type McpHost = {
   model: Pick<EmbeddedOpenCodeHost["model"], "list">;
   integration: Pick<EmbeddedOpenCodeHost["integration"], "get" | "oauth">;
   credential: Pick<EmbeddedOpenCodeHost["credential"], "list" | "remove">;
-  listTools: EmbeddedOpenCodeHost["listTools"];
+  readTools: EmbeddedOpenCodeHost["readTools"];
 };
 
 export type EmbeddedMcpService = Pick<
@@ -58,12 +58,17 @@ export function createEmbeddedMcpService(
       );
     },
     async listMcpToolIds(directory: string): Promise<string[]> {
-      const tools = await host.listTools(directory);
+      const tools = await host.readTools(directory);
+      if (!tools) return [];
       const names = (await host.mcp.list({ location: { directory } })).data
         .filter((entry) => entry.status.status === "connected")
-        .map((entry) => `${entry.name.replace(/[^a-zA-Z0-9_-]/g, "_")}_`);
+        .map((entry) => entry.name.replace(/[^a-zA-Z0-9_-]/g, "_"));
       return tools
-        .filter((tool) => names.some((prefix) => tool.id.startsWith(prefix)))
+        .filter((tool) =>
+          tool.namespace
+            ? names.includes(tool.namespace)
+            : names.some((name) => tool.id.startsWith(`${name}_`)),
+        )
         .map((tool) => tool.id);
     },
     async connect(directory: string, name: string): Promise<void> {

@@ -1,3 +1,4 @@
+import { taskPermissionProfileSchema } from "@cc/shared/schemas";
 // createTaskCrudOps: task-service methods split out of the god-file (issue #99).
 
 import type { TaskServiceRef } from "../task-service.js";
@@ -35,6 +36,10 @@ export function createTaskCrudOps(ctx: TaskServiceContext, service: TaskServiceR
     async create(input: unknown): Promise<Task> {
       const parsed = createTaskInputSchema.parse(input);
       await requireActiveAgent(parsed.agentId);
+      await options.mcpToolPermissions?.validate(
+        parsed.agentId,
+        parsed.permissionProfile?.mcpToolPermissions,
+      );
       await enforceTaskLimit();
 
       const timestamp = now();
@@ -168,6 +173,19 @@ export function createTaskCrudOps(ctx: TaskServiceContext, service: TaskServiceR
         await requireActiveAgent(parsed.defaultAgentId);
       }
 
+      const previousProfile = taskPermissionProfileSchema.parse(
+        JSON.parse(existing.permission_profile_json ?? "{}"),
+      );
+      if (parsed.permissionProfile !== undefined || parsed.agentId !== undefined)
+        await options.mcpToolPermissions?.validate(
+          parsed.agentId ?? existing.agent_id,
+          parsed.permissionProfile === undefined
+            ? previousProfile.mcpToolPermissions
+            : parsed.permissionProfile?.mcpToolPermissions,
+          parsed.agentId && parsed.agentId !== existing.agent_id
+            ? []
+            : previousProfile.mcpToolPermissions,
+        );
       const timestamp = now();
       const archived = parsed.status === "archived" ? true : existing.archived;
       const enabled =

@@ -1,3 +1,4 @@
+import { useMcpToolCatalog } from "@/hooks/use-mcp-tool-catalog";
 import { TaskToolPermissions } from "@/components/tasks/TaskToolPermissions";
 // Split out of TasksPage.tsx (issue #99).
 
@@ -62,6 +63,7 @@ export function TaskTemplateForm(props: {
   const [baseline, setBaseline] = useState(props.initialTemplate);
   const [dirty, setDirty] = useState(false);
   const catalogQuery = useSpecialistCatalogQuery();
+  const mcpCatalog = useMcpToolCatalog(form.agentId, Boolean(form.agentId));
   const selectedAgent = props.agents.find((agent) => agent.id === form.agentId);
   const templateSkills = useTaskComposerSkills(selectedAgent, catalogQuery.data);
   const timezones = useMemo(() => listTimezones(), []);
@@ -163,6 +165,8 @@ export function TaskTemplateForm(props: {
         />
       </section>
       <TaskToolPermissions
+        mcpCatalog={mcpCatalog.data}
+        mcpError={mcpCatalog.error?.message}
         specialist={selectedAgent}
         catalog={catalogQuery.data}
         value={form.permissionProfile}

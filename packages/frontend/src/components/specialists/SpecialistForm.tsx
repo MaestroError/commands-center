@@ -1,3 +1,6 @@
+import { PermissionControl } from "./PermissionControl";
+import { McpToolGroups } from "./McpToolGroups";
+import { useMcpToolCatalog } from "@/hooks/use-mcp-tool-catalog";
 import { CcToolGroups } from "@/components/specialists/CcToolGroups";
 import { useState } from "react";
 import { Link } from "react-router";
@@ -11,7 +14,7 @@ import { useMcpServersQuery } from "@/hooks/use-mcp-servers-query";
 import {
   getMcpServerAction,
   setAppMcpServerAction,
-  setAppMcpToolEnabled,
+  setAppMcpToolAction,
   setMcpServerAction,
 } from "@/lib/specialist-capabilities";
 import {
@@ -66,6 +69,7 @@ export function SpecialistForm(props: SpecialistFormProps) {
   const catalogQuery = useSpecialistCatalogQuery();
   const agentsQuery = useSpecialistsQuery();
   const mcpServersQuery = useMcpServersQuery();
+  const mcpCatalog = useMcpToolCatalog(props.agentId);
   const customToolsQuery = useCustomToolsQuery();
   const specialistCustomToolsQuery = useSpecialistCustomToolsQuery(props.agentId);
 
@@ -147,8 +151,8 @@ export function SpecialistForm(props: SpecialistFormProps) {
     updateCapabilities(setAppMcpServerAction(value.capabilities, serverName, action));
   }
 
-  function setAppMcpToolPermission(serverName: string, toolName: string, enabled: boolean) {
-    updateCapabilities(setAppMcpToolEnabled(value.capabilities, serverName, toolName, enabled));
+  function setAppMcpToolPermission(serverName: string, toolName: string, action: PermissionAction) {
+    updateCapabilities(setAppMcpToolAction(value.capabilities, serverName, toolName, action));
   }
 
   const dense = props.dense ?? false;
@@ -505,6 +509,35 @@ export function SpecialistForm(props: SpecialistFormProps) {
                     value={getMcpServerAction(value.capabilities, server.name)}
                   />
                 </div>
+                {["ask", "allow"].includes(getMcpServerAction(value.capabilities, server.name)) ? (
+                  <div className="mt-4">
+                    <CollapsibleSection
+                      title={`${server.name} tools`}
+                      description="Customize individual tool permissions."
+                    >
+                      <McpToolGroups
+                        embedded
+                        catalog={mcpCatalog.data?.filter((entry) => entry.server === server.name)}
+                        error={mcpCatalog.error?.message}
+                        capabilities={value.capabilities}
+                        rules={value.capabilities.mcpToolPermissions?.filter(
+                          (entry) => entry.server === server.name,
+                        )}
+                        onChange={(rules) =>
+                          updateCapabilities({
+                            ...value.capabilities,
+                            mcpToolPermissions: [
+                              ...(value.capabilities.mcpToolPermissions ?? []).filter(
+                                (entry) => entry.server !== server.name,
+                              ),
+                              ...rules,
+                            ],
+                          })
+                        }
+                      />
+                    </CollapsibleSection>
+                  </div>
+                ) : null}
               </article>
             ))}
           </div>
@@ -516,6 +549,26 @@ export function SpecialistForm(props: SpecialistFormProps) {
             />
           </div>
         )}
+        {value.capabilities.mcpToolPermissions?.some(
+          (rule) => !mcpServersQuery.data?.some((server) => server.name === rule.server),
+        ) ? (
+          <McpToolGroups
+            rules={value.capabilities.mcpToolPermissions.filter(
+              (rule) => !mcpServersQuery.data?.some((server) => server.name === rule.server),
+            )}
+            onChange={(rules) =>
+              updateCapabilities({
+                ...value.capabilities,
+                mcpToolPermissions: [
+                  ...(value.capabilities.mcpToolPermissions ?? []).filter((rule) =>
+                    mcpServersQuery.data?.some((server) => server.name === rule.server),
+                  ),
+                  ...rules,
+                ],
+              })
+            }
+          />
+        ) : null}
       </CollapsibleSection>
     </div>
   );
@@ -669,30 +722,7 @@ function McpServerPermissionControl(props: {
     },
   ];
 
-  return (
-    <div className="inline-flex rounded-xl border border-border bg-surface p-1">
-      {options.map((option) => {
-        const selected = props.value === option.value;
-
-        return (
-          <button
-            aria-label={`${props.label} ${option.label}`}
-            aria-pressed={selected}
-            className={
-              selected
-                ? `rounded-lg border px-3 py-1.5 text-xs font-medium transition ${option.selectedClassName}`
-                : "rounded-lg border border-transparent px-3 py-1.5 text-xs font-medium text-text-secondary transition hover:bg-surface-elevated hover:text-text-primary"
-            }
-            key={option.value}
-            onClick={() => props.onChange(option.value)}
-            type="button"
-          >
-            {option.label}
-          </button>
-        );
-      })}
-    </div>
-  );
+  return <PermissionControl {...props} options={options} />;
 }
 
 function StatusBadge(props: { status: CustomToolDriftStatus }) {

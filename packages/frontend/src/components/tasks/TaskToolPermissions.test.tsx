@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -82,14 +82,16 @@ describe("task CC tool controls", () => {
         }}
       />,
     );
-    expect(screen.getByRole("switch", { name: "cc_test task" })).toBeInTheDocument();
+    fireEvent.click(screen.getByText("cc_test tools"));
+    expect(screen.getByRole("button", { name: "cc_test task Allow" })).toBeInTheDocument();
   });
 
   it("can grant a tool from a specialist-disabled group", async () => {
     const changed = vi.fn<(value: TaskPermissionProfile) => void>();
     render(<Harness changed={changed} />);
     await userEvent.click(screen.getByRole("switch", { name: "Change available tools" }));
-    await userEvent.click(screen.getByRole("switch", { name: "cc_test task" }));
+    await userEvent.click(screen.getByText("cc_test tools"));
+    await userEvent.click(screen.getByRole("button", { name: "cc_test task Allow" }));
     expect(changed.mock.lastCall?.[0].appToolPermissions).toEqual([
       { pattern: "cc_test_task", action: "allow" },
     ]);
@@ -101,7 +103,7 @@ describe("task CC tool controls", () => {
         changed={vi.fn<(value: TaskPermissionProfile) => void>()}
       />,
     );
-    expect(screen.queryByRole("switch", { name: "cc_test chat" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "cc_test chat Allow" })).not.toBeInTheDocument();
   });
   it("initializes inherited ask as allow", async () => {
     const changed = vi.fn<(value: TaskPermissionProfile) => void>();
@@ -148,6 +150,10 @@ describe("task CC tool controls", () => {
         changed={vi.fn<(value: TaskPermissionProfile) => void>()}
       />,
     );
-    expect(screen.getByRole("switch", { name: "cc_test task" })).not.toBeChecked();
+    fireEvent.click(screen.getByText("cc_test tools"));
+    expect(screen.getByRole("button", { name: "cc_test task Deny" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
   });
 });

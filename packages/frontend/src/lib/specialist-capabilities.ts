@@ -156,18 +156,18 @@ export function getAppMcpToolAction(
   capabilities: SpecialistCapabilitySelection,
   serverName: string,
   toolName: string,
-): "allow" | "deny" {
+): "allow" | "ask" | "deny" {
   const pattern = buildAppMcpToolPattern(serverName, toolName);
   const exact = (capabilities.appToolPermissions ?? []).find((rule) => rule.pattern === pattern);
 
-  return exact?.action === "deny" ? "deny" : "allow";
+  return exact?.action ?? getAppMcpServerAction(capabilities, serverName);
 }
 
-export function setAppMcpToolEnabled(
+export function setAppMcpToolAction(
   capabilities: SpecialistCapabilitySelection,
   serverName: string,
   toolName: string,
-  enabled: boolean,
+  action: "allow" | "ask" | "deny",
 ): SpecialistCapabilitySelection {
   const pattern = buildAppMcpToolPattern(serverName, toolName);
   const remaining = (capabilities.appToolPermissions ?? []).filter(
@@ -176,7 +176,7 @@ export function setAppMcpToolEnabled(
 
   return {
     ...capabilities,
-    appToolPermissions: enabled ? remaining : [...remaining, { pattern, action: "deny" as const }],
+    appToolPermissions: [...remaining, { pattern, action }],
   };
 }
 

@@ -76,7 +76,7 @@ Tier choices use OpenCode's `provider/model#variant` reference format in existin
 model fields, including portable task-template files. These are reasoning variants,
 not priority/billing service tiers.
 
-## Task CC-tool overrides
+## Task tool overrides
 
 Task and task-template editors include **Change available tools**. Leave it off to
 inherit the assigned specialist's CC-tool defaults when a run starts. Turn it on
@@ -92,8 +92,28 @@ fields. New CC overrides accept only `allow` or `deny`.
 
 Template `task.json` retains the override. Generated tasks copy it, and each run
 snapshots its resolved permissions. Later edits affect future runs, not running
-sessions or previously generated tasks. These controls do not change third-party
-MCP or custom-script permissions.
+sessions or previously generated tasks.
+
+Specialist editors also show third-party MCP tools grouped by server, with
+**Allow / Ask / Deny** defaults. Task/template **Change available tools** includes
+**Allow / Deny** overrides for tools already connected in the selected specialist's
+workspace. A task may override a specialist tool denial, but cannot connect or
+remove an MCP server. Inherited `ask` becomes `allow` for autonomous runs.
+
+MCP rules use `mcpToolPermissions: [{ server, tool, action }]` in specialist
+capabilities and task permission profiles. Server/tool names are canonical catalog
+names. Omit the task field to inherit defaults; an empty array denies all MCP tools.
+New task/template entries accept only `allow` or `deny`. These rules remain separate
+from CC-tool and custom-script settings. Unavailable saved entries are retained
+and can be removed; changing or adding an entry requires a connected tool.
+Permission-form discovery does not connect servers. On specialist creation the
+catalog comes from connected workspace integrations; task overrides always use
+the selected specialist's own connections.
+
+Each run snapshots the connected tools and their resolved permissions. Tools
+added after that snapshot remain denied for that run, including through Code Mode
+and child sessions. Disconnected tools remain unavailable even if allowed by the
+snapshot. Template files preserve MCP overrides for portable recovery.
 
 ## Production Usage
 

@@ -1,9 +1,6 @@
 import type { Tool } from "@opencode/sdk";
 
-import {
-  specialistCapabilitySelectionSchema,
-  taskPermissionProfileSchema,
-} from "@cc/shared/schemas";
+import { readEmbeddedToolProfile } from "./embedded-tool-profile.js";
 import type { AppDb } from "../db/client.js";
 import type { CcManagedMcpServerDefinition } from "../mcp/cc-managed/server-registry.js";
 import { createEmbeddedCcTools } from "./embedded-cc-tool-adapter.js";
@@ -30,26 +27,10 @@ export function createEmbeddedCcToolService(options: {
     specialistsDirectory: options.specialistsDirectory,
     getSession: (sessionID) => options.host.sessions.get({ sessionID }),
   });
-  async function permissions(caller: EmbeddedToolCaller) {
-    const agent = await options.db.query.agents.findFirst({
-      where: (table, { eq }) => eq(table.id, caller.agentId),
-    });
-    if (!agent || agent.status !== "active") throw new Error("CC tool specialist is not active.");
-    const capabilities = specialistCapabilitySelectionSchema.parse(
-      JSON.parse(agent.capabilities_json),
-    );
-    if (caller.context === "chat") return capabilities;
-    const run = await options.db.query.task_runs.findFirst({
-      where: (table, { eq }) => eq(table.id, caller.taskRunId),
-    });
-    if (!run?.effective_permissions_json)
-      throw new Error("CC task permissions have not been snapshotted.");
-    return taskPermissionProfileSchema.parse(JSON.parse(run.effective_permissions_json));
-  }
   async function policy(
     caller: EmbeddedToolCaller,
   ): Promise<Map<string, "allow" | "ask" | "deny">> {
-    const profile = await permissions(caller);
+    const profile = await readEmbeddedToolProfile(options.db, caller);
     const result = new Map<string, "allow" | "ask" | "deny">();
     for (const group of options.groups) {
       const selection = profile.appMcpServers?.find((entry) => entry.name === group.name);

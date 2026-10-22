@@ -99,6 +99,18 @@ const runtime = await startServerRuntime({
       provider.release();
       return { held: false };
     });
+    app.post(
+      "/api/e2e/connect-workspace-mcp",
+      { schema: { body: z.object({ name: z.string() }) } },
+      async (request) => {
+        const host = context.embeddedRuntime!.host;
+        const location = { directory: context.config.paths.workspaceDir };
+        await host.model.list({ location });
+        await host.mcp.connect({ location, server: request.body.name });
+        await host.readTools(location.directory);
+        return { connected: true };
+      },
+    );
     app.get("/api/e2e/mcp-provider", () => ({
       url: `${oauthProvider.origin}/mcp`,
       transport: "streamable-http",
