@@ -55,3 +55,13 @@ Collision validation: 86 integration/service tests passed; the final additional 
 - [ ] Verify legacy grants/denials, strict new matrices, and specialist reopen/save; run lint/typechecks and request review.
 
 Snapshot/form validation: 60 backend/SDK tests, 53 shared schema tests, and the specialist reopen/save regression passed. ESLint --fix and all package typechecks passed.
+
+## Final functional review
+
+- [x] Start CC handler timeout only after authorization; preserve cancellation during approval.
+- [x] Rename MCP references in task profiles and portable task-template settings, without changing run snapshots.
+- [ ] Test approval timing/cancellation and rename persistence; run lint/typechecks and request review.
+
+Decision: legacy task/template profile migration is out of scope; operator accepts recreating old tasks/templates. The specialist MCP hydration issue is already fixed in 8a8f96b6.
+
+Final functional validation: 97 unique adapter/service/SDK tests passed, ESLint --fix and backend typecheck passed. Template updates use existing task.json paths; no workspace gitignore change or migration is needed.

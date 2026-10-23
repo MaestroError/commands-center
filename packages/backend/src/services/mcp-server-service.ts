@@ -1,3 +1,4 @@
+import { renameTaskMcpReferences } from "./task-mcp-reference-sync.js";
 import { syncEmbeddedGlobalMcpConfig } from "../opencode/embedded-mcp-config.js";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -294,6 +295,7 @@ export function createMcpServerService(options: {
       }
 
       if (existing.name !== parsed.name) {
+        await renameTaskMcpReferences(options.db, options.config, existing.name, parsed.name);
         await assertNameAvailable(parsed.name, id);
       }
 
@@ -338,6 +340,7 @@ export function createMcpServerService(options: {
       }
 
       if (existing.name !== parsed.name) {
+        await renameTaskMcpReferences(options.db, options.config, existing.name, parsed.name);
         await (options.rewriteAgents ?? rewriteAgentsForMcpChange)({
           db: options.db,
           config: options.config,

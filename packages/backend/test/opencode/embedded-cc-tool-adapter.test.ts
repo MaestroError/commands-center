@@ -1,5 +1,5 @@
 import type { Tool } from "@opencode/sdk";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
 import type {
@@ -9,7 +9,12 @@ import type {
 import { createEmbeddedCcTools } from "../../src/opencode/embedded-cc-tool-adapter.js";
 import type { EmbeddedToolCaller } from "../../src/opencode/embedded-tool-caller.js";
 
-function fixture(overrides: Partial<CcManagedToolDefinition> = {}, rejectAuthorization = false) {
+function fixture(
+  overrides: Partial<CcManagedToolDefinition> = {},
+  rejectAuthorization = false,
+  authorize?: Parameters<typeof createEmbeddedCcTools>[0]["authorize"],
+  timeout?: number,
+) {
   const calls: CcManagedToolContext[] = [];
   const approvals: string[] = [];
   const caller: EmbeddedToolCaller = {
@@ -52,19 +57,50 @@ function fixture(overrides: Partial<CcManagedToolDefinition> = {}, rejectAuthori
         companionPromptId: null,
         catalogTools: [definition],
         tools: [definition],
+        toolCallTimeoutMs: timeout,
       },
     ],
     resolveCaller: () => Promise.resolve(caller),
-    authorize: ({ toolID }) => {
-      if (rejectAuthorization) return Promise.reject(new Error("Tool permission denied"));
-      approvals.push(toolID);
-      return Promise.resolve();
-    },
+    authorize:
+      authorize ??
+      (({ toolID }) => {
+        if (rejectAuthorization) return Promise.reject(new Error("Tool permission denied"));
+        approvals.push(toolID);
+        return Promise.resolve();
+      }),
   });
   return { tool: tool!, calls, approvals, caller, execution, controller };
 }
 
 describe("embedded CC tool adapter", () => {
+  it("starts the execution timeout only after approval", async () => {
+    const timeout = vi.spyOn(AbortSignal, "timeout");
+    try {
+      const f = fixture(
+        {},
+        false,
+        ({ execution }) => {
+          expect(timeout).not.toHaveBeenCalled();
+          expect(execution.signal.aborted).toBe(false);
+          return Promise.resolve();
+        },
+        15,
+      );
+      await f.tool.execute({ value: "test" }, f.execution);
+      expect(timeout).toHaveBeenCalledWith(15);
+    } finally {
+      timeout.mockRestore();
+    }
+  });
+  it("retains caller cancellation during authorization", async () => {
+    const f = fixture({}, false, ({ execution }) => {
+      f.controller.abort();
+      expect(execution.signal.aborted).toBe(true);
+      return Promise.resolve();
+    });
+    await expect(f.tool.execute({ value: "test" }, f.execution)).rejects.toThrow();
+    expect(f.calls).toEqual([]);
+  });
   it("preserves the group namespace", () => {
     expect(fixture().tool.options).toEqual({ namespace: "cc_default", codemode: false });
   });

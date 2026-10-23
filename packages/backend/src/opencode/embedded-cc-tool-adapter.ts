@@ -29,13 +29,6 @@ export function createEmbeddedCcTools(options: {
         ...(definition.outputSchema ? { output: toJsonSchemaCompat(definition.outputSchema) } : {}),
         options: { namespace: group.name, codemode: false },
         async execute(input, execution) {
-          execution = {
-            ...execution,
-            signal: AbortSignal.any([
-              execution.signal,
-              AbortSignal.timeout(group.toolCallTimeoutMs ?? CC_TOOL_CALL_TIMEOUT_MS),
-            ]),
-          };
           execution.signal.throwIfAborted();
           const caller = await options.resolveCaller(options.directory, execution.sessionID);
           if (definition.context !== "both" && definition.context !== caller.context) {
@@ -47,6 +40,13 @@ export function createEmbeddedCcTools(options: {
             execution,
           });
           execution.signal.throwIfAborted();
+          execution = {
+            ...execution,
+            signal: AbortSignal.any([
+              execution.signal,
+              AbortSignal.timeout(group.toolCallTimeoutMs ?? CC_TOOL_CALL_TIMEOUT_MS),
+            ]),
+          };
           const args: unknown = definition.inputSchema
             ? parseWithCompat(definition.inputSchema, input)
             : input;
