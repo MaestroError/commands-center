@@ -36,3 +36,14 @@ Third-review validation: 32 SDK integration tests passed, including wildcard Ask
 - [ ] Push the fix and reply to the review.
 
 Fourth-review validation: 19 helper/component tests, frontend typecheck, and ESLint --fix passed.
+
+## Custom script namespace collision
+
+- [x] Reserve cc_custom for scripts in MCP create/update validation.
+- [x] Disable conflicting existing/manual MCP entries at runtime with rename guidance; exclude them from MCP catalogs and policy matching.
+- [x] Verify scripts remain usable with an empty task MCP matrix and conflicting configured integration.
+- [ ] Run tests/lint/typechecks, push and reply to review.
+
+No persisted files are migrated; existing MCP configuration remains available for renaming. No workspace gitignore changes are required.
+
+Collision validation: 86 integration/service tests passed; the final additional catalog regression passed with the six-test catalog suite (87 total unique tests). ESLint --fix and backend typecheck passed.

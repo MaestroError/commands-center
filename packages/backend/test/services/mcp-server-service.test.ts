@@ -12,6 +12,26 @@ import type { OpenCodeService } from "../../src/services/opencode-service";
 import { createTestDatabase } from "../helpers/db";
 
 describe("mcp-server-service", () => {
+  it("reserves cc_custom for native script tools", async () => {
+    const testDb = await createTestDatabase();
+    try {
+      const service = createMcpServerService({
+        db: testDb.client.db,
+        config: testDb.config,
+        opencodeService: createMockOpenCodeService(),
+        secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      });
+      await expect(
+        service.create({
+          name: "cc_custom",
+          enabled: true,
+          config: { transport: "stdio", command: ["node", "server.js"] },
+        }),
+      ).rejects.toThrow("reserved");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
   it("persists MCP servers and syncs the global opencode config", async () => {
     const testDb = await createTestDatabase();
     const opencodeService = createMockOpenCodeService();

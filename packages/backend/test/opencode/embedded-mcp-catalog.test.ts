@@ -71,6 +71,27 @@ describe("passive MCP catalog", () => {
       tools: [],
     });
   });
+  it("never classifies custom scripts as tools of a conflicting MCP", async () => {
+    const host = fixture();
+    host.readTools = () =>
+      Promise.resolve([
+        {
+          id: "cc_custom_script",
+          namespace: "cc_custom",
+          name: "script",
+          description: "Script",
+          permission: "cc_custom_script",
+        },
+      ]);
+    host.mcp.list = () =>
+      Promise.resolve({
+        location: { directory: "/specialist" },
+        data: [{ name: "cc_custom", status: { status: "connected" } }],
+      });
+    expect(await readEmbeddedMcpCatalog(host, "/specialist")).toEqual([
+      { server: "cc_custom", available: false, tools: [] },
+    ]);
+  });
   it("rejects ambiguous normalized server namespaces", async () => {
     const host = fixture();
     host.mcp.list = () =>

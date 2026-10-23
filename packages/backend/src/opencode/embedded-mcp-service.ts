@@ -53,7 +53,15 @@ export function createEmbeddedMcpService(
       return Object.fromEntries(
         servers.data.map((entry) => [
           entry.name,
-          entry.status.status === "pending" ? { status: "disconnected" } : entry.status,
+          entry.name.replace(/[^a-zA-Z0-9_-]/g, "_") === "cc_custom"
+            ? {
+                status: "failed",
+                error:
+                  "This MCP name is reserved for custom scripts. Rename the integration to connect it.",
+              }
+            : entry.status.status === "pending"
+              ? { status: "disconnected" }
+              : entry.status,
         ]),
       );
     },
@@ -61,7 +69,11 @@ export function createEmbeddedMcpService(
       const tools = await host.readTools(directory);
       if (!tools) return [];
       const names = (await host.mcp.list({ location: { directory } })).data
-        .filter((entry) => entry.status.status === "connected")
+        .filter(
+          (entry) =>
+            entry.status.status === "connected" &&
+            entry.name.replace(/[^a-zA-Z0-9_-]/g, "_") !== "cc_custom",
+        )
         .map((entry) => entry.name.replace(/[^a-zA-Z0-9_-]/g, "_"));
       return tools
         .filter((tool) =>
@@ -72,6 +84,10 @@ export function createEmbeddedMcpService(
         .map((tool) => tool.id);
     },
     async connect(directory: string, name: string): Promise<void> {
+      if (name.replace(/[^a-zA-Z0-9_-]/g, "_") === "cc_custom")
+        throw new BadRequestError(
+          "This MCP name is reserved for custom scripts. Rename the integration to connect it.",
+        );
       await host.mcp.connect({ location: { directory }, server: name });
     },
     async disconnect(directory: string, name: string): Promise<void> {
@@ -128,6 +144,10 @@ export function createEmbeddedMcpService(
         if (data.status === "expired")
           throw new BadRequestError("MCP authorization expired. Start authorization again.");
       }
+      if (name.replace(/[^a-zA-Z0-9_-]/g, "_") === "cc_custom")
+        throw new BadRequestError(
+          "This MCP name is reserved for custom scripts. Rename the integration to connect it.",
+        );
       await host.mcp.connect({ location: { directory }, server: name });
       const entry = await server(directory, name);
       return entry.status.status === "pending" ? { status: "disconnected" } : entry.status;

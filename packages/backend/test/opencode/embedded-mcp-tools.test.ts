@@ -249,6 +249,7 @@ lines.on("line", (line) => {
       join(configuration, "opencode.json"),
       JSON.stringify({
         model: "test/test",
+        mcp: { servers: { cc_custom: { type: "local", command: [process.execPath, fixture] } } },
         providers: {
           test: {
             package: "@opencode/ai/providers/openai-compatible",
@@ -592,6 +593,67 @@ lines.on("line", (line) => {
     expect(await messages(await prompt("cc_probe_task_run", "deny"))).not.toContain(
       "CC_CONTEXT_PROBE_EXECUTED",
     );
+  });
+  it("reports an existing conflicting MCP integration as unavailable", async () => {
+    expect(
+      (await createEmbeddedMcpService(host).listMcpStatus(directory))["cc_custom"],
+    ).toMatchObject({ status: "failed", error: expect.stringContaining("Rename") });
+  });
+  it("excludes scripts from MCP tool discovery despite a conflicting integration", async () => {
+    expect(
+      (await createEmbeddedMcpService(host).listMcpToolIds(directory)).some((id) =>
+        id.startsWith("cc_custom_"),
+      ),
+    ).toBe(false);
+  });
+  it("rejects connecting a reserved integration", async () => {
+    await expect(createEmbeddedMcpService(host).connect(directory, "cc_custom")).rejects.toThrow(
+      "reserved",
+    );
+  });
+  it("executes an allowed script with an empty task MCP matrix despite a conflicting integration", async () => {
+    const session = await host.sessions.create({
+      location: { directory },
+      permissions: [{ action: "cc_custom_greeting", resource: "*", effect: "allow" }],
+    });
+    const now = new Date();
+    await db.client.db.insert(tasks).values({
+      id: "script-task",
+      agent_id: "probe-agent",
+      title: "Script",
+      description: "Test",
+      context: "",
+      todos_json: "[]",
+      status: "running",
+      enabled: true,
+      archived: false,
+      created_at: now,
+      updated_at: now,
+    });
+    await db.client.db.insert(task_runs).values({
+      id: "script-run",
+      task_id: "script-task",
+      agent_id: "probe-agent",
+      opencode_session_id: session.id,
+      status: "running",
+      trigger_source: "manual",
+      rendered_prompt: "Test",
+      effective_permissions_json: JSON.stringify({
+        customTools: ["greeting"],
+        mcpToolPermissions: [],
+      }),
+      created_at: now,
+      updated_at: now,
+    });
+    try {
+      await host.sessions.prompt({ sessionID: session.id, text: "CALL:cc_custom_greeting" });
+      expect(await messages(session.id)).toContain("Implement this tool.");
+    } finally {
+      await db.client.db
+        .update(task_runs)
+        .set({ status: "completed" })
+        .where(eq(task_runs.id, "script-run"));
+    }
   });
   it("loads the copied custom tool as a native plugin", async () => {
     expect((await host.listTools(directory)).map((tool) => tool.id)).toContain(

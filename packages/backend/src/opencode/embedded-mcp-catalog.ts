@@ -22,7 +22,8 @@ export async function readEmbeddedMcpCatalog(
       (other) =>
         other.name !== server.name && other.name.replace(/[^a-zA-Z0-9_-]/g, "_") === namespace,
     );
-    const available = server.status.status === "connected" && !ambiguous;
+    const available =
+      namespace !== "cc_custom" && server.status.status === "connected" && !ambiguous;
     return {
       server: server.name,
       available,

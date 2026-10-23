@@ -537,7 +537,10 @@ export function createMcpServerService(options: {
   // gives two servers whose names sanitize alike the same tool-id prefix, so a
   // legacy 'My Server' must still block a new 'my_server'.
   async function assertNameAvailable(name: string, excludeId?: string): Promise<void> {
-    if (CC_MANAGED_GROUP_METAS.some((group) => group.name === toMcpServerName(name))) {
+    if (
+      toMcpServerName(name) === "cc_custom" ||
+      CC_MANAGED_GROUP_METAS.some((group) => group.name === toMcpServerName(name))
+    ) {
       throw new ConflictError(`MCP server name '${name}' is reserved by CommandsCenter.`);
     }
     const rows = await options.db

@@ -106,10 +106,21 @@ export async function createEmbeddedOpenCodeHost({
                 }
               });
             }
+            await context.mcp.transform((editor) => {
+              for (const [name] of editor.list()) {
+                if (name.replace(/[^a-zA-Z0-9_-]/g, "_") === "cc_custom")
+                  editor.update(name, (server) => {
+                    server.disabled = true;
+                  });
+              }
+            });
             let mcpServers: { name: string }[] = [];
             if (mcpTools)
               await context.mcp.transform((editor) => {
-                mcpServers = editor.list().map(([name]) => ({ name }));
+                mcpServers = editor
+                  .list()
+                  .map(([name]) => ({ name }))
+                  .filter(({ name }) => name.replace(/[^a-zA-Z0-9_-]/g, "_") !== "cc_custom");
               });
             const serverFor = (namespace: string | undefined) => {
               const matches = mcpServers.filter(
