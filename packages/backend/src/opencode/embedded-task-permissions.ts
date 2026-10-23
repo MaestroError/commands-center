@@ -1,3 +1,4 @@
+import { mcpSnapshotRules } from "./embedded-mcp-permissions.js";
 import type { TaskPermissionProfile } from "@cc/shared/schemas";
 
 import type { OpenCodePermissionRule } from "../services/task-permission-service.js";
@@ -26,6 +27,7 @@ export function buildEmbeddedTaskPermissions(
         pattern: "*",
         action: "deny" as const,
       })),
+    ...mcpSnapshotRules(profile),
     { permission: "question", pattern: "*", action: "deny" },
   ];
 }

@@ -49,6 +49,10 @@ export function createTaskTemplateOps(ctx: TaskServiceContext, service: TaskServ
     async createTemplate(input: CreateTaskTemplateInput): Promise<TaskTemplate> {
       const parsed = createTaskTemplateInputSchema.parse(input);
       await requireActiveAgent(parsed.defaultAgentId);
+      await options.mcpToolPermissions?.validate(
+        parsed.defaultAgentId,
+        parsed.permissionProfile?.mcpToolPermissions,
+      );
       await enforceTaskLimit();
 
       const id = createId();
@@ -132,6 +136,20 @@ export function createTaskTemplateOps(ctx: TaskServiceContext, service: TaskServ
         await requireActiveAgent(parsed.defaultAgentId);
       }
 
+      const previousProfile = taskPermissionProfileSchema.parse(
+        JSON.parse(existing.permission_profile_json ?? "{}"),
+      );
+      if (parsed.permissionProfile !== undefined || parsed.defaultAgentId !== undefined)
+        await options.mcpToolPermissions?.validate(
+          parsed.defaultAgentId ?? existing.default_agent_id ?? existing.agent_id,
+          parsed.permissionProfile === undefined
+            ? previousProfile.mcpToolPermissions
+            : parsed.permissionProfile?.mcpToolPermissions,
+          parsed.defaultAgentId &&
+            parsed.defaultAgentId !== (existing.default_agent_id ?? existing.agent_id)
+            ? []
+            : previousProfile.mcpToolPermissions,
+        );
       const timestamp = now();
       const todos = parsed.todos
         ? normalizeTodos(parsed.todos, timestamp)

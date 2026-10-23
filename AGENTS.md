@@ -13,6 +13,7 @@
 - Follow the mandatory [CC design-system rules](docs/design-system/README.md) for all frontend appearance work
 - Before writing a filesystem migration, always check `skills/write-filesystem-migration/SKILL.md` to learn how.
 - Plans should be persisted as .md files under the "plans/" directory.
+- For filesystem changes, check whether the default workspace `.gitignore` needs additions or exclusions. It is seeded only for newly created workspaces; never migrate or update existing workspace `.gitignore` files.
 - Never git commit without explicitly asking the user.
 - Until v1.0.0 releases, use `codex/opencode-v2-migration` as the development integration base: create feature/fix branches from it and merge back into it. Migration implementation is complete; release blockers are tracked separately in `plans/v1-release-security-audit.md`.
 
@@ -459,6 +460,7 @@ When making changes that affect the developer experience, update the relevant do
 - Check Pino logs — every request has a correlation ID
 - For opencode process issues, check the orchestrator's lifecycle logs
 - For MCP issues, inspect the stdio/SSE transport layer
+- CC-provided tools use the shared registry through the embedded SDK, not internal MCP servers. Preserve their group/context metadata and resolve caller identity from the owning chat or task session; never trust tool arguments for ownership.
 - For WebSocket issues, check both connection establishment and message flow
 - Use the `examples/opencode/` repo to understand upstream API behavior
 

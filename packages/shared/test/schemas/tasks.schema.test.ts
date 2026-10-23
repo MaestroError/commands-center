@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 
 import {
+  createTaskInputSchema,
+  updateTaskInputSchema,
+  createTaskTemplateInputSchema,
+  taskPermissionProfileSchema,
   addTaskRunArtifactInputSchema,
   boardTaskStatusSchema,
   createTaskFeedbackInputSchema,
@@ -536,5 +541,58 @@ describe("task schemas", () => {
         suggestedReplies: ["us-east-1", "eu-west-1"],
       });
     });
+  });
+});
+
+describe("CC task override input boundaries", () => {
+  const schemas = [
+    ["task create", createTaskInputSchema, { agentId: "agent", title: "Task" }],
+    ["task edit", updateTaskInputSchema, {}],
+    [
+      "template create",
+      createTaskTemplateInputSchema,
+      { defaultAgentId: "agent", title: "Template" },
+    ],
+    ["template edit", updateTaskTemplateInputSchema, {}],
+  ] as const;
+  it.each(schemas)("%s rejects ask in CC tool overrides", (_name, schema, input) => {
+    expect(
+      schema.safeParse({
+        ...input,
+        permissionProfile: {
+          appToolPermissions: [{ pattern: "cc_default_set_task_result", action: "ask" }],
+        },
+      }).success,
+    ).toBe(false);
+  });
+  it.each(schemas)("%s accepts an explicit deny-all matrix", (_name, schema, input) => {
+    expect(
+      schema.parse({ ...input, permissionProfile: { appToolPermissions: [] } }).permissionProfile
+        ?.appToolPermissions,
+    ).toEqual([]);
+  });
+  it.each(schemas)("%s preserves third-party ask rules", (_name, schema, input) => {
+    expect(
+      schema.safeParse({
+        ...input,
+        permissionProfile: { toolPermissions: [{ pattern: "external_tool", action: "ask" }] },
+      }).success,
+    ).toBe(true);
+  });
+  it("still reads legacy ask permissions from stored profiles", () => {
+    expect(
+      taskPermissionProfileSchema.parse({
+        appToolPermissions: [{ pattern: "cc_default_set_task_result", action: "ask" }],
+      }).appToolPermissions?.[0]?.action,
+    ).toBe("ask");
+  });
+});
+
+it("advertises only allow and deny for CC task tool override actions", () => {
+  const json = z.toJSONSchema(createTaskInputSchema);
+  expect(json.properties?.["permissionProfile"]).toMatchObject({
+    properties: {
+      appToolPermissions: { items: { properties: { action: { enum: ["allow", "deny"] } } } },
+    },
   });
 });

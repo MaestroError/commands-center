@@ -85,10 +85,12 @@ const taskFeedbackParamsSchema = taskIdParamsSchema.extend({
 });
 
 export function registerTaskRoutes(server: AppServer, context: RuntimeContext): void {
-  const service = createTaskService({
-    db: context.database.db,
-    config: context.config,
-  });
+  const service =
+    context.taskService ??
+    createTaskService({
+      db: context.database.db,
+      config: context.config,
+    });
   const activityService =
     context.activityService ??
     createActivityService({ db: context.database.db, logger: context.logger });

@@ -12,11 +12,6 @@ import { agents } from "../db/schema/index.js";
 import type { AppDb } from "../db/client.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
 import { normalizeBuiltInSkillSlugs } from "../lib/builtin-skill-aliases.js";
-import { createCcManagedMcpAuthStateStore } from "../mcp/cc-managed/auth-state-store.js";
-import { createCcManagedMcpAuthTokenService } from "../mcp/cc-managed/auth-token-service.js";
-import { createCcManagedMcpServerRegistry } from "../mcp/cc-managed/server-registry.js";
-import { createCcManagedMcpToolAccessService } from "../mcp/cc-managed/tool-access-service.js";
-import { createCcManagedMcpWorkspaceEntryService } from "../mcp/cc-managed/workspace-entry-service.js";
 import {
   getBuiltInSkillRoot,
   getWorkspaceSkillRoot,
@@ -55,6 +50,7 @@ export function normalizeSpecialistCapabilities(
     workspaceSkills: capabilities.workspaceSkills ?? [],
     customTools: capabilities.customTools ?? [],
     mcpServers: dedupeMcpServers(nextMcpServers),
+    mcpToolPermissions: capabilities.mcpToolPermissions,
     toolPermissions: (capabilities.toolPermissions ?? []).filter(
       (rule) => !matchesAnyMcpPrefix(rule.pattern, staleNames),
     ),
@@ -74,6 +70,7 @@ export function removeMcpReferences(
     workspaceSkills: capabilities.workspaceSkills ?? [],
     customTools: capabilities.customTools ?? [],
     mcpServers: (capabilities.mcpServers ?? []).filter((server) => server.name !== mcpName),
+    mcpToolPermissions: capabilities.mcpToolPermissions,
     toolPermissions: (capabilities.toolPermissions ?? []).filter(
       (rule) => !matchesMcpPrefix(rule.pattern, mcpName),
     ),
@@ -86,7 +83,16 @@ export function renameMcpReferences(
   capabilities: SpecialistCapabilitySelection,
   previousName: string,
   nextName: string,
+  configuredNames: readonly string[] = (capabilities.mcpServers ?? []).map((server) => server.name),
 ): SpecialistCapabilitySelection {
+  const namespace = (name: string) => name.replace(/[^a-zA-Z0-9_-]/g, "_");
+  const previousNamespace = namespace(previousName);
+  const namespaces = [
+    ...new Set([
+      previousNamespace,
+      ...configuredNames.filter((name) => name !== nextName).map(namespace),
+    ]),
+  ].sort((a, b) => b.length - a.length);
   return {
     builtInSkills: normalizeBuiltInSkillSlugs(capabilities.builtInSkills),
     workspaceSkills: capabilities.workspaceSkills ?? [],
@@ -96,11 +102,15 @@ export function renameMcpReferences(
         server.name === previousName ? { ...server, name: nextName } : server,
       ),
     ),
+    mcpToolPermissions: capabilities.mcpToolPermissions?.map((rule) =>
+      rule.server === previousName ? { ...rule, server: nextName } : rule,
+    ),
     toolPermissions: (capabilities.toolPermissions ?? []).map((rule) => ({
       ...rule,
-      pattern: matchesMcpPrefix(rule.pattern, previousName)
-        ? `${nextName}${rule.pattern.slice(previousName.length)}`
-        : rule.pattern,
+      pattern:
+        namespaces.find((name) => matchesMcpPrefix(rule.pattern, name)) === previousNamespace
+          ? `${namespace(nextName)}${rule.pattern.slice(previousNamespace.length)}`
+          : rule.pattern,
     })),
     appMcpServers: capabilities.appMcpServers ?? [],
     appToolPermissions: capabilities.appToolPermissions ?? [],
@@ -145,18 +155,9 @@ export async function rewriteAgentsForMcpChange(options: {
     db: options.db,
     opencodeService: options.opencodeService,
   });
-  const registry = createCcManagedMcpServerRegistry({ customToolService });
   const prepare: typeof prepareWorkspace =
     options.prepareWorkspace ??
     ((input) => writeEmbeddedSpecialistWorkspace({ ...input, db: options.db, customToolService }));
-  const appMcpWorkspaceEntryService = createCcManagedMcpWorkspaceEntryService({
-    config: options.config,
-    authTokenService: createCcManagedMcpAuthTokenService({
-      authStateStore: createCcManagedMcpAuthStateStore(options.config),
-    }),
-    toolAccessService: createCcManagedMcpToolAccessService(),
-    registry,
-  });
   const rows = await options.db.query.agents.findMany({
     where: options.activeOnly
       ? (table, operators) => operators.eq(table.status, "active")
@@ -177,11 +178,6 @@ export async function rewriteAgentsForMcpChange(options: {
       continue;
     }
 
-    const appMcpEntries = await appMcpWorkspaceEntryService.buildEntries({
-      slug: row.slug,
-      capabilities: nextCapabilities,
-    });
-
     await prepare({
       config: options.config,
       workspacePath,
@@ -191,7 +187,6 @@ export async function rewriteAgentsForMcpChange(options: {
         instructions: row.instructions,
         defaultModel: row.default_model,
         capabilities: nextCapabilities,
-        appMcpEntries,
       },
       skillRoot: getBuiltInSkillRoot(options.config),
       workspaceSkillRoot: getWorkspaceSkillRoot(options.config),

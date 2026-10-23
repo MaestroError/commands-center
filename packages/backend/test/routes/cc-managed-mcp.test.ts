@@ -9,7 +9,14 @@ import { createLogger } from "../../src/lib/logger";
 import { agents, conversations, task_runs } from "../../src/db/schema/index";
 import type { AppDb } from "../../src/db/client";
 import type { OpenCodeOrchestrator } from "../../src/orchestrator/opencode-orchestrator";
-import { createServer } from "../../src/server";
+import { createServer as createAppServer } from "../../src/server";
+import { registerCcManagedMcpRoutes } from "../helpers/legacy-cc-mcp/routes.js";
+
+async function createServer(context: Parameters<typeof createAppServer>[0]) {
+  const server = await createAppServer(context);
+  registerCcManagedMcpRoutes(server, context);
+  return server;
+}
 import type { OpenCodeService } from "../../src/services/opencode-service";
 import { createSchedulerService } from "../../src/services/scheduler-service";
 import { createSecretService } from "../../src/services/secret-service";
@@ -18,8 +25,8 @@ import { createTaskExecutionService } from "../../src/services/task-execution-se
 import { createTaskService } from "../../src/services/task-service";
 import { createSessionArchiveService } from "../../src/services/session-archive-service";
 import { createSessionArchiveSettingsService } from "../../src/services/session-archive-settings-service";
-import { createCcManagedMcpAuthStateStore } from "../../src/mcp/cc-managed/auth-state-store";
-import { createCcManagedMcpAuthTokenService } from "../../src/mcp/cc-managed/auth-token-service";
+import { createCcManagedMcpAuthStateStore } from "../helpers/legacy-cc-mcp/auth-state-store";
+import { createCcManagedMcpAuthTokenService } from "../helpers/legacy-cc-mcp/auth-token-service";
 import { createTestDatabase } from "../helpers/db";
 
 type InjectServer = Awaited<ReturnType<typeof createServer>>;
@@ -148,19 +155,8 @@ describe("cc-managed MCP routes", () => {
       };
       const ccToolManagement = config.mcp.servers["cc_app"];
 
-      expect(ccToolManagement).toBeDefined();
-      expect(ccToolManagement?.url).toContain("/api/mcp/cc/cc-app/specialists/writer");
-      expect(ccToolManagement?.headers["Authorization"]).toContain("Bearer ");
-
-      if (!ccToolManagement) {
-        throw new Error("Expected cc_app config entry.");
-      }
-
-      const authHeader = ccToolManagement.headers["Authorization"];
-
-      if (!authHeader) {
-        throw new Error("Expected cc_app authorization header.");
-      }
+      expect(ccToolManagement).toBeUndefined();
+      const authHeader = await issueAuthHeader(testDb.config, "writer", "cc_app");
 
       const initializeResponse = await server.inject({
         method: "POST",

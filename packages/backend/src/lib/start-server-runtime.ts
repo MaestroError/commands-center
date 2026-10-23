@@ -1,4 +1,15 @@
+import { createMcpToolPermissionService } from "../services/mcp-tool-permission-service.js";
+import { readEmbeddedMcpCatalog } from "../opencode/embedded-mcp-catalog.js";
+import {
+  createEmbeddedMcpToolPolicy,
+  type EmbeddedMcpToolPolicy,
+} from "../opencode/embedded-mcp-tool-policy.js";
 import { buildEmbeddedTaskPermissions } from "../opencode/embedded-task-permissions.js";
+import {
+  createEmbeddedCcToolService,
+  type EmbeddedCcTools,
+} from "../opencode/embedded-cc-tools.js";
+import { createCcManagedMcpServerRegistry } from "../mcp/cc-managed/server-registry.js";
 import type { Logger } from "pino";
 
 import { createDatabaseClient, type DatabaseClient } from "../db/client.js";
@@ -184,7 +195,11 @@ export async function startServerRuntime(
     });
     logPublicBindingGuidance(config, logger);
 
+    const mcpTools: { current?: EmbeddedMcpToolPolicy } = {};
+    const ccTools: { current?: EmbeddedCcTools } = {};
     const embeddedRuntime = await (options?.createEmbeddedRuntime ?? createEmbeddedRuntime)({
+      ccTools,
+      mcpTools,
       workspaceDirectory: config.paths.workspaceDir,
       publicOrigin: config.security.publicOrigin,
       logger,
@@ -214,7 +229,17 @@ export async function startServerRuntime(
     );
     const liveRequestService = createLiveRequestService();
     cleanup.push(() => liveRequestService.dispose());
-    const taskService = createTaskService({ db: database.db, config });
+    const mcpToolPermissions = createMcpToolPermissionService({
+      db: database.db,
+      specialistsDirectory: config.paths.subdirectories.specialists,
+      readCatalog: (directory) => readEmbeddedMcpCatalog(embeddedRuntime.host, directory),
+    });
+    mcpTools.current = createEmbeddedMcpToolPolicy({
+      db: database.db,
+      specialistsDirectory: config.paths.subdirectories.specialists,
+      host: embeddedRuntime.host,
+    });
+    const taskService = createTaskService({ db: database.db, config, mcpToolPermissions });
     const taskContextAttachmentService = createTaskContextAttachmentService({
       config,
       taskService,
@@ -245,6 +270,8 @@ export async function startServerRuntime(
       () => sessionArchiveScheduler.stop(),
     );
     const taskPermissionService = createTaskPermissionService({
+      mcpTools: mcpToolPermissions,
+      initializeMcpTools: (directory) => embeddedRuntime.host.listTools(directory),
       db: database.db,
       config,
       opencodeService,
@@ -265,6 +292,28 @@ export async function startServerRuntime(
       monitorSettingsService: taskRunMonitorSettingsService,
       activityService,
       onRunTerminal: (run) => taskSchedulerServiceRef.current?.handleRunTerminal(run),
+    });
+    ccTools.current = createEmbeddedCcToolService({
+      db: database.db,
+      specialistsDirectory: config.paths.subdirectories.specialists,
+      host: embeddedRuntime.host,
+      groups: createCcManagedMcpServerRegistry({
+        db: database.db,
+        config,
+        opencodeService,
+        agentService: workspaceServices.specialists,
+        customToolService: workspaceServices.customTools,
+        customToolActionService: workspaceServices.customToolActions,
+        conversationService,
+        liveRequestService,
+        secretService,
+        orchestrator,
+        activityService,
+        taskService,
+        taskExecutionService,
+        sessionArchiveService,
+        sessionArchiveSettingsService,
+      }),
     });
     const taskSchedulerService = createTaskSchedulerService({
       db: database.db,

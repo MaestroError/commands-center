@@ -1,9 +1,13 @@
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { bootstrapRuntimePaths } from "../../src/lib/runtime-paths.js";
+import { loadRuntimeConfig } from "../../src/lib/runtime-config.js";
 import { searchWorkspaceText } from "../../src/services/workspace-text-search.js";
 
 describe("bundled workspace text search", () => {
@@ -67,5 +71,65 @@ describe("bundled workspace text search", () => {
     await expect(searchWorkspaceText(join(directory, "missing"), "marker")).rejects.toMatchObject({
       code: "ENOENT",
     });
+  });
+});
+
+describe("text search in a Git-initialized CC workspace", () => {
+  let directory: string;
+  let workspace: string;
+  const specialistPaths = ["Documents/notes.md", "memory/notes.md", "playground/project/main.ts"];
+  beforeAll(async () => {
+    directory = await mkdtemp(join(tmpdir(), "cc-git-search-"));
+    const config = loadRuntimeConfig({ cwd: directory, env: { NODE_ENV: "test" } });
+    workspace = config.paths.workspaceDir;
+    await bootstrapRuntimePaths(config);
+    await promisify(execFile)("git", ["init", "--quiet", workspace]);
+    for (const path of [
+      "Documents/private.md",
+      ...specialistPaths.map((path) => `specialists/test/${path}`),
+    ]) {
+      const absolute = join(workspace, path);
+      await mkdir(dirname(absolute), { recursive: true });
+      await writeFile(absolute, "searchable-private-marker");
+    }
+    for (const root of [workspace, join(workspace, "specialists/test")]) {
+      for (const excluded of root === workspace
+        ? [".cc", ".git", "node_modules"]
+        : [".cc", "node_modules"]) {
+        await mkdir(join(root, excluded), { recursive: true });
+        await writeFile(join(root, excluded, "excluded.txt"), "excluded-git-marker");
+      }
+    }
+    await writeFile(join(workspace, ".ignore"), "search-hidden.txt\n");
+    await writeFile(join(workspace, "search-hidden.txt"), "explicit-ignore-marker");
+  });
+  afterAll(async () => {
+    await rm(directory, { recursive: true, force: true });
+  });
+
+  it("finds Git-ignored content from the global workspace root", async () => {
+    const results = await searchWorkspaceText(workspace, "searchable-private-marker");
+    expect(results.map((match) => match.path.text).sort()).toEqual(
+      ["Documents/private.md", ...specialistPaths.map((path) => `specialists/test/${path}`)].sort(),
+    );
+  });
+
+  it("finds Git-ignored content from a specialist root", async () => {
+    const results = await searchWorkspaceText(
+      join(workspace, "specialists/test"),
+      "searchable-private-marker",
+    );
+    expect(results.map((match) => match.path.text).sort()).toEqual([...specialistPaths].sort());
+  });
+
+  it.each([".", "specialists/test"])(
+    "retains explicit runtime exclusions when searching %s",
+    async (root) => {
+      expect(await searchWorkspaceText(join(workspace, root), "excluded-git-marker")).toEqual([]);
+    },
+  );
+
+  it("still respects search-specific ignore files", async () => {
+    expect(await searchWorkspaceText(workspace, "explicit-ignore-marker")).toEqual([]);
   });
 });

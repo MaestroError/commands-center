@@ -10,11 +10,11 @@ import { z } from "zod";
 import type { AppDb } from "../../../src/db/client";
 import { agents } from "../../../src/db/schema/index";
 import { createLogger } from "../../../src/lib/logger";
-import { createCcManagedMcpAuthStateStore } from "../../../src/mcp/cc-managed/auth-state-store";
-import { createCcManagedMcpAuthTokenService } from "../../../src/mcp/cc-managed/auth-token-service";
-import { createCcManagedMcpService } from "../../../src/mcp/cc-managed/service";
+import { createCcManagedMcpAuthStateStore } from "../../helpers/legacy-cc-mcp/auth-state-store";
+import { createCcManagedMcpAuthTokenService } from "../../helpers/legacy-cc-mcp/auth-token-service";
+import { createCcManagedMcpService } from "../../helpers/legacy-cc-mcp/service";
 import type { CcManagedMcpServerDefinition } from "../../../src/mcp/cc-managed/server-registry";
-import { withStreamKeepalive } from "../../../src/mcp/cc-managed/stream-keepalive";
+import { withStreamKeepalive } from "../../helpers/legacy-cc-mcp/stream-keepalive";
 import { createTestDatabase } from "../../helpers/db";
 
 const disposers: Array<() => Promise<void> | void> = [];

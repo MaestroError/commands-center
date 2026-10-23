@@ -1,6 +1,8 @@
 import { expect, test, type Page, type BrowserContext, type APIResponse } from "@playwright/test";
 import {
   specialistSchema,
+  taskSchema,
+  taskRunSchema,
   mcpRemoteServerConfigSchema,
   mcpServerSchema,
   mcpAuthStartResultSchema,
@@ -236,4 +238,125 @@ test("rejects external MCP names reserved for CC-managed servers", async ({ page
     data: { name: "cc_default", config: { transport: "stdio", command: ["unused"] } },
   });
   expect(response.status()).toBe(409);
+});
+
+test("creates specialist MCP tool defaults in the form", async ({ page }) => {
+  const endpoint = mcpRemoteServerConfigSchema.parse(
+    await (await page.request.get("/api/e2e/mcp-provider")).json(),
+  );
+  await mutate(page, "POST", "/api/mcp-servers", {
+    name: "create_permissions",
+    config: {
+      transport: "streamable-http",
+      url: endpoint.url,
+      authMethod: "headers",
+      headers: [{ key: "Authorization", value: "Bearer test-access" }],
+    },
+  });
+  await mutate(page, "POST", "/api/e2e/connect-workspace-mcp", { name: "create_permissions" });
+  await page.goto("/specialists/new");
+  await page.getByTestId("specialist-name").fill("MCP Default Creator");
+  await page.getByTestId("specialist-role").fill("Test permissions");
+  await page.getByTestId("specialist-instructions").fill("Use tools when requested.");
+  await page.getByRole("combobox", { name: "Model", exact: true }).fill("local-e2e/test");
+  await page.getByRole("option", { name: /local-e2e\/test/ }).click();
+  await page.getByRole("button", { name: "create_permissions Allow", exact: true }).click();
+  await page.getByRole("button", { name: "create_permissions greet Deny", exact: true }).click();
+  const saved = page.waitForResponse(
+    (response) =>
+      response.url().endsWith("/api/specialists") && response.request().method() === "POST",
+  );
+  await page.getByRole("button", { name: "Create specialist", exact: true }).click();
+  const response = await saved;
+  expect(response.ok(), await response.text()).toBe(true);
+  expect(specialistSchema.parse(await response.json()).capabilities.mcpToolPermissions).toEqual([
+    { server: "create_permissions", tool: "greet", action: "deny" },
+  ]);
+});
+
+test("edits a specialist MCP tool to ask and requests chat approval", async ({ page }) => {
+  const agent = await specialist(page, "MCP Per Tool Approval");
+  const endpoint = mcpRemoteServerConfigSchema.parse(
+    await (await page.request.get("/api/e2e/mcp-provider")).json(),
+  );
+  await mutate(page, "POST", "/api/mcp-servers", {
+    name: "edit_permissions",
+    specialistIds: [agent.id],
+    config: {
+      transport: "streamable-http",
+      url: endpoint.url,
+      authMethod: "headers",
+      headers: [{ key: "Authorization", value: "Bearer test-access" }],
+    },
+  });
+  await page.request.get(`/api/e2e/specialist-runtime/${agent.slug}`);
+  await page.goto(`/specialists/${agent.slug}/edit`);
+  await page.getByRole("button", { name: "edit_permissions greet Ask", exact: true }).click();
+  const saved = page.waitForResponse(
+    (response) =>
+      response.url().endsWith(`/api/specialists/${agent.id}`) &&
+      response.request().method() === "PATCH",
+  );
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  expect((await saved).ok()).toBe(true);
+  await callTool(page, agent.slug, "edit_permissions_greet");
+  await expect(page.getByText("Permission Required", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Allow Once", exact: true }).click();
+  await expect(page.getByText(/Local v2 tool result:.*OAuth MCP greeting/)).toBeVisible();
+});
+
+test("runs a task MCP grant over a specialist tool denial", async ({ page }) => {
+  const agent = await specialist(page, "MCP Task Grant");
+  const endpoint = mcpRemoteServerConfigSchema.parse(
+    await (await page.request.get("/api/e2e/mcp-provider")).json(),
+  );
+  await mutate(page, "POST", "/api/mcp-servers", {
+    name: "task_grant",
+    specialistIds: [agent.id],
+    config: {
+      transport: "streamable-http",
+      url: endpoint.url,
+      authMethod: "headers",
+      headers: [{ key: "Authorization", value: "Bearer test-access" }],
+    },
+  });
+  await page.request.get(`/api/e2e/specialist-runtime/${agent.slug}`);
+  const current = specialistSchema.parse(
+    await (await page.request.get(`/api/specialists/${agent.id}`)).json(),
+  );
+  await mutate(page, "PATCH", `/api/specialists/${agent.id}`, {
+    capabilities: {
+      ...current.capabilities,
+      mcpToolPermissions: [{ server: "task_grant", tool: "greet", action: "deny" }],
+    },
+  });
+  await page.request.get(`/api/e2e/specialist-runtime/${agent.slug}`);
+  const task = taskSchema.parse(
+    await (
+      await mutate(page, "POST", "/api/tasks", {
+        agentId: agent.id,
+        title: "Grant MCP",
+        description: "CALL:task_grant_greet",
+        permissionProfile: {
+          mcpToolPermissions: [{ server: "task_grant", tool: "greet", action: "allow" }],
+        },
+      })
+    ).json(),
+  );
+  const run = taskRunSchema.parse(
+    await (await mutate(page, "POST", `/api/tasks/${task.id}/queue`, {})).json(),
+  );
+  await expect
+    .poll(
+      async () =>
+        taskRunSchema.parse(
+          await (await page.request.get(`/api/tasks/${task.id}/runs/${run.id}`)).json(),
+        ).status,
+      { timeout: 25000 },
+    )
+    .toBe("completed");
+  const completed = taskRunSchema.parse(
+    await (await page.request.get(`/api/tasks/${task.id}/runs/${run.id}`)).json(),
+  );
+  expect(completed.finalMessage).toContain("OAuth MCP greeting");
 });

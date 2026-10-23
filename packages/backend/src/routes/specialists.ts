@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 
 import {
+  mcpToolCatalogSchema,
   createSpecialistInputSchema,
   importAgentCustomToolInputSchema,
   opencodeFileContentQuerySchema,
@@ -100,6 +101,16 @@ export function registerSpecialistManagementRoutes(
   );
 
   app.get("/api/specialists/catalog", async () => service.getCatalog());
+  app.get(
+    "/api/specialists/mcp-tools",
+    { schema: { response: { 200: mcpToolCatalogSchema } } },
+    async () => service.getMcpToolCatalog(),
+  );
+  app.get(
+    "/api/specialists/:id/mcp-tools",
+    { schema: { params: agentIdParamsSchema, response: { 200: mcpToolCatalogSchema } } },
+    async (request) => service.getMcpToolCatalog(request.params.id),
+  );
 
   app.get(
     "/api/specialists/:id",

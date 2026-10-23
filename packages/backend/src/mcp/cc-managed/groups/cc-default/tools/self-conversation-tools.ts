@@ -1,3 +1,4 @@
+import type { CcManagedToolContext } from "../../../server-registry.js";
 import { join } from "node:path";
 
 import { z } from "zod";
@@ -91,7 +92,7 @@ export function createSelfConversationToolDefinitions(options: SelfConversationT
       context: listSelfConversationsToolMetadata.context,
       inputSchema: listSelfConversationsInputSchema,
       outputSchema: listSelfConversationsOutputSchema,
-      execute: async (args: unknown, context: { agentSlug: string }) =>
+      execute: async (args: unknown, context: CcManagedToolContext) =>
         executeTool(async () => {
           const parsed = listSelfConversationsInputSchema.parse(args);
           const agentId = await requireCallingAgentId(options.db, context.agentSlug);
@@ -115,7 +116,7 @@ export function createSelfConversationToolDefinitions(options: SelfConversationT
       context: getSelfConversationToolMetadata.context,
       inputSchema: getSelfConversationInputSchema,
       outputSchema: getSelfConversationOutputSchema,
-      execute: async (args: unknown, context: { agentSlug: string }) =>
+      execute: async (args: unknown, context: CcManagedToolContext) =>
         executeTool(async () => {
           const parsed = getSelfConversationInputSchema.parse(args);
           const agent = await requireCallingAgent(options.db, context.agentSlug);

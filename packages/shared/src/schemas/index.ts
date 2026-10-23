@@ -703,6 +703,8 @@ export {
   mcpServerNameSchema,
   mcpServerSchema,
   mcpStdioServerConfigSchema,
+  mcpToolCatalogSchema,
+  type McpToolCatalog,
   mcpToolListSchema,
   mcpToolSchema,
   mcpTransportSchema,
@@ -788,3 +790,5 @@ export {
   type TerminalSessionHandle,
   type TerminalSessionResponse,
 } from "./terminal.js";
+
+export { resolveMcpToolDefault } from "./mcp-tool-permissions.js";

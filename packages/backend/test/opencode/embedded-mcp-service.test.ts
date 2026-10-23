@@ -12,7 +12,7 @@ function fixture() {
   const location = { directory: "/workspace" };
   const host: Host = {
     model: { list: () => Promise.resolve({ location, data: [] }) },
-    listTools: () =>
+    readTools: () =>
       Promise.resolve([
         { id: "test_greet", name: "greet", description: "Greeting", permission: "test_greet" },
       ]),

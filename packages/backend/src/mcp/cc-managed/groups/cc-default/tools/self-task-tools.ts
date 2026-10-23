@@ -1,3 +1,4 @@
+import type { CcManagedToolContext } from "../../../server-registry.js";
 import { z } from "zod";
 
 import {
@@ -179,7 +180,7 @@ export function createSelfTaskToolDefinitions(options: SelfTaskToolOptions) {
       context: createSelfTaskToolMetadata.context,
       inputSchema: createSelfTaskInputSchema,
       outputSchema: mcpTaskSchema,
-      execute: async (args: unknown, context: { agentSlug: string }) =>
+      execute: async (args: unknown, context: CcManagedToolContext) =>
         executeTool(async () => {
           const parsed = createSelfTaskInputSchema.parse(args);
           const agentId = await requireCallingAgentId(options.db, context.agentSlug);
@@ -199,7 +200,7 @@ export function createSelfTaskToolDefinitions(options: SelfTaskToolOptions) {
       context: scheduleSelfTaskToolMetadata.context,
       inputSchema: scheduleSelfTaskInputSchema,
       outputSchema: mcpTaskSchema,
-      execute: async (args: unknown, context: { agentSlug: string }) =>
+      execute: async (args: unknown, context: CcManagedToolContext) =>
         executeTool(async () => {
           const parsed = scheduleSelfTaskInputSchema.parse(args);
           const agentId = await requireCallingAgentId(options.db, context.agentSlug);
@@ -226,7 +227,7 @@ export function createSelfTaskToolDefinitions(options: SelfTaskToolOptions) {
       context: listSelfTasksToolMetadata.context,
       inputSchema: listSelfTasksInputSchema,
       outputSchema: listSelfTasksOutputSchema,
-      execute: async (args: unknown, context: { agentSlug: string }) =>
+      execute: async (args: unknown, context: CcManagedToolContext) =>
         executeTool(async () => {
           const query = listSelfTasksInputSchema.parse(args);
           const agentId = await requireCallingAgentId(options.db, context.agentSlug);
@@ -245,7 +246,7 @@ export function createSelfTaskToolDefinitions(options: SelfTaskToolOptions) {
       context: getSelfTaskToolMetadata.context,
       inputSchema: taskIdInputSchema,
       outputSchema: mcpTaskSchema,
-      execute: async (args: unknown, context: { agentSlug: string }) =>
+      execute: async (args: unknown, context: CcManagedToolContext) =>
         executeTool(async () => {
           const parsed = taskIdInputSchema.parse(args);
           const agentId = await requireCallingAgentId(options.db, context.agentSlug);
@@ -263,7 +264,7 @@ export function createSelfTaskToolDefinitions(options: SelfTaskToolOptions) {
       context: listSelfTaskRunsToolMetadata.context,
       inputSchema: listSelfTaskRunsInputSchema,
       outputSchema: listSelfTaskRunsOutputSchema,
-      execute: async (args: unknown, context: { agentSlug: string }) =>
+      execute: async (args: unknown, context: CcManagedToolContext) =>
         executeTool(async () => {
           const parsed = listSelfTaskRunsInputSchema.parse(args);
           const agentId = await requireCallingAgentId(options.db, context.agentSlug);
@@ -283,7 +284,7 @@ export function createSelfTaskToolDefinitions(options: SelfTaskToolOptions) {
       context: getSelfTaskRunToolMetadata.context,
       inputSchema: taskRunIdInputSchema,
       outputSchema: mcpTaskRunSchema,
-      execute: async (args: unknown, context: { agentSlug: string }) =>
+      execute: async (args: unknown, context: CcManagedToolContext) =>
         executeTool(async () => {
           const parsed = taskRunIdInputSchema.parse(args);
           const agentId = await requireCallingAgentId(options.db, context.agentSlug);
@@ -317,7 +318,7 @@ export function createSelfTaskContextToolDefinitions(options: {
       context: readSelfTaskContextToolMetadata.context,
       inputSchema: taskIdInputSchema,
       outputSchema: taskContextSchema,
-      execute: async (args: unknown, context: { agentSlug: string }) =>
+      execute: async (args: unknown, context: CcManagedToolContext) =>
         executeTool(async () => {
           const parsed = taskIdInputSchema.parse(args);
           const agentId = await requireCallingAgentId(options.db, context.agentSlug);
@@ -332,7 +333,7 @@ export function createSelfTaskContextToolDefinitions(options: {
       context: appendSelfTaskContextToolMetadata.context,
       inputSchema: appendSelfTaskContextInputSchema,
       outputSchema: taskContextSchema,
-      execute: async (args: unknown, context: { agentSlug: string }) =>
+      execute: async (args: unknown, context: CcManagedToolContext) =>
         executeTool(async () => {
           const parsed = appendSelfTaskContextInputSchema.parse(args);
           const agentId = await requireCallingAgentId(options.db, context.agentSlug);
@@ -361,7 +362,7 @@ export function createSelfTaskArtifactToolDefinitions(options: SelfTaskToolOptio
       context: listSelfTaskArtifactsToolMetadata.context,
       inputSchema: taskIdInputSchema,
       outputSchema: listSelfTaskArtifactsOutputSchema,
-      execute: async (args: unknown, context: { agentSlug: string }) =>
+      execute: async (args: unknown, context: CcManagedToolContext) =>
         executeTool(async () => {
           const parsed = taskIdInputSchema.parse(args);
           const agentId = await requireCallingAgentId(options.db, context.agentSlug);
@@ -383,7 +384,7 @@ export function createSelfTaskArtifactToolDefinitions(options: SelfTaskToolOptio
       context: listSelfTaskRunArtifactsToolMetadata.context,
       inputSchema: taskRunIdInputSchema,
       outputSchema: listSelfTaskRunArtifactsOutputSchema,
-      execute: async (args: unknown, context: { agentSlug: string }) =>
+      execute: async (args: unknown, context: CcManagedToolContext) =>
         executeTool(async () => {
           const parsed = taskRunIdInputSchema.parse(args);
           const agentId = await requireCallingAgentId(options.db, context.agentSlug);

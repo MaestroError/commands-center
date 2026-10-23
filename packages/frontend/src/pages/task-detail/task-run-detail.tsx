@@ -531,7 +531,7 @@ export function PermissionSummary(props: { profile?: TaskPermissionProfile }) {
       <h2 className="font-semibold text-text-primary">Permission summary</h2>
       <p className="mt-2 text-sm leading-6 text-text-secondary">
         {props.profile
-          ? `Custom tools: ${String(props.profile.customTools?.length ?? 0)}. External MCP: ${String(props.profile.mcpServers?.length ?? 0)}. App MCP: ${String(props.profile.appMcpServers?.length ?? 0)}.`
+          ? `Custom tools: ${String(props.profile.customTools?.length ?? 0)}. External MCP: ${String(props.profile.mcpServers?.length ?? 0)}. CC tool groups: ${String(props.profile.appMcpServers?.length ?? 0)}.`
           : "Inherits the assigned specialist permissions. Each run stores its effective permission snapshot."}
       </p>
     </section>

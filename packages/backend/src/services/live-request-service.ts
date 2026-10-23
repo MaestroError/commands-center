@@ -20,6 +20,7 @@ type CreateLiveRequestInput = Omit<LiveRequest, "id" | "createdAt" | "metadata" 
   actions?: LiveRequest["actions"];
   metadata?: Record<string, unknown>;
   timeoutMs?: number;
+  signal?: AbortSignal;
 };
 
 const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000;
@@ -32,8 +33,10 @@ export function createLiveRequestService() {
 
   return {
     create(input: CreateLiveRequestInput): Promise<LiveRequestResolveInput> {
+      const { signal, ...payload } = input;
+      if (signal?.aborted) return Promise.reject(new Error("Live request cancelled."));
       const request: LiveRequest = {
-        ...input,
+        ...payload,
         actions: input.actions ?? [],
         metadata: input.metadata ?? {},
         id: createId(),
@@ -58,7 +61,20 @@ export function createLiveRequestService() {
         properties: { request },
       });
 
-      return promise;
+      const abort = (): void => {
+        const record = requests.get(request.id);
+        if (!record) return;
+        clearTimeout(record.timeout);
+        requests.delete(request.id);
+        publish(request.conversationId, {
+          type: "cc.live_request.cancelled",
+          properties: { requestId: request.id, reason: "Tool call cancelled." },
+        });
+        record.reject(new Error("Live request cancelled."));
+      };
+      signal?.addEventListener("abort", abort, { once: true });
+      if (signal?.aborted) abort();
+      return promise.finally(() => signal?.removeEventListener("abort", abort));
     },
 
     resolve(conversationId: string, requestId: string, input: LiveRequestResolveInput): void {

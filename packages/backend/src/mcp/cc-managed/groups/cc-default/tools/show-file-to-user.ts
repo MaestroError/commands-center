@@ -1,3 +1,4 @@
+import type { CcManagedToolContext } from "../../../server-registry.js";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 
 import { z } from "zod";
@@ -42,7 +43,7 @@ export function createShowFileToUserDefinition(options: {
     context: showFileToUserToolMetadata.context,
     inputSchema: showFileToUserInputSchema,
     outputSchema: showFileToUserOutputSchema,
-    async execute(args: unknown, context: { agentSlug: string }) {
+    async execute(args: unknown, context: CcManagedToolContext) {
       const parsed = showFileToUserInputSchema.parse(args);
       const conversationService = createConversationService({
         db: options.db,
@@ -66,9 +67,13 @@ export function createShowFileToUserDefinition(options: {
           workspaceDir: options.config.paths.workspaceDir,
           specialistsDir: options.config.paths.subdirectories.specialists,
         });
-        const snapshot = await conversationService.resolveCurrent(agent.id);
+        const conversationId =
+          context.caller?.context === "chat"
+            ? context.caller.conversationId
+            : (await conversationService.resolveCurrent(agent.id)).current.id;
         const response = await options.liveRequestService.create({
-          conversationId: snapshot.current.id,
+          conversationId,
+          signal: context.signal,
           kind: showFileToUserToolMetadata.name,
           closable: true,
           presentation: {

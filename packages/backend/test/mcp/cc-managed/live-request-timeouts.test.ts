@@ -3,13 +3,13 @@ import { describe, expect, it } from "vitest";
 import {
   blockingWaitBudgetMs,
   CC_DEFAULT_INTERACTIVE_TOOL_CALL_TIMEOUT_MS,
-  CC_MANAGED_MCP_TIMEOUT_MS,
+  CC_TOOL_CALL_TIMEOUT_MS,
 } from "../../../src/mcp/cc-managed/live-request-timeouts";
 
 describe("blockingWaitBudgetMs", () => {
   it("reserves a minute of headroom for the groups in use", () => {
     expect(blockingWaitBudgetMs(CC_DEFAULT_INTERACTIVE_TOOL_CALL_TIMEOUT_MS)).toBe(9 * 60 * 1000);
-    expect(blockingWaitBudgetMs(CC_MANAGED_MCP_TIMEOUT_MS)).toBe(29 * 60 * 1000);
+    expect(blockingWaitBudgetMs(CC_TOOL_CALL_TIMEOUT_MS)).toBe(29 * 60 * 1000);
   });
 
   // The invariant this module exists for. A budget at or above the caller's
