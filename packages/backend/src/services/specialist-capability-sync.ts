@@ -87,9 +87,12 @@ export function renameMcpReferences(
 ): SpecialistCapabilitySelection {
   const namespace = (name: string) => name.replace(/[^a-zA-Z0-9_-]/g, "_");
   const previousNamespace = namespace(previousName);
-  const namespaces = [...new Set([previousNamespace, ...configuredNames.map(namespace)])].sort(
-    (a, b) => b.length - a.length,
-  );
+  const namespaces = [
+    ...new Set([
+      previousNamespace,
+      ...configuredNames.filter((name) => name !== nextName).map(namespace),
+    ]),
+  ].sort((a, b) => b.length - a.length);
   return {
     builtInSkills: normalizeBuiltInSkillSlugs(capabilities.builtInSkills),
     workspaceSkills: capabilities.workspaceSkills ?? [],

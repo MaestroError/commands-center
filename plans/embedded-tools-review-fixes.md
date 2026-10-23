@@ -81,3 +81,13 @@ Rename-order validation: 42 tests, ESLint --fix, and backend typecheck passed.
 - [ ] Test exact and wildcard rules, run checks, update PR.
 
 Overlapping-name validation: 49 service regressions, ESLint --fix and backend typecheck passed.
+
+## Rename destination ownership
+
+- [x] Exclude the rename destination from existing namespace ownership candidates.
+- [x] Cover exact and wildcard destination-overlapping rules for specialists, tasks and templates.
+- [ ] Run ESLint, targeted tests and typechecks; update PR and request review.
+
+No new persisted files or workspace gitignore changes are required.
+
+Destination-ownership validation: all four new regressions failed before the fix; 53 service tests, ESLint --fix and backend typecheck passed after it.

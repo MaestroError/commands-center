@@ -40,6 +40,45 @@ async function fixture() {
 
 describe("task MCP references", () => {
   it.each(["task", "template"] as const)(
+    "renames destination-overlapping rules in a %s",
+    async (kind) => {
+      const f = await fixture();
+      try {
+        await f.db.client.db.insert(mcp_servers).values({
+          id: "archive",
+          name: "mail_v2",
+          transport: "stdio",
+          enabled: true,
+          config_json: JSON.stringify({ transport: "stdio", command: ["node", "server.js"] }),
+          created_at: new Date(),
+          updated_at: new Date(),
+        });
+        const profile = {
+          toolPermissions: [
+            { pattern: "mail_*", action: "allow" as const },
+            { pattern: "mail_v2_send", action: "deny" as const },
+            { pattern: "mail_v2_*", action: "deny" as const },
+          ],
+        };
+        if (kind === "task") await f.service.update(f.task.id, { permissionProfile: profile });
+        else await f.service.updateTemplate(f.template.id, { permissionProfile: profile });
+        await renameTaskMcpReferences(f.db.client.db, f.db.config, "mail", "mail_v2");
+        const actual =
+          kind === "task"
+            ? (await f.service.get(f.task.id))?.permissionProfile
+            : JSON.parse(await readFile(templateFilePath(f.db.config, f.template.id), "utf8"))
+                .permissionProfile;
+        expect(actual?.toolPermissions).toEqual([
+          { pattern: "mail_v2_*", action: "allow" },
+          { pattern: "mail_v2_v2_send", action: "deny" },
+          { pattern: "mail_v2_v2_*", action: "deny" },
+        ]);
+      } finally {
+        await f.db.cleanup();
+      }
+    },
+  );
+  it.each(["task", "template"] as const)(
     "preserves overlapping server rules in a %s",
     async (kind) => {
       const f = await fixture();
