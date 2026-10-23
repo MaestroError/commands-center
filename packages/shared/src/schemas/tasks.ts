@@ -1,3 +1,4 @@
+import { mcpToolPermissionSchema } from "./specialists.js";
 import { z } from "zod";
 
 import {
@@ -178,10 +179,12 @@ export const taskScheduleSchema = z.discriminatedUnion("mode", [
 const nullableDateTimeSchema = z.union([z.string().datetime(), z.null()]);
 
 export const taskPermissionProfileSchema = z.object({
+  snapshotVersion: z.literal(1).optional(),
   customTools: z.array(z.string().min(1)).optional(),
   mcpServers: z.array(specialistMcpServerSchema).optional(),
   appMcpServers: z.array(specialistAppMcpServerSchema).optional(),
   toolPermissions: z.array(specialistPermissionRuleSchema).optional(),
+  mcpToolPermissions: z.array(mcpToolPermissionSchema).optional(),
   appToolPermissions: z.array(specialistPermissionRuleSchema).optional(),
   approvalPolicy: z.enum(["inherit", "auto_approve", "deny"]).optional(),
   diagnostics: z
@@ -194,6 +197,25 @@ export const taskPermissionProfileSchema = z.object({
     )
     .optional(),
 });
+
+const taskPermissionProfileInputSchema: z.ZodType<
+  z.output<typeof taskPermissionProfileSchema>,
+  z.input<typeof taskPermissionProfileSchema>
+> = taskPermissionProfileSchema
+  .extend({
+    mcpToolPermissions: z
+      .array(mcpToolPermissionSchema.extend({ action: z.enum(["allow", "deny"]) }))
+      .optional(),
+    appMcpServers: z
+      .array(specialistAppMcpServerSchema.extend({ action: z.enum(["allow", "deny"]) }))
+      .optional(),
+    appToolPermissions: z
+      .array(specialistPermissionRuleSchema.extend({ action: z.enum(["allow", "deny"]) }))
+      .optional(),
+  })
+  .describe(
+    "CC-tool overrides use appToolPermissions as a complete allow/deny matrix. Omit both appToolPermissions and appMcpServers to inherit specialist CC defaults; an empty appToolPermissions array denies all CC tools. MCP overrides use mcpToolPermissions entries with canonical server and tool names and allow/deny actions; omitted tools are denied when this matrix is present. Omit mcpToolPermissions to inherit MCP defaults. Preserve unrelated permission fields when editing.",
+  );
 
 export const queueTaskInputSchema = z.object({
   taskId: z.string().trim().min(1),
@@ -274,7 +296,7 @@ export const createTaskInputSchema = z.object({
   scheduledAt: z.string().datetime().optional(),
   dueAt: z.string().datetime().optional(),
   context: taskContextInputSchema.optional(),
-  permissionProfile: taskPermissionProfileSchema.optional(),
+  permissionProfile: taskPermissionProfileInputSchema.optional(),
   enabled: z.boolean().optional(),
 });
 
@@ -304,7 +326,7 @@ export const updateTaskInputSchema = z.object({
   scheduledAt: nullableDateTimeSchema.optional(),
   dueAt: nullableDateTimeSchema.optional(),
   context: taskContextInputSchema.optional(),
-  permissionProfile: taskPermissionProfileSchema.optional(),
+  permissionProfile: taskPermissionProfileInputSchema.optional(),
   enabled: z.boolean().optional(),
 });
 
@@ -478,7 +500,7 @@ export const createTaskTemplateInputSchema = z.object({
   description: z.string().default(""),
   todos: z.array(taskTodoInputSchema).default([]),
   recurrence: recurringTaskScheduleSchema.nullish(),
-  permissionProfile: taskPermissionProfileSchema.optional(),
+  permissionProfile: taskPermissionProfileInputSchema.optional(),
   mcpConfig: taskTemplateMcpConfigInputSchema.optional(),
   enabled: z.boolean().optional(),
 });
@@ -492,7 +514,7 @@ export const updateTaskTemplateInputSchema = z.object({
   recurrence: recurringTaskScheduleSchema.nullish(),
   model: z.string().trim().min(1).nullish(),
   fallbackModels: fallbackModelsBaseSchema.optional(),
-  permissionProfile: taskPermissionProfileSchema.optional(),
+  permissionProfile: taskPermissionProfileInputSchema.optional(),
   mcpConfig: taskTemplateMcpConfigInputSchema.optional(),
   enabled: z.boolean().optional(),
 });

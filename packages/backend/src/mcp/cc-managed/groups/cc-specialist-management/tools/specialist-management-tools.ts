@@ -1,3 +1,4 @@
+import type { CcManagedToolContext } from "../../../server-registry.js";
 import { z } from "zod";
 
 import {
@@ -8,11 +9,11 @@ import {
 import type { SpecialistService } from "../../../../../services/specialist-service.js";
 import type { ConversationService } from "../../../../../services/conversation-service.js";
 import type { LiveRequestService } from "../../../../../services/live-request-service.js";
-import { blockingWaitBudgetMs, CC_MANAGED_MCP_TIMEOUT_MS } from "../../../live-request-timeouts.js";
+import { blockingWaitBudgetMs, CC_TOOL_CALL_TIMEOUT_MS } from "../../../live-request-timeouts.js";
 
 // These tools live in cc_app; their review form must close before that group's
 // tool-call timeout. See live-request-timeouts.ts.
-const REVIEW_TIMEOUT_MS = blockingWaitBudgetMs(CC_MANAGED_MCP_TIMEOUT_MS);
+const REVIEW_TIMEOUT_MS = blockingWaitBudgetMs(CC_TOOL_CALL_TIMEOUT_MS);
 
 type SpecialistManagementToolOptions = {
   agentService: SpecialistService;
@@ -140,14 +141,14 @@ export const updateSpecialistToolMetadata = {
 export const draftSpecialistToolMetadata = {
   name: "draft_specialist",
   description:
-    "Open a prefilled specialist form in chat for the operator to review, edit, and confirm before the specialist is created. Pass whatever details you know (all optional) to pre-fill the form. Chat only.",
+    "Open a prefilled specialist form in chat for the operator to review, edit, and confirm before the specialist is created. Pass whatever details you know (all optional) to pre-fill the form.",
   context: "chat",
 } as const;
 
 export const draftSpecialistUpdateToolMetadata = {
   name: "draft_specialist_update",
   description:
-    "Open a prefilled form in chat with an existing specialist's current details for the operator to review, edit, and confirm before the update is saved. Provide the specialist id and optionally any suggested changes to pre-fill. Chat only.",
+    "Open a prefilled form in chat with an existing specialist's current details for the operator to review, edit, and confirm before the update is saved. Provide the specialist id and optionally any suggested changes to pre-fill.",
   context: "chat",
 } as const;
 
@@ -172,7 +173,7 @@ export function createGetSelfProfileToolDefinition(options: { agentService: Spec
     context: getSelfProfileToolMetadata.context,
     inputSchema: z.object({}).strict(),
     outputSchema: specialistSchema,
-    execute: async (_args: unknown, context: { agentSlug: string }) =>
+    execute: async (_args: unknown, context: CcManagedToolContext) =>
       executeTool(async () => {
         const specialist = await options.agentService.getBySlug(context.agentSlug);
 
@@ -323,11 +324,12 @@ export function createSpecialistLiveToolDefinitions(options: SpecialistManagemen
       context: draftSpecialistToolMetadata.context,
       inputSchema: draftSpecialistToolInputSchema,
       outputSchema: specialistSchema,
-      execute: async (args: unknown, context: { agentSlug: string }) =>
+      execute: async (args: unknown, context: CcManagedToolContext) =>
         executeTool(async () => {
           const draft = draftSpecialistToolInputSchema.parse(args);
           const reviewed = await reviewAgentMutation(options, {
             callingAgentSlug: context.agentSlug,
+            context,
             kind: "specialist_create_review",
             title: "Review specialist",
             description: "Review and edit the specialist before CommandsCenter creates it.",
@@ -361,7 +363,7 @@ export function createSpecialistLiveToolDefinitions(options: SpecialistManagemen
       context: draftSpecialistUpdateToolMetadata.context,
       inputSchema: draftSpecialistUpdateToolInputSchema,
       outputSchema: specialistSchema,
-      execute: async (args: unknown, context: { agentSlug: string }) =>
+      execute: async (args: unknown, context: CcManagedToolContext) =>
         executeTool(async () => {
           const parsed = draftSpecialistUpdateToolInputSchema.parse(args);
           const current = await options.agentService.get(parsed.id);
@@ -413,6 +415,7 @@ export function createSpecialistLiveToolDefinitions(options: SpecialistManagemen
 
           const reviewed = await reviewAgentMutation(options, {
             callingAgentSlug: context.agentSlug,
+            context,
             kind: "specialist_update_review",
             title: "Review specialist update",
             description: "Review and edit the specialist update before CommandsCenter saves it.",
@@ -450,7 +453,7 @@ export function createSpecialistLiveToolDefinitions(options: SpecialistManagemen
       context: removeSpecialistToolMetadata.context,
       inputSchema: removeSpecialistInputSchema,
       outputSchema: specialistSchema,
-      execute: async (args: unknown, context: { agentSlug: string }) =>
+      execute: async (args: unknown, context: CcManagedToolContext) =>
         executeTool(async () => {
           const parsed = removeSpecialistInputSchema.parse(args);
           const target = await options.agentService.get(parsed.id);
@@ -461,6 +464,7 @@ export function createSpecialistLiveToolDefinitions(options: SpecialistManagemen
 
           await confirmRemove(options, {
             callingAgentSlug: context.agentSlug,
+            context,
             targetAgentId: target.id,
             targetAgentName: target.name,
             targetAgentSlug: target.slug,
@@ -526,6 +530,7 @@ async function confirmRemove(
   >,
   input: {
     callingAgentSlug: string;
+    context: CcManagedToolContext;
     targetAgentId: string;
     targetAgentName: string;
     targetAgentSlug: string;
@@ -541,9 +546,13 @@ async function confirmRemove(
     throw new Error(`Specialist '${input.callingAgentSlug}' not found.`);
   }
 
-  const snapshot = await options.conversationService.resolveCurrent(callingAgent.id);
+  const conversationId =
+    input.context.caller?.context === "chat"
+      ? input.context.caller.conversationId
+      : (await options.conversationService.resolveCurrent(callingAgent.id)).current.id;
   const decision = await options.liveRequestService.create({
-    conversationId: snapshot.current.id,
+    conversationId,
+    signal: input.context.signal,
     kind: "specialist_management_confirmation",
     closable: false,
     timeoutMs: REVIEW_TIMEOUT_MS,
@@ -587,6 +596,7 @@ async function reviewAgentMutation(
   >,
   input: {
     callingAgentSlug: string;
+    context: CcManagedToolContext;
     kind: string;
     title: string;
     description: string;
@@ -610,9 +620,13 @@ async function reviewAgentMutation(
     throw new Error(`Specialist '${input.callingAgentSlug}' not found.`);
   }
 
-  const snapshot = await options.conversationService.resolveCurrent(callingAgent.id);
+  const conversationId =
+    input.context.caller?.context === "chat"
+      ? input.context.caller.conversationId
+      : (await options.conversationService.resolveCurrent(callingAgent.id)).current.id;
   const decision = await options.liveRequestService.create({
-    conversationId: snapshot.current.id,
+    conversationId,
+    signal: input.context.signal,
     kind: input.kind,
     closable: false,
     timeoutMs: REVIEW_TIMEOUT_MS,

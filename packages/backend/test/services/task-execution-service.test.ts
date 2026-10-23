@@ -1669,6 +1669,59 @@ describe("createTaskExecutionService", () => {
     }
   });
 
+  it("resolves MCP defaults from the specialist actually assigned to the run", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const opencodeService = createMockOpenCodeService();
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const taskPermissionService = createTaskPermissionService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+      mcpTools: {
+        catalog: () =>
+          Promise.resolve([
+            {
+              server: "mail",
+              available: true,
+              tools: [{ id: "mail_send", name: "send", description: "Send" }],
+            },
+          ]),
+        validate: async () => {},
+      },
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      taskPermissionService,
+    });
+    try {
+      const original = await insertAgent(testDb.client.db, {
+        mcpServers: [{ name: "mail", enabled: true, action: "allow" }],
+      });
+      const assigned = await insertAgent(testDb.client.db, {
+        mcpServers: [{ name: "mail", enabled: true, action: "deny" }],
+      });
+      const task = await taskService.create({
+        agentId: original.id,
+        defaultAgentId: assigned.id,
+        title: "Assigned MCP permissions",
+      });
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+      expect(run.effectivePermissions?.mcpToolPermissions).toEqual([
+        { server: "mail", tool: "send", action: "deny" },
+      ]);
+      await expectRunStatus(taskService, run.id, "running");
+    } finally {
+      executionService.dispose();
+      await testDb.cleanup();
+    }
+  });
+
   it("persists effective permissions and passes them to task-owned sessions", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });

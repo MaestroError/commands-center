@@ -1,3 +1,4 @@
+import { renameTaskMcpReferences } from "./task-mcp-reference-sync.js";
 import { syncEmbeddedGlobalMcpConfig } from "../opencode/embedded-mcp-config.js";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -338,12 +339,16 @@ export function createMcpServerService(options: {
       }
 
       if (existing.name !== parsed.name) {
+        await renameTaskMcpReferences(options.db, options.config, existing.name, parsed.name);
+        const configuredNames = (
+          await options.db.select({ name: mcp_servers.name }).from(mcp_servers)
+        ).map((server) => server.name);
         await (options.rewriteAgents ?? rewriteAgentsForMcpChange)({
           db: options.db,
           config: options.config,
           opencodeService: options.opencodeService,
           transform: (capabilities) =>
-            renameMcpReferences(capabilities, existing.name, parsed.name),
+            renameMcpReferences(capabilities, existing.name, parsed.name, configuredNames),
         });
       }
 
@@ -537,7 +542,10 @@ export function createMcpServerService(options: {
   // gives two servers whose names sanitize alike the same tool-id prefix, so a
   // legacy 'My Server' must still block a new 'my_server'.
   async function assertNameAvailable(name: string, excludeId?: string): Promise<void> {
-    if (CC_MANAGED_GROUP_METAS.some((group) => group.name === toMcpServerName(name))) {
+    if (
+      toMcpServerName(name) === "cc_custom" ||
+      CC_MANAGED_GROUP_METAS.some((group) => group.name === toMcpServerName(name))
+    ) {
       throw new ConflictError(`MCP server name '${name}' is reserved by CommandsCenter.`);
     }
     const rows = await options.db

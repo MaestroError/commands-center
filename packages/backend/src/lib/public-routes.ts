@@ -25,9 +25,6 @@ export const PUBLIC_ROUTES: PublicRoute[] = [
   { method: "OPTIONS", path: "/oauth/jwks" },
   { method: "GET", path: /^\/api\/oauth\/interactions\/[^/]+$/ },
   { method: "POST", path: /^\/api\/oauth\/interactions\/[^/]+$/ },
-  { method: "GET", path: /^\/api\/mcp\/cc\/[^/]+\/specialists\/[^/]+$/ },
-  { method: "POST", path: /^\/api\/mcp\/cc\/[^/]+\/specialists\/[^/]+$/ },
-  { method: "DELETE", path: /^\/api\/mcp\/cc\/[^/]+\/specialists\/[^/]+$/ },
 ];
 
 export function isPublicRoute(method: string, pathname: string): boolean {

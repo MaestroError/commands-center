@@ -1,3 +1,4 @@
+import type { McpToolPermissionService } from "../mcp-tool-permission-service.js";
 // Shared task-service context: DI wiring plus the internal helper closures
 // used across the operation modules (issue #99 split).
 
@@ -73,7 +74,7 @@ export type CreateTaskFromTemplateInput = {
 };
 
 export function createTaskServiceContext(
-  options: { db: AppDb; config: RuntimeConfig },
+  options: { db: AppDb; config: RuntimeConfig; mcpToolPermissions?: McpToolPermissionService },
   artifactService: ArtifactService,
 ) {
   async function requireWritableRun(taskRunId: string, agentId: string): Promise<TaskRun> {

@@ -4,16 +4,161 @@ import {
   taskTemplateReconciler,
 } from "../../src/services/task-service/template-files";
 import pino from "pino";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { persistedTaskRunArtifactSchema, taskRunArtifactSchema } from "@cc/shared/schemas";
 import { eq } from "drizzle-orm";
 
 import type { AppDb } from "../../src/db/client";
 import { createTaskService } from "../../src/services/task-service";
 import { createTestDatabase } from "../helpers/db";
-import { agents, conversations, task_runs, task_templates } from "../../src/db/schema/index";
+import { agents, conversations, tasks, task_runs, task_templates } from "../../src/db/schema/index";
 
 describe("createTaskService", () => {
+  it("validates new task rules against its default assignee", async () => {
+    const testDb = await createTestDatabase();
+    try {
+      const owner = await insertAgent(testDb.client.db);
+      const assignee = await insertAgent(testDb.client.db);
+      const validate = vi.fn(async () => {});
+      const service = createTaskService({
+        db: testDb.client.db,
+        config: testDb.config,
+        mcpToolPermissions: { catalog: () => Promise.resolve([]), validate },
+      });
+      await service.create({
+        agentId: owner.id,
+        defaultAgentId: assignee.id,
+        title: "Assigned",
+        permissionProfile: { mcpToolPermissions: [] },
+      });
+      expect(validate).toHaveBeenCalledWith(assignee.id, []);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+  it("revalidates retained rules when only the default assignee changes", async () => {
+    const testDb = await createTestDatabase();
+    try {
+      const owner = await insertAgent(testDb.client.db);
+      const assignee = await insertAgent(testDb.client.db);
+      const validate = vi.fn(async () => {});
+      const service = createTaskService({
+        db: testDb.client.db,
+        config: testDb.config,
+        mcpToolPermissions: { catalog: () => Promise.resolve([]), validate },
+      });
+      const rules = [{ server: "mail", tool: "read", action: "allow" as const }];
+      const task = await service.create({
+        agentId: owner.id,
+        title: "Assigned",
+        permissionProfile: { mcpToolPermissions: rules },
+      });
+      await service.update(task.id, { defaultAgentId: assignee.id });
+      expect(validate).toHaveBeenLastCalledWith(assignee.id, rules, []);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+  it.each(["task", "template"])("normalizes stored Ask when duplicating a %s", async (kind) => {
+    const testDb = await createTestDatabase();
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+      const original =
+        kind === "task"
+          ? await service.create({ agentId: agent.id, title: "Legacy" })
+          : await service.createTemplate({ defaultAgentId: agent.id, title: "Legacy" });
+      const table = kind === "task" ? tasks : task_templates;
+      await testDb.client.db
+        .update(table)
+        .set({
+          permission_profile_json: JSON.stringify({
+            appMcpServers: [{ name: "cc_default", enabled: true, action: "ask" }],
+            appToolPermissions: [{ pattern: "cc_default_set_task_result", action: "ask" }],
+          }),
+        })
+        .where(eq(table.id, original.id));
+      expect((await service.duplicate(original.id))?.permissionProfile).toMatchObject({
+        appMcpServers: [{ name: "cc_default", action: "allow" }],
+        appToolPermissions: [{ pattern: "cc_default_set_task_result", action: "allow" }],
+      });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+  it("recovers tool overrides from portable template files", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const permissionProfile = {
+        appToolPermissions: [{ pattern: "cc_default_set_task_result", action: "allow" as const }],
+        mcpToolPermissions: [{ server: "mail", tool: "send", action: "deny" as const }],
+        customTools: ["retained"],
+      };
+      const template = await service.createTemplate({
+        defaultAgentId: agent.id,
+        title: "Portable overrides",
+        permissionProfile,
+      });
+      await testDb.client.db.delete(task_templates).where(eq(task_templates.id, template.id));
+      await taskTemplateReconciler.reconcile({
+        config: testDb.config,
+        db: testDb.client.db,
+        logger: pino({ level: "silent" }),
+      });
+      expect((await service.getTemplate(template.id))?.permissionProfile).toEqual(
+        permissionProfile,
+      );
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("keeps generated task overrides independent of later template edits", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const permissionProfile = {
+        appToolPermissions: [{ pattern: "cc_default_set_task_result", action: "allow" as const }],
+        mcpToolPermissions: [{ server: "mail", tool: "send", action: "deny" as const }],
+      };
+      const template = await service.createTemplate({
+        defaultAgentId: agent.id,
+        title: "Snapshot",
+        permissionProfile,
+      });
+      const task = await service.createTaskFromTemplate(template.id, {
+        occurrenceAt: "2026-06-08T09:00:00.000Z",
+        triggerSource: "template",
+      });
+      await service.updateTemplate(template.id, { permissionProfile: { appToolPermissions: [] } });
+      expect((await service.get(task!.id))?.permissionProfile).toEqual(permissionProfile);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("removes CC overrides without dropping unrelated task permissions", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await service.create({
+        agentId: agent.id,
+        title: "Restore inheritance",
+        permissionProfile: { appToolPermissions: [], customTools: ["retained"] },
+      });
+      await service.update(task.id, { permissionProfile: { customTools: ["retained"] } });
+      expect((await service.get(task.id))?.permissionProfile).toEqual({
+        customTools: ["retained"],
+      });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("creates backlog and scheduled tasks", async () => {
     const testDb = await createTestDatabase();
     const service = createTaskService({ db: testDb.client.db, config: testDb.config });

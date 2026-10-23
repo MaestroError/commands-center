@@ -74,12 +74,12 @@ describe("native v2 specialist configuration", () => {
       { action: "cc_default_*", resource: "*", effect: "allow" },
     ]);
   });
-  it("keeps task-result tools denied after specialist wildcard grants", () => {
-    expect(rendered().permissions.slice(-3)).toEqual([
-      { action: "cc_default_set_task_result", resource: "*", effect: "deny" },
-      { action: "cc_default_add_task_artifact", resource: "*", effect: "deny" },
-      { action: "cc_default_mark_needs_human_review", resource: "*", effect: "deny" },
-    ]);
+  it("leaves CC context restrictions to session-specific native tools", () => {
+    expect(rendered().permissions).not.toContainEqual({
+      action: "cc_default_set_task_result",
+      resource: "*",
+      effect: "deny",
+    });
   });
   it("uses the existing specialist rules format", () => {
     expect(renderEmbeddedWorkspace(input, definitions).rulesMarkdown).toBe(

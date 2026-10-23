@@ -1,3 +1,4 @@
+import type { CcManagedToolContext } from "../../../server-registry.js";
 import { z } from "zod";
 
 import type { AppDb } from "../../../../../db/client.js";
@@ -269,7 +270,7 @@ export function createDocumentToolDefinitions(options: { db: AppDb; config: Runt
       context: registerGlobalDocumentToolMetadata.context,
       inputSchema: registerDocumentInputSchema,
       outputSchema: registerDocumentOutputSchema,
-      async execute(args: unknown, context: { agentSlug: string }) {
+      async execute(args: unknown, context: CcManagedToolContext) {
         try {
           return await registerDocument(args, "global", context.agentSlug);
         } catch (error) {
@@ -287,7 +288,7 @@ export function createDocumentToolDefinitions(options: { db: AppDb; config: Runt
       context: listPrivateDocumentsToolMetadata.context,
       inputSchema: documentListFilterInputSchema,
       outputSchema: listDocumentsOutputSchema,
-      async execute(args: unknown, context: { agentSlug: string }) {
+      async execute(args: unknown, context: CcManagedToolContext) {
         try {
           return await listDocuments(args, "private", context.agentSlug);
         } catch (error) {
@@ -305,7 +306,7 @@ export function createDocumentToolDefinitions(options: { db: AppDb; config: Runt
       context: registerPrivateDocumentToolMetadata.context,
       inputSchema: registerDocumentInputSchema,
       outputSchema: registerDocumentOutputSchema,
-      async execute(args: unknown, context: { agentSlug: string }) {
+      async execute(args: unknown, context: CcManagedToolContext) {
         try {
           return await registerDocument(args, "private", context.agentSlug);
         } catch (error) {
@@ -341,7 +342,7 @@ export function createDocumentToolDefinitions(options: { db: AppDb; config: Runt
       context: movePrivateDocumentToolMetadata.context,
       inputSchema: moveDocumentInputSchema,
       outputSchema: moveDocumentOutputSchema,
-      async execute(args: unknown, context: { agentSlug: string }) {
+      async execute(args: unknown, context: CcManagedToolContext) {
         try {
           return await moveDocument(args, "private", context.agentSlug);
         } catch (error) {

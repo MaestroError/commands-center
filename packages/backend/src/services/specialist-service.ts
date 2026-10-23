@@ -1,3 +1,5 @@
+import type { McpToolCatalog } from "@cc/shared/schemas";
+import { validateMcpToolChanges } from "./mcp-tool-permission-service.js";
 import { prepareEmbeddedSpecialistWorkspace } from "../opencode/embedded-specialist-workspace.js";
 import { eq } from "drizzle-orm";
 import { access } from "node:fs/promises";
@@ -22,7 +24,7 @@ import { createId, now } from "../db/ids.js";
 import { agents, mcp_servers } from "../db/schema/index.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
 import type { AppDb } from "../db/client.js";
-import { ConflictError } from "../lib/api-error.js";
+import { ConflictError, NotFoundError } from "../lib/api-error.js";
 import type { OpenCodeService } from "./opencode-service.js";
 import {
   normalizeSpecialistCapabilities,
@@ -31,14 +33,10 @@ import {
 import { withSpecialistMcpMutationLock } from "./specialist-mcp-mutation-lock.js";
 import { createCustomToolService, type CustomToolService } from "./custom-tool-service.js";
 import { listProviderModels } from "./provider-service.js";
-import { createCcManagedMcpAuthStateStore } from "../mcp/cc-managed/auth-state-store.js";
-import { createCcManagedMcpAuthTokenService } from "../mcp/cc-managed/auth-token-service.js";
 import {
   createCcManagedMcpServerRegistry,
   listCcManagedMcpServers,
 } from "../mcp/cc-managed/server-registry.js";
-import { createCcManagedMcpToolAccessService } from "../mcp/cc-managed/tool-access-service.js";
-import { createCcManagedMcpWorkspaceEntryService } from "../mcp/cc-managed/workspace-entry-service.js";
 import {
   archiveWorkspace,
   getBuiltInSkillRoot,
@@ -61,6 +59,8 @@ export function createSpecialistService(options: {
   ) => Promise<void>;
   customToolService?: CustomToolService;
   skillRoot?: string;
+  readMcpCatalog?: (directory: string) => Promise<McpToolCatalog>;
+  discoverMcpCatalog?: (directory: string) => Promise<McpToolCatalog>;
 }) {
   const skillRoot = options.skillRoot ?? getBuiltInSkillRoot(options.config);
   const workspaceSkillRoot = getWorkspaceSkillRoot(options.config);
@@ -75,22 +75,21 @@ export function createSpecialistService(options: {
     options.prepareWorkspace ??
     ((input) =>
       prepareEmbeddedSpecialistWorkspace({ ...input, db: options.db, customToolService }));
-  const appMcpAuthStateStore = createCcManagedMcpAuthStateStore(options.config);
   const appMcpRegistry = createCcManagedMcpServerRegistry({
     customToolService,
   });
-  const appMcpAuthTokenService = createCcManagedMcpAuthTokenService({
-    authStateStore: appMcpAuthStateStore,
-  });
-  const appMcpToolAccessService = createCcManagedMcpToolAccessService();
-  const appMcpWorkspaceEntryService = createCcManagedMcpWorkspaceEntryService({
-    config: options.config,
-    authTokenService: appMcpAuthTokenService,
-    toolAccessService: appMcpToolAccessService,
-    registry: appMcpRegistry,
-  });
 
   return {
+    async getMcpToolCatalog(id?: string): Promise<McpToolCatalog> {
+      const discover = options.discoverMcpCatalog ?? options.readMcpCatalog;
+      if (!discover) return [];
+      if (!id) return discover(options.config.paths.workspaceDir);
+      const row = await options.db.query.agents.findFirst({
+        where: (table, { eq }) => eq(table.id, id),
+      });
+      if (!row) throw new NotFoundError("Specialist not found.");
+      return discover(resolveWorkspacePath(row));
+    },
     async list(includeArchived = false): Promise<Specialist[]> {
       const rows = await options.db.query.agents.findMany({
         where: includeArchived
@@ -126,10 +125,11 @@ export function createSpecialistService(options: {
         const timestamp = now();
         const workspacePath = buildWorkspacePath(slug);
         const capabilities = await normalizeCapabilities(parsed.capabilities);
-        const appMcpEntries = await appMcpWorkspaceEntryService.buildEntries({
-          slug,
-          capabilities,
-        });
+        if (capabilities.mcpToolPermissions && options.readMcpCatalog)
+          await validateMcpToolChanges(
+            () => options.readMcpCatalog!(options.config.paths.workspaceDir),
+            capabilities.mcpToolPermissions,
+          );
 
         await prepare({
           overwriteSlugs: parsed.customToolOverwriteSlugs,
@@ -141,7 +141,6 @@ export function createSpecialistService(options: {
             instructions: parsed.instructions,
             defaultModel: parsed.defaultModel,
             capabilities,
-            appMcpEntries,
           },
           skillRoot,
           workspaceSkillRoot,
@@ -207,23 +206,24 @@ export function createSpecialistService(options: {
       const nextWorkspacePath = buildWorkspacePath(nextSlug);
       const currentWorkspacePath = resolveWorkspacePath(existing);
 
+      const capabilities = parsed.capabilities ?? parseCapabilities(existing.capabilities_json);
+      const normalizedCapabilities = await normalizeCapabilities(capabilities);
+      if (normalizedCapabilities.mcpToolPermissions && options.readMcpCatalog)
+        await validateMcpToolChanges(
+          () => options.readMcpCatalog!(currentWorkspacePath),
+          normalizedCapabilities.mcpToolPermissions,
+          parseCapabilities(existing.capabilities_json).mcpToolPermissions,
+        );
       if (currentWorkspacePath !== nextWorkspacePath) {
         await moveWorkspace(currentWorkspacePath, nextWorkspacePath);
       }
 
-      const capabilities = parsed.capabilities ?? parseCapabilities(existing.capabilities_json);
-      const normalizedCapabilities = await normalizeCapabilities(capabilities);
-      const appMcpEntries = await appMcpWorkspaceEntryService.buildEntries({
-        slug: nextSlug,
-        capabilities: normalizedCapabilities,
-      });
       const workspaceInput = {
         name: nextName,
         role: parsed.role ?? existing.role,
         instructions: parsed.instructions ?? existing.instructions,
         defaultModel: parsed.defaultModel ?? existing.default_model,
         capabilities: normalizedCapabilities,
-        appMcpEntries,
       };
 
       await prepare({

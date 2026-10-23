@@ -11,7 +11,7 @@ import {
   getMcpServerSelection,
   setAppMcpServerAction,
   setAppMcpServerEnabled,
-  setAppMcpToolEnabled,
+  setAppMcpToolAction,
   setMcpServerAction,
   setMcpServerEnabled,
   upsertMcpServerSelection,
@@ -156,22 +156,38 @@ describe("specialist-capabilities", () => {
     });
   });
 
-  it("reads and updates app MCP tool permissions", () => {
+  it.each(["allow", "ask", "deny"] as const)("persists an explicit %s CC tool action", (action) => {
     const capabilities = makeCapabilities({
+      appMcpServers: [{ name: "github", enabled: true, action: "ask" }],
       appToolPermissions: [{ pattern: "github_create_issue", action: "deny" }],
     });
+    const updated = setAppMcpToolAction(capabilities, "github", "create_issue", action);
+    expect(updated.appToolPermissions).toEqual([{ pattern: "github_create_issue", action }]);
+    expect(getAppMcpToolAction(updated, "github", "create_issue")).toBe(action);
+  });
 
-    expect(getAppMcpToolAction(capabilities, "github", "create_issue")).toBe("deny");
-    expect(getAppMcpToolAction(capabilities, "github", "read_issue")).toBe("allow");
-    expect(setAppMcpToolEnabled(capabilities, "github", "create_issue", true)).toMatchObject({
-      appToolPermissions: [],
+  it("displays inherited wildcard Ask for a CC tool", () => {
+    const capabilities = makeCapabilities({
+      appMcpServers: [{ name: "cc_app", enabled: true, action: "allow" }],
+      appToolPermissions: [{ pattern: "cc_app_*", action: "ask" }],
     });
-    expect(setAppMcpToolEnabled(capabilities, "github", "read_issue", false)).toMatchObject({
+    expect(getAppMcpToolAction(capabilities, "cc_app", "read")).toBe("ask");
+  });
+  it("displays a later wildcard Deny over an earlier exact Allow", () => {
+    const capabilities = makeCapabilities({
+      appMcpServers: [{ name: "cc_app", enabled: true, action: "allow" }],
       appToolPermissions: [
-        { pattern: "github_create_issue", action: "deny" },
-        { pattern: "github_read_issue", action: "deny" },
+        { pattern: "cc_app_read", action: "allow" },
+        { pattern: "cc_app_*", action: "deny" },
       ],
     });
+    expect(getAppMcpToolAction(capabilities, "cc_app", "read")).toBe("deny");
+  });
+  it("inherits the CC group ask action when no tool override exists", () => {
+    const capabilities = makeCapabilities({
+      appMcpServers: [{ name: "github", enabled: true, action: "ask" }],
+    });
+    expect(getAppMcpToolAction(capabilities, "github", "read_issue")).toBe("ask");
   });
 
   it("defaults app MCP server actions to deny when no override exists", () => {

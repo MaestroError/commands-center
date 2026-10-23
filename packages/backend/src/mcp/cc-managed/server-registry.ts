@@ -1,4 +1,5 @@
 import type { AnySchema } from "@modelcontextprotocol/sdk/server/zod-compat";
+import type { EmbeddedToolCaller } from "../../opencode/embedded-tool-caller.js";
 
 import { CC_MANAGED_GROUP_METAS } from "./group-metadata.js";
 import { CC_DEFAULT_INTERACTIVE_TOOL_CALL_TIMEOUT_MS } from "./live-request-timeouts.js";
@@ -137,6 +138,10 @@ import {
 
 export type CcManagedToolContext = {
   agentSlug: string;
+  caller?: EmbeddedToolCaller;
+  signal?: AbortSignal;
+  messageID?: string;
+  callID?: string;
 };
 
 export type CcManagedToolDefinition = {

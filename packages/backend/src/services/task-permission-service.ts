@@ -1,3 +1,6 @@
+import { join } from "node:path";
+import { resolveMcpToolDefault } from "@cc/shared/schemas";
+import type { McpToolPermissionService } from "./mcp-tool-permission-service.js";
 import {
   specialistCapabilitySelectionSchema,
   taskPermissionProfileSchema,
@@ -39,6 +42,8 @@ export function createTaskPermissionService(options: {
   config: RuntimeConfig;
   opencodeService: Pick<OpenCodeService, "dispose">;
   customToolService?: CustomToolService;
+  mcpTools?: McpToolPermissionService;
+  initializeMcpTools?: (directory: string) => Promise<unknown>;
 }) {
   const registry = createCcManagedMcpServerRegistry({
     customToolService:
@@ -57,9 +62,40 @@ export function createTaskPermissionService(options: {
       const { appMcpServers, appToolPermissions, diagnostics } = filterAppToolsForTaskRun(
         merged,
         registry,
+        task.permissionProfile?.appToolPermissions !== undefined,
+      );
+      await options.initializeMcpTools?.(
+        join(options.config.paths.subdirectories.specialists, agent.slug),
+      );
+      const catalog = await options.mcpTools?.catalog(task.agentId);
+      const mcpToolPermissions = catalog?.flatMap((server) =>
+        server.available
+          ? server.tools.map((tool) => {
+              const override = task.permissionProfile?.mcpToolPermissions;
+              const exact = override?.find(
+                (rule) => rule.server === server.server && rule.tool === tool.name,
+              );
+              const action =
+                exact?.action ??
+                (override
+                  ? "deny"
+                  : resolveMcpToolDefault(
+                      { ...agent.capabilities, ...merged },
+                      server.server,
+                      tool,
+                    ));
+              return {
+                server: server.server,
+                tool: tool.name,
+                action: action === "ask" ? ("allow" as const) : action,
+              };
+            })
+          : [],
       );
       const normalized = taskPermissionProfileSchema.parse({
         ...merged,
+        snapshotVersion: 1,
+        ...(mcpToolPermissions ? { mcpToolPermissions } : {}),
         mcpServers: normalizeServerActionsForTask(merged.mcpServers ?? [], diagnostics),
         appMcpServers: normalizeServerActionsForTask(appMcpServers, diagnostics),
         toolPermissions: normalizeRulesForTask(merged.toolPermissions ?? [], diagnostics),
@@ -107,6 +143,7 @@ export function mergeTaskPermissions(
   taskProfile: TaskPermissionProfile | undefined,
 ): TaskPermissionProfile {
   return taskPermissionProfileSchema.parse({
+    mcpToolPermissions: taskProfile?.mcpToolPermissions ?? agentCapabilities.mcpToolPermissions,
     customTools: taskProfile?.customTools ?? agentCapabilities.customTools,
     mcpServers: taskProfile?.mcpServers ?? agentCapabilities.mcpServers,
     appMcpServers: taskProfile?.appMcpServers ?? agentCapabilities.appMcpServers,
@@ -154,13 +191,16 @@ export function buildOpenCodeSessionPermissions(
 function filterAppToolsForTaskRun(
   permissions: TaskPermissionProfile,
   registry: readonly CcManagedMcpServerDefinition[],
+  hasToolOverride: boolean,
 ): {
   appMcpServers: NonNullable<TaskPermissionProfile["appMcpServers"]>;
   appToolPermissions: NonNullable<TaskPermissionProfile["appToolPermissions"]>;
   diagnostics: TaskPermissionDiagnostic[];
 } {
   const diagnostics: TaskPermissionDiagnostic[] = [];
-  const selectedAppMcpServers = permissions.appMcpServers ?? [];
+  const selectedAppMcpServers = hasToolOverride
+    ? registry.map((group) => ({ name: group.name, enabled: true, action: "allow" as const }))
+    : (permissions.appMcpServers ?? []);
   const appMcpServers = selectedAppMcpServers.filter((serverSelection) => {
     const server = registry.find((entry) => entry.name === serverSelection.name);
 
@@ -184,16 +224,10 @@ function filterAppToolsForTaskRun(
     return false;
   });
   const deniedPatterns = new Set<string>();
-  const autoAllowedTaskRunPatterns = new Set<string>();
 
   for (const server of registry) {
     for (const tool of server.catalogTools) {
       if (tool.context === "task_run" || tool.context === "both") {
-        if (server.enabledByDefault) {
-          autoAllowedTaskRunPatterns.add(
-            buildCcManagedToolPermissionPattern(server.name, tool.name),
-          );
-        }
         continue;
       }
 
@@ -220,22 +254,32 @@ function filterAppToolsForTaskRun(
       appMcpServers.push({ name: server.name, enabled: true, action: "allow" });
     }
   }
-  const appToolPermissions = (permissions.appToolPermissions ?? []).filter(
-    (rule) => !deniedPatterns.has(rule.pattern),
-  );
-  const existingPatterns = new Set(appToolPermissions.map((rule) => rule.pattern));
-
-  return {
-    appMcpServers,
-    appToolPermissions: [
-      ...appToolPermissions,
-      ...[...autoAllowedTaskRunPatterns]
-        .filter((pattern) => !existingPatterns.has(pattern))
-        .map((pattern) => ({ pattern, action: "allow" as const })),
-      ...[...deniedPatterns].map((pattern) => ({ pattern, action: "deny" as const })),
-    ],
-    diagnostics,
-  };
+  const appToolPermissions = registry.flatMap((group) => {
+    const selection = appMcpServers.find((entry) => entry.name === group.name);
+    const enabled = selection
+      ? selection.enabled !== false && selection.action !== "deny"
+      : group.enabledByDefault;
+    return group.catalogTools.map((tool) => {
+      const pattern = buildCcManagedToolPermissionPattern(group.name, tool.name);
+      const inheritedAction = resolveMcpToolDefault(
+        {
+          toolPermissions: permissions.appToolPermissions,
+          mcpServers: selection ? [selection] : [],
+        },
+        group.name,
+        { id: pattern, name: tool.name },
+      );
+      const rule = permissions.appToolPermissions?.find((entry) => entry.pattern === pattern);
+      const action =
+        !enabled || deniedPatterns.has(pattern)
+          ? ("deny" as const)
+          : hasToolOverride
+            ? (rule?.action ?? "deny")
+            : inheritedAction;
+      return { pattern, action };
+    });
+  });
+  return { appMcpServers, appToolPermissions, diagnostics };
 }
 
 function normalizeRulesForTask(

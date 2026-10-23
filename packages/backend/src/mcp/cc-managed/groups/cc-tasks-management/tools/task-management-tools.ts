@@ -1,3 +1,4 @@
+import type { CcManagedToolContext } from "../../../server-registry.js";
 import { z } from "zod";
 
 import {
@@ -21,7 +22,7 @@ import type { ConversationService } from "../../../../../services/conversation-s
 import type { LiveRequestService } from "../../../../../services/live-request-service.js";
 import type { TaskExecutionService } from "../../../../../services/task-execution-service.js";
 import type { TaskService } from "../../../../../services/task-service.js";
-import { blockingWaitBudgetMs, CC_MANAGED_MCP_TIMEOUT_MS } from "../../../live-request-timeouts.js";
+import { blockingWaitBudgetMs, CC_TOOL_CALL_TIMEOUT_MS } from "../../../live-request-timeouts.js";
 import {
   withTaskBoardUrl,
   withTaskRunBoardUrl,
@@ -30,7 +31,7 @@ import {
 
 // The draft tools below live in cc_app; their review form must close before that
 // group's tool-call timeout. See live-request-timeouts.ts.
-const REVIEW_TIMEOUT_MS = blockingWaitBudgetMs(CC_MANAGED_MCP_TIMEOUT_MS);
+const REVIEW_TIMEOUT_MS = blockingWaitBudgetMs(CC_TOOL_CALL_TIMEOUT_MS);
 
 type TaskManagementToolOptions = {
   db: AppDb;
@@ -270,14 +271,14 @@ export const disableTaskTemplateToolMetadata = {
 export const draftTaskToolMetadata = {
   name: "draft_task",
   description:
-    "Open a prefilled task form in chat for the operator to review, edit, and confirm before the task is created. Pass whatever details you know (all optional) to pre-fill the form. Chat only.",
+    "Open a prefilled task form in chat for the operator to review, edit, and confirm before the task is created. Pass whatever details you know (all optional) to pre-fill the form.",
   context: "chat",
 } as const;
 
 export const draftTaskUpdateToolMetadata = {
   name: "draft_task_update",
   description:
-    "Open a prefilled form in chat with an existing task's current details for the operator to review, edit, and confirm before the update is saved. Provide the task id and optionally any suggested changes to pre-fill. Chat only.",
+    "Open a prefilled form in chat with an existing task's current details for the operator to review, edit, and confirm before the update is saved. Provide the task id and optionally any suggested changes to pre-fill.",
   context: "chat",
 } as const;
 
@@ -301,7 +302,7 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
       context: createTaskToolMetadata.context,
       inputSchema: createManagedTaskInputSchema,
       outputSchema: mcpTaskSchema,
-      execute: async (args: unknown, context: { agentSlug: string }) =>
+      execute: async (args: unknown, context: CcManagedToolContext) =>
         executeTool(async () => {
           const parsed = createManagedTaskInputSchema.parse(args);
           const agentId =
@@ -473,7 +474,7 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
       context: createTaskTemplateToolMetadata.context,
       inputSchema: createManagedTaskTemplateInputSchema,
       outputSchema: mcpTaskTemplateSchema,
-      execute: async (args: unknown, context: { agentSlug: string }) =>
+      execute: async (args: unknown, context: CcManagedToolContext) =>
         executeTool(async () => {
           const parsed = createManagedTaskTemplateInputSchema.parse(args);
           const defaultAgentId =
@@ -561,7 +562,7 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
       context: runTaskTemplateNowToolMetadata.context,
       inputSchema: runTaskTemplateNowToolInputSchema,
       outputSchema: mcpTaskRunSchema,
-      execute: async (args: unknown, context: { agentSlug: string }) =>
+      execute: async (args: unknown, context: CcManagedToolContext) =>
         executeTool(async () => {
           const parsed = runTaskTemplateNowToolInputSchema.parse(args);
           const callingAgentId = await requireCallingAgentId(options.db, context.agentSlug);
@@ -593,7 +594,7 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
       context: createTaskFromTemplateToolMetadata.context,
       inputSchema: templateIdInputSchema,
       outputSchema: mcpTaskSchema,
-      execute: async (args: unknown, context: { agentSlug: string }) =>
+      execute: async (args: unknown, context: CcManagedToolContext) =>
         executeTool(async () => {
           const templateId = resolveTemplateId(templateIdInputSchema.parse(args));
           const callingAgentId = await requireCallingAgentId(options.db, context.agentSlug);
@@ -712,11 +713,12 @@ export function createTaskLiveToolDefinitions(options: TaskManagementToolOptions
       context: draftTaskToolMetadata.context,
       inputSchema: draftTaskInputSchema,
       outputSchema: mcpTaskSchema,
-      execute: async (args: unknown, context: { agentSlug: string }) =>
+      execute: async (args: unknown, context: CcManagedToolContext) =>
         executeTool(async () => {
           const draft = draftTaskInputSchema.parse(args);
           const callingAgentId = await requireCallingAgentId(options.db, context.agentSlug);
           const reviewed = await reviewTaskMutation(options, {
+            context,
             agentId: callingAgentId,
             kind: "task_create_review",
             title: "Review task",
@@ -764,7 +766,7 @@ export function createTaskLiveToolDefinitions(options: TaskManagementToolOptions
       context: draftTaskUpdateToolMetadata.context,
       inputSchema: draftTaskUpdateInputSchema,
       outputSchema: mcpTaskSchema,
-      execute: async (args: unknown, context: { agentSlug: string }) =>
+      execute: async (args: unknown, context: CcManagedToolContext) =>
         executeTool(async () => {
           const parsed = draftTaskUpdateInputSchema.parse(args);
           const current = await options.taskService.get(parsed.taskId);
@@ -829,6 +831,7 @@ export function createTaskLiveToolDefinitions(options: TaskManagementToolOptions
           }
 
           const reviewed = await reviewTaskMutation(options, {
+            context,
             agentId: callingAgentId,
             kind: "task_update_review",
             title: "Review task update",
@@ -926,6 +929,7 @@ async function reviewTaskMutation(
   options: Pick<TaskManagementToolOptions, "conversationService" | "liveRequestService">,
   input: {
     agentId: string;
+    context: CcManagedToolContext;
     kind: string;
     title: string;
     description: string;
@@ -943,9 +947,13 @@ async function reviewTaskMutation(
     throw new Error("Drafting a task requires chat live requests.");
   }
 
-  const snapshot = await options.conversationService.resolveCurrent(input.agentId);
+  const conversationId =
+    input.context.caller?.context === "chat"
+      ? input.context.caller.conversationId
+      : (await options.conversationService.resolveCurrent(input.agentId)).current.id;
   const decision = await options.liveRequestService.create({
-    conversationId: snapshot.current.id,
+    conversationId,
+    signal: input.context.signal,
     kind: input.kind,
     closable: false,
     timeoutMs: REVIEW_TIMEOUT_MS,

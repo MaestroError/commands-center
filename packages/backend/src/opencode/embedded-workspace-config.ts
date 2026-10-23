@@ -1,4 +1,6 @@
+import { mcpPermissionAction, mcpRuntimeToolId } from "./embedded-mcp-permissions.js";
 import { z } from "zod";
+import { CC_MANAGED_GROUP_METAS } from "../mcp/cc-managed/group-metadata.js";
 
 import { renderOpenCodeRules, type OpenCodeWorkspaceInput } from "./workspace-contract.js";
 
@@ -83,7 +85,11 @@ export function renderEmbeddedWorkspace(
     }),
   );
   for (const server of selected) {
-    if (server.enabled !== false && !Object.hasOwn(servers, server.name)) {
+    if (
+      server.enabled !== false &&
+      !Object.hasOwn(servers, server.name) &&
+      !CC_MANAGED_GROUP_METAS.some((group) => group.name === server.name)
+    ) {
       throw new Error(`Missing MCP definition for specialist server '${server.name}'.`);
     }
   }
@@ -103,16 +109,22 @@ export function renderEmbeddedWorkspace(
       resource: "*",
       effect: rule.action,
     })),
-    ...[
-      "cc_default_set_task_result",
-      "cc_default_add_task_artifact",
-      "cc_default_mark_needs_human_review",
-    ].map((action) => ({
-      action,
-      resource: "*",
-      effect: "deny" as const,
-    })),
   ];
+  for (const server of input.capabilities.mcpServers ?? []) {
+    permissions.push({
+      action: `cc_mcp:${encodeURIComponent(server.name)}:*`,
+      resource: "*",
+      effect: server.enabled === false ? "deny" : server.action,
+    });
+  }
+  for (const rule of input.capabilities.mcpToolPermissions ?? []) {
+    for (const action of [
+      mcpPermissionAction(rule.server, rule.tool),
+      mcpRuntimeToolId(rule.server, rule.tool),
+    ]) {
+      permissions.push({ action, resource: "*", effect: rule.action });
+    }
+  }
   return {
     rulesMarkdown: renderOpenCodeRules(input),
     configJsonc: `${JSON.stringify(

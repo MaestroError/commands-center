@@ -76,6 +76,45 @@ Tier choices use OpenCode's `provider/model#variant` reference format in existin
 model fields, including portable task-template files. These are reasoning variants,
 not priority/billing service tiers.
 
+## Task tool overrides
+
+Task and task-template editors include **Change available tools**. Leave it off to
+inherit the assigned specialist's CC-tool defaults when a run starts. Turn it on
+to choose allow/deny for individual task-eligible tools across all CC groups,
+including groups disabled for the specialist. Specialist `ask` becomes `allow`
+in autonomous runs; chat-only tools remain unavailable.
+
+Overrides are stored in `permissionProfile.appToolPermissions` as a complete
+matrix. An empty array denies all CC tools; omitted tools are denied. To restore
+inheritance through API/tools, omit both CC fields (`appToolPermissions` and
+`appMcpServers`) in the submitted profile, retaining any unrelated permission
+fields. New CC overrides accept only `allow` or `deny`.
+
+Template `task.json` retains the override. Generated tasks copy it, and each run
+snapshots its resolved permissions. Later edits affect future runs, not running
+sessions or previously generated tasks.
+
+Specialist editors also show third-party MCP tools grouped by server, with
+**Allow / Ask / Deny** defaults. Task/template **Change available tools** includes
+**Allow / Deny** overrides for tools already connected in the selected specialist's
+workspace. A task may override a specialist tool denial, but cannot connect or
+remove an MCP server. Inherited `ask` becomes `allow` for autonomous runs.
+
+MCP rules use `mcpToolPermissions: [{ server, tool, action }]` in specialist
+capabilities and task permission profiles. Server/tool names are canonical catalog
+names. Omit the task field to inherit defaults; an empty array denies all MCP tools.
+New task/template entries accept only `allow` or `deny`. These rules remain separate
+from CC-tool and custom-script settings. Unavailable saved entries are retained
+and can be removed; changing or adding an entry requires a connected tool.
+Permission-form discovery does not connect servers. On specialist creation the
+catalog comes from connected workspace integrations; task overrides always use
+the selected specialist's own connections.
+
+Each run snapshots the connected tools and their resolved permissions. Tools
+added after that snapshot remain denied for that run, including through Code Mode
+and child sessions. Disconnected tools remain unavailable even if allowed by the
+snapshot. Template files preserve MCP overrides for portable recovery.
+
 ## Production Usage
 
 CommandsCenter production use is centered on the globally installed `ccenter` binary from the `commandscenter` npm package. Runtime state is portable and lives in the workspace directory, not in the npm package install directory.
@@ -116,15 +155,14 @@ When CC creates a new workspace directory, it seeds a `.gitignore` that excludes
 credentials, runtime state, private documents and memory, specialist playgrounds,
 generated engine/browser state, dependencies, caches and build output. Portable
 configuration, task templates, skills and custom tools remain trackable unless
-they match an ignore rule. Root and specialist `opencode.jsonc` files are ignored
-because generated MCP headers can contain credentials. Specialist-local
-`.opencode/skills` and `.opencode/tools` stay trackable; only generated `cc-tools`
-wrappers are excluded within `.opencode`. These rules also cover archived specialists.
-CC's internal MCP bearer tokens are written directly into specialist configs,
-even when provider secrets use environment variables. Managed specialist settings
-are regenerated from portable configuration; hand-written overrides stored only
-in `opencode.jsonc` will not be included in a Git clone. Preserve a credential-free
-copy separately if you need to version those overrides.
+they match an ignore rule. Root and specialist `opencode.jsonc` files are trackable
+by default. Uncomment their optional ignore rules if you put credentials in them:
+external MCP headers, OAuth client secrets and hand-written values can still be
+sensitive. Environment-variable references keep those values outside config.
+CC-provided tools now run directly through the embedded SDK, without internal MCP
+HTTP connections or generated bearer tokens. Specialist-local `.opencode/skills`
+and `.opencode/tools` stay trackable; generated `cc-tools` wrappers are excluded.
+These rules also cover archived specialists.
 Review files before publishing a workspace, especially
 configuration containing inline credentials or custom data locations.
 

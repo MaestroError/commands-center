@@ -1,3 +1,4 @@
+import type { McpToolPermissionService } from "./mcp-tool-permission-service.js";
 import type {
   CreateTaskRunInput,
   ListTaskRunsQuery,
@@ -53,7 +54,11 @@ export type TaskService = ReturnType<typeof createTaskReadOps> &
   ReturnType<typeof createTaskFeedbackSubtaskOps> &
   ReturnType<typeof createTaskRunOps>;
 
-export function createTaskService(options: { db: AppDb; config: RuntimeConfig }) {
+export function createTaskService(options: {
+  db: AppDb;
+  config: RuntimeConfig;
+  mcpToolPermissions?: McpToolPermissionService;
+}) {
   const artifactService = createArtifactService({ db: options.db, config: options.config });
   const ctx = createTaskServiceContext(options, artifactService);
   const service = {} as TaskService;

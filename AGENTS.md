@@ -460,6 +460,7 @@ When making changes that affect the developer experience, update the relevant do
 - Check Pino logs — every request has a correlation ID
 - For opencode process issues, check the orchestrator's lifecycle logs
 - For MCP issues, inspect the stdio/SSE transport layer
+- CC-provided tools use the shared registry through the embedded SDK, not internal MCP servers. Preserve their group/context metadata and resolve caller identity from the owning chat or task session; never trust tool arguments for ownership.
 - For WebSocket issues, check both connection establishment and message flow
 - Use the `examples/opencode/` repo to understand upstream API behavior
 

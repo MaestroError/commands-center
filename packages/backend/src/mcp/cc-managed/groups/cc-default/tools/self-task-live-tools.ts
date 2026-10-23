@@ -1,3 +1,5 @@
+import { setTimeout as delay } from "node:timers/promises";
+import type { CcManagedToolContext } from "../../../server-registry.js";
 import { z } from "zod";
 
 import {
@@ -110,35 +112,35 @@ const mcpTaskTemplateSchema = taskTemplateSchema.extend({
 export const draftSelfTaskToolMetadata = {
   name: "draft_self_task",
   description:
-    "Open an operator review form to create a new CommandsCenter task assigned specifically to you, the calling specialist. Execution pauses until the operator approves. Use this only in chat, only when you need to schedule a new task for yourself and require the operator to review and confirm the details before the task is created. Do not call this for tasks intended for other specialists.",
+    "Open an operator review form to create a new CommandsCenter task assigned specifically to you, the calling specialist. Execution pauses until the operator approves. Use this when you need to schedule a new task for yourself and require the operator to review and confirm the details before the task is created. Do not call this for tasks intended for other specialists.",
   context: "chat",
 } as const;
 
 export const draftSelfTaskUpdateToolMetadata = {
   name: "draft_self_task_update",
   description:
-    "Open an operator review form to edit one of your own CommandsCenter tasks. Execution pauses until the operator reviews and confirms the proposed changes. Use this only in chat, only when you want to modify a task that is assigned to you and need the operator to approve before the change is saved. Will fail if the specified task belongs to a different specialist. Do not call this to update another specialist's task.",
+    "Open an operator review form to edit one of your own CommandsCenter tasks. Execution pauses until the operator reviews and confirms the proposed changes. Use this when you want to modify a task that is assigned to you and need the operator to approve before the change is saved. Will fail if the specified task belongs to a different specialist. Do not call this to update another specialist's task.",
   context: "chat",
 } as const;
 
 export const draftSelfTaskTemplateToolMetadata = {
   name: "draft_self_task_template",
   description:
-    "Open an operator review form to create a reusable CommandsCenter task template assigned to you. A template captures a task title, description, and acceptance criteria, and can optionally carry a recurrence schedule to act as a cron job that runs on a fixed interval. Use `todos` to propose acceptance criteria (the operator's definition of done): each is shown to the running agent as a criterion to satisfy, but only the operator can check them off during review. Execution pauses until the operator approves. Use this only in chat, only when you want to set up a persistent, reusable task definition for yourself and need operator review before creation. Do not attempt to pass a defaultAgentId — the template is always assigned to you. Templates store the prompt in task.md; promptPath is workspace-relative. Use template tools for settings changes so they take effect immediately; direct task.json edits require restart. You may edit task.md directly for future tasks. When updating description through a tool, pass expectedPromptRevision from the latest template read to detect conflicting edits.",
+    "Open an operator review form to create a reusable CommandsCenter task template assigned to you. A template captures a task title, description, and acceptance criteria, and can optionally carry a recurrence schedule to act as a cron job that runs on a fixed interval. Use `todos` to propose acceptance criteria (the operator's definition of done): each is shown to the running agent as a criterion to satisfy, but only the operator can check them off during review. Execution pauses until the operator approves. Use this when you want to set up a persistent, reusable task definition for yourself and need operator review before creation. Do not attempt to pass a defaultAgentId — the template is always assigned to you. Templates store the prompt in task.md; promptPath is workspace-relative. Use template tools for settings changes so they take effect immediately; direct task.json edits require restart. You may edit task.md directly for future tasks. When updating description through a tool, pass expectedPromptRevision from the latest template read to detect conflicting edits.",
   context: "chat",
 } as const;
 
 export const draftSelfTaskTemplateUpdateToolMetadata = {
   name: "draft_self_task_template_update",
   description:
-    "Open an operator review form to edit one of your own CommandsCenter task templates. Execution pauses until the operator reviews and confirms the proposed changes. Use this only in chat, only when you want to modify a template assigned to you and need operator approval before the update is saved. Will fail if the specified template belongs to a different specialist. Do not call this to update another specialist's template. Templates store the prompt in task.md; promptPath is workspace-relative. Use template tools for settings changes so they take effect immediately; direct task.json edits require restart. You may edit task.md directly for future tasks. When updating description through a tool, pass expectedPromptRevision from the latest template read to detect conflicting edits.",
+    "Open an operator review form to edit one of your own CommandsCenter task templates. Execution pauses until the operator reviews and confirms the proposed changes. Use this when you want to modify a template assigned to you and need operator approval before the update is saved. Will fail if the specified template belongs to a different specialist. Do not call this to update another specialist's template. Templates store the prompt in task.md; promptPath is workspace-relative. Use template tools for settings changes so they take effect immediately; direct task.json edits require restart. You may edit task.md directly for future tasks. When updating description through a tool, pass expectedPromptRevision from the latest template read to detect conflicting edits.",
   context: "chat",
 } as const;
 
 export const runSelfTaskToolMetadata = {
   name: "run_self_task",
   description:
-    "Queue one of your own CommandsCenter tasks and wait here until it finishes. Returns the completed run including result text, final message, outcome, and artifacts so you can act on the output. Use this only in chat — calling it inside a task run would deadlock because the agent can only execute one task at a time. Will fail if the task is assigned to a different specialist. Times out after approximately 9 minutes if the task has not reached a terminal state.",
+    "Queue one of your own CommandsCenter tasks and wait here until it finishes. Returns the completed run including result text, final message, outcome, and artifacts so you can act on the output. Will fail if the task is assigned to a different specialist. Times out after approximately 9 minutes if the task has not reached a terminal state.",
   context: "chat",
 } as const;
 
@@ -153,7 +155,7 @@ export function createSelfTaskLiveToolDefinitions(options: SelfTaskLiveToolOptio
       context: runSelfTaskToolMetadata.context,
       inputSchema: runSelfTaskInputSchema,
       outputSchema: mcpTaskRunSchema,
-      execute: async (args: unknown, context: { agentSlug: string }) =>
+      execute: async (args: unknown, context: CcManagedToolContext) =>
         executeTool(async () => {
           const parsed = runSelfTaskInputSchema.parse(args);
           const agentId = await requireCallingAgentId(options.db, context.agentSlug);
@@ -167,7 +169,12 @@ export function createSelfTaskLiveToolDefinitions(options: SelfTaskLiveToolOptio
           // Poll until the run reaches a terminal state. Using DB polling rather
           // than a subscribe model — the cc_default_interactive timeout gives
           // ample headroom, and 3 s intervals produce negligible DB load.
-          const terminal = await pollForTerminalRun(options.taskService, run.id, BLOCKING_WAIT_MS);
+          const terminal = await pollForTerminalRun(
+            options.taskService,
+            run.id,
+            BLOCKING_WAIT_MS,
+            context.signal,
+          );
 
           if (terminal.status === "failed") {
             return failure(
@@ -195,11 +202,12 @@ export function createSelfTaskLiveToolDefinitions(options: SelfTaskLiveToolOptio
       context: draftSelfTaskToolMetadata.context,
       inputSchema: draftSelfTaskInputSchema,
       outputSchema: mcpTaskSchema,
-      execute: async (args: unknown, context: { agentSlug: string }) =>
+      execute: async (args: unknown, context: CcManagedToolContext) =>
         executeTool(async () => {
           const draft = draftSelfTaskInputSchema.parse(args);
           const agentId = await requireCallingAgentId(options.db, context.agentSlug);
           const reviewed = await openReviewForm(options, {
+            context,
             agentId,
             kind: "self_task_create_review",
             title: "Review task",
@@ -244,7 +252,7 @@ export function createSelfTaskLiveToolDefinitions(options: SelfTaskLiveToolOptio
       context: draftSelfTaskUpdateToolMetadata.context,
       inputSchema: draftSelfTaskUpdateInputSchema,
       outputSchema: mcpTaskSchema,
-      execute: async (args: unknown, context: { agentSlug: string }) =>
+      execute: async (args: unknown, context: CcManagedToolContext) =>
         executeTool(async () => {
           const parsed = draftSelfTaskUpdateInputSchema.parse(args);
           const agentId = await requireCallingAgentId(options.db, context.agentSlug);
@@ -294,6 +302,7 @@ export function createSelfTaskLiveToolDefinitions(options: SelfTaskLiveToolOptio
           }
 
           const reviewed = await openReviewForm(options, {
+            context,
             agentId,
             kind: "self_task_update_review",
             title: "Review task update",
@@ -340,11 +349,12 @@ export function createSelfTaskLiveToolDefinitions(options: SelfTaskLiveToolOptio
       context: draftSelfTaskTemplateToolMetadata.context,
       inputSchema: draftSelfTaskTemplateInputSchema,
       outputSchema: mcpTaskTemplateSchema,
-      execute: async (args: unknown, context: { agentSlug: string }) =>
+      execute: async (args: unknown, context: CcManagedToolContext) =>
         executeTool(async () => {
           const draft = draftSelfTaskTemplateInputSchema.parse(args);
           const agentId = await requireCallingAgentId(options.db, context.agentSlug);
           const reviewed = await openReviewForm(options, {
+            context,
             agentId,
             kind: "self_task_template_create_review",
             title: "Review task template",
@@ -385,7 +395,7 @@ export function createSelfTaskLiveToolDefinitions(options: SelfTaskLiveToolOptio
       context: draftSelfTaskTemplateUpdateToolMetadata.context,
       inputSchema: draftSelfTaskTemplateUpdateInputSchema,
       outputSchema: mcpTaskTemplateSchema,
-      execute: async (args: unknown, context: { agentSlug: string }) =>
+      execute: async (args: unknown, context: CcManagedToolContext) =>
         executeTool(async () => {
           const parsed = draftSelfTaskTemplateUpdateInputSchema.parse(args);
           const agentId = await requireCallingAgentId(options.db, context.agentSlug);
@@ -417,6 +427,7 @@ export function createSelfTaskLiveToolDefinitions(options: SelfTaskLiveToolOptio
           const presentedFields = new Set(fields.map((field) => field.name));
 
           const reviewed = await openReviewForm(options, {
+            context,
             agentId,
             kind: "self_task_template_update_review",
             title: "Review task template update",
@@ -536,6 +547,7 @@ async function openReviewForm(
   options: Pick<SelfTaskLiveToolOptions, "conversationService" | "liveRequestService">,
   input: {
     agentId: string;
+    context: CcManagedToolContext;
     kind: string;
     title: string;
     description: string;
@@ -553,9 +565,13 @@ async function openReviewForm(
     throw new Error("Drafting a task requires chat live requests.");
   }
 
-  const snapshot = await options.conversationService.resolveCurrent(input.agentId);
+  const conversationId =
+    input.context.caller?.context === "chat"
+      ? input.context.caller.conversationId
+      : (await options.conversationService.resolveCurrent(input.agentId)).current.id;
   const decision = await requestReview(options.liveRequestService, {
-    conversationId: snapshot.current.id,
+    conversationId,
+    signal: input.context.signal,
     kind: input.kind,
     closable: false,
     // Expire the form before the caller's tool-call timeout. A form that
@@ -649,11 +665,12 @@ async function pollForTerminalRun(
   taskService: TaskService,
   runId: string,
   maxWaitMs: number,
+  signal?: AbortSignal,
 ): Promise<TaskRun> {
   const deadline = Date.now() + maxWaitMs;
 
   while (Date.now() < deadline) {
-    await sleep(RUN_POLL_INTERVAL_MS);
+    await delay(RUN_POLL_INTERVAL_MS, undefined, { signal });
     const run = await taskService.getRunById(runId);
 
     if (!run) {
@@ -666,8 +683,4 @@ async function pollForTerminalRun(
   }
 
   throw new Error("Timed out waiting for the task run to reach a terminal state (limit: 9 min).");
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }

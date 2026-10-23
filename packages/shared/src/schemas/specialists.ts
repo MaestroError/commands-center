@@ -84,12 +84,19 @@ export const specialistAppMcpServerSchema = z.object({
   action: permissionActionSchema,
 });
 
+export const mcpToolPermissionSchema = z.object({
+  server: z.string().min(1),
+  tool: z.string().min(1),
+  action: permissionActionSchema,
+});
+
 export const specialistCapabilitySelectionSchema = z.object({
   builtInSkills: z.array(z.string().min(1)).default([]),
   workspaceSkills: z.array(z.string().min(1)).default([]),
   customTools: z.array(z.string().min(1)).default([]),
   mcpServers: z.array(specialistMcpServerSchema).default([]),
   toolPermissions: z.array(specialistPermissionRuleSchema).default([]),
+  mcpToolPermissions: z.array(mcpToolPermissionSchema).optional(),
   appMcpServers: z.array(specialistAppMcpServerSchema).default([]),
   appToolPermissions: z.array(specialistPermissionRuleSchema).default([]),
 });

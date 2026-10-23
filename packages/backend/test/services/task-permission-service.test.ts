@@ -208,3 +208,232 @@ async function insertAgent(
 
   return agent;
 }
+
+describe("explicit CC tool matrices", () => {
+  it.each([
+    {
+      name: "grants a tool from a specialist-disabled group",
+      rules: [{ pattern: "cc_default_set_task_result", action: "allow" as const }],
+      pattern: "cc_default_set_task_result",
+      expected: "allow",
+    },
+    {
+      name: "denies tools omitted from an override",
+      rules: [{ pattern: "cc_default_set_task_result", action: "allow" as const }],
+      pattern: "cc_default_add_task_artifact",
+      expected: "deny",
+    },
+    {
+      name: "denies every tool for an empty override",
+      rules: [],
+      pattern: "cc_default_set_task_result",
+      expected: "deny",
+    },
+    {
+      name: "rejects a chat-only tool grant at run resolution",
+      rules: [{ pattern: "cc_default_list_uploaded_files", action: "allow" as const }],
+      pattern: "cc_default_list_uploaded_files",
+      expected: "deny",
+    },
+  ])("$name", async ({ rules, pattern, expected }) => {
+    const testDb = await createTestDatabase();
+    try {
+      const agent = await insertAgent(testDb.client.db, {
+        appMcpServers: [{ name: "cc_default", enabled: false, action: "deny" }],
+      });
+      const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+      const permissionService = createTaskPermissionService({
+        db: testDb.client.db,
+        config: testDb.config,
+        opencodeService: {} as OpenCodeService,
+      });
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Override",
+        permissionProfile: { appToolPermissions: rules },
+      });
+      const effective = await permissionService.compute(task);
+      expect(effective.appToolPermissions).toContainEqual({ pattern, action: expected });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+});
+
+describe("MCP task snapshots", () => {
+  for (const [label, override, expected] of [
+    ["inherits ask as allow", undefined, "allow"],
+    [
+      "keeps explicit allow after cold inventory initialization",
+      [{ server: "github", tool: "read", action: "allow" as const }],
+      "allow",
+    ],
+    [
+      "honors explicit denial",
+      [{ server: "github", tool: "read", action: "deny" as const }],
+      "deny",
+    ],
+    ["denies omitted tools in an explicit matrix", [], "deny"],
+  ] as const) {
+    it(label, async () => {
+      const testDb = await createTestDatabase();
+      try {
+        const agent = await insertAgent(testDb.client.db, {
+          mcpServers: [{ name: "github", enabled: true, action: "ask" }],
+        });
+        const tasks = createTaskService({ db: testDb.client.db, config: testDb.config });
+        const task = await tasks.create({
+          agentId: agent.id,
+          title: "MCP",
+          permissionProfile: override ? { mcpToolPermissions: [...override] } : undefined,
+        });
+        let initialized = false;
+        const service = createTaskPermissionService({
+          db: testDb.client.db,
+          config: testDb.config,
+          opencodeService: {} as OpenCodeService,
+          initializeMcpTools: () => {
+            initialized = true;
+            return Promise.resolve();
+          },
+          mcpTools: {
+            catalog: () =>
+              Promise.resolve(
+                initialized
+                  ? [
+                      {
+                        server: "github",
+                        available: true,
+                        tools: [{ id: "github_read", name: "read", description: "Read" }],
+                      },
+                    ]
+                  : [],
+              ),
+            validate: async () => {},
+          },
+        });
+        expect((await service.compute(task)).mcpToolPermissions).toEqual([
+          { server: "github", tool: "read", action: expected },
+        ]);
+      } finally {
+        await testDb.cleanup();
+      }
+    });
+  }
+});
+
+describe("legacy task MCP overrides", () => {
+  it("retains a task wildcard denial when resolving the new MCP snapshot", async () => {
+    const testDb = await createTestDatabase();
+    try {
+      const agent = await insertAgent(testDb.client.db, {
+        mcpServers: [{ name: "github", enabled: true, action: "allow" }],
+      });
+      const tasks = createTaskService({ db: testDb.client.db, config: testDb.config });
+      const task = await tasks.create({
+        agentId: agent.id,
+        title: "Legacy MCP",
+        permissionProfile: { toolPermissions: [{ pattern: "github_*", action: "deny" }] },
+      });
+      const service = createTaskPermissionService({
+        db: testDb.client.db,
+        config: testDb.config,
+        opencodeService: {} as OpenCodeService,
+        mcpTools: {
+          catalog: () =>
+            Promise.resolve([
+              {
+                server: "github",
+                available: true,
+                tools: [{ id: "github_read", name: "read", description: "Read" }],
+              },
+            ]),
+          validate: async () => {},
+        },
+      });
+      expect((await service.compute(task)).mcpToolPermissions).toEqual([
+        { server: "github", tool: "read", action: "deny" },
+      ]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+});
+
+describe("inherited permission regressions", () => {
+  it("denies an inherited MCP grant when the task disables its server", async () => {
+    const testDb = await createTestDatabase();
+    try {
+      const agent = await insertAgent(testDb.client.db, {
+        mcpServers: [{ name: "mail", enabled: true, action: "allow" }],
+        mcpToolPermissions: [{ server: "mail", tool: "read", action: "allow" }],
+      });
+      const task = await createTaskService({ db: testDb.client.db, config: testDb.config }).create({
+        agentId: agent.id,
+        title: "Disabled mail",
+        permissionProfile: { mcpServers: [{ name: "mail", enabled: false, action: "allow" }] },
+      });
+      const service = createTaskPermissionService({
+        db: testDb.client.db,
+        config: testDb.config,
+        opencodeService: {} as OpenCodeService,
+        mcpTools: {
+          catalog: () =>
+            Promise.resolve([
+              {
+                server: "mail",
+                available: true,
+                tools: [{ id: "mail_read", name: "read", description: "Read" }],
+              },
+            ]),
+          validate: async () => {},
+        },
+      });
+      expect((await service.compute(task)).mcpToolPermissions).toEqual([
+        { server: "mail", tool: "read", action: "deny" },
+      ]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+  it.each([
+    { rules: [{ pattern: "cc_notifications_*", action: "deny" }], expected: "deny" },
+    {
+      rules: [
+        { pattern: "cc_notifications_*", action: "deny" },
+        { pattern: "cc_notifications_notify_info", action: "ask" },
+      ],
+      expected: "allow",
+    },
+    {
+      rules: [
+        { pattern: "cc_notifications_notify_info", action: "allow" },
+        { pattern: "cc_notifications_*", action: "deny" },
+      ],
+      expected: "deny",
+    },
+  ])("resolves inherited CC rules in order: %j", async ({ rules, expected }) => {
+    const testDb = await createTestDatabase();
+    try {
+      const agent = await insertAgent(testDb.client.db, {
+        appMcpServers: [{ name: "cc_notifications", enabled: true, action: "allow" }],
+        appToolPermissions: rules,
+      });
+      const task = await createTaskService({ db: testDb.client.db, config: testDb.config }).create({
+        agentId: agent.id,
+        title: "Inherited",
+      });
+      const service = createTaskPermissionService({
+        db: testDb.client.db,
+        config: testDb.config,
+        opencodeService: {} as OpenCodeService,
+      });
+      expect((await service.compute(task)).appToolPermissions).toContainEqual({
+        pattern: "cc_notifications_notify_info",
+        action: expected,
+      });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+});

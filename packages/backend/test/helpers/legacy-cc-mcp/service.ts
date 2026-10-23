@@ -5,12 +5,12 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import type { Logger } from "pino";
 
 import { specialistCapabilitySelectionSchema } from "@cc/shared/schemas";
-import type { AppDb } from "../../db/client.js";
+import type { AppDb } from "../../../src/db/client.js";
 import {
   getCcManagedMcpServerByRouteSegment,
   type CcManagedMcpServerDefinition,
   type CcManagedToolContextMode,
-} from "./server-registry.js";
+} from "../../../src/mcp/cc-managed/server-registry.js";
 import { createCcManagedMcpToolAccessService } from "./tool-access-service.js";
 import {
   createCcManagedMcpAuthStateStore,
@@ -21,7 +21,7 @@ import {
   type CcManagedMcpAuthTokenService,
 } from "./auth-token-service.js";
 import { withStreamKeepalive, type StreamKeepaliveSender } from "./stream-keepalive.js";
-import type { RuntimeConfig } from "../../lib/runtime-config.js";
+import type { RuntimeConfig } from "../../../src/lib/runtime-config.js";
 
 type RouteContext = {
   rawRequest: IncomingMessage;

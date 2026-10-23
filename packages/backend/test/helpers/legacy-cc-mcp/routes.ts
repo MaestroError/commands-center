@@ -1,17 +1,17 @@
 import { z } from "zod";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 
-import type { AppServer } from "../lib/fastify-zod.js";
-import type { RuntimeContext } from "../lib/start-server-runtime.js";
-import { createCcManagedMcpServerRegistry } from "../mcp/cc-managed/server-registry.js";
-import { createCcManagedMcpService, type CcManagedMcpService } from "../mcp/cc-managed/service.js";
-import { createSpecialistService } from "../services/specialist-service.js";
-import { createConversationService } from "../services/conversation-service.js";
-import { createCustomToolActionService } from "../services/custom-tool-action-service.js";
-import { createCustomToolService } from "../services/custom-tool-service.js";
-import { createTaskExecutionService } from "../services/task-execution-service.js";
-import { createTaskContextAttachmentService } from "../services/task-context-attachment-service.js";
-import { createTaskService } from "../services/task-service.js";
+import type { AppServer } from "../../../src/lib/fastify-zod.js";
+import type { RuntimeContext } from "../../../src/lib/start-server-runtime.js";
+import { createCcManagedMcpServerRegistry } from "../../../src/mcp/cc-managed/server-registry.js";
+import { createCcManagedMcpService, type CcManagedMcpService } from "./service.js";
+import { createSpecialistService } from "../../../src/services/specialist-service.js";
+import { createConversationService } from "../../../src/services/conversation-service.js";
+import { createCustomToolActionService } from "../../../src/services/custom-tool-action-service.js";
+import { createCustomToolService } from "../../../src/services/custom-tool-service.js";
+import { createTaskExecutionService } from "../../../src/services/task-execution-service.js";
+import { createTaskContextAttachmentService } from "../../../src/services/task-context-attachment-service.js";
+import { createTaskService } from "../../../src/services/task-service.js";
 
 const paramsSchema = z.object({
   serverName: z.string().min(1),

@@ -190,7 +190,10 @@ export function createNotificationToolDefinitions(options: {
             body: parsed.markdown,
             payload: {
               proposedBySlug: context.agentSlug,
-              taskRunId: parsed.taskRunId,
+              taskRunId:
+                context.caller?.context === "task_run"
+                  ? context.caller.taskRunId
+                  : parsed.taskRunId,
             },
           });
           return posted(activity.id, "Posted an info notification to the operator's feed.");
@@ -213,7 +216,10 @@ export function createNotificationToolDefinitions(options: {
             body: parsed.markdown,
             payload: {
               proposedBySlug: context.agentSlug,
-              taskRunId: parsed.taskRunId,
+              taskRunId:
+                context.caller?.context === "task_run"
+                  ? context.caller.taskRunId
+                  : parsed.taskRunId,
             },
           });
           return posted(activity.id, "Posted a warning notification to the operator's feed.");

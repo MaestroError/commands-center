@@ -13,6 +13,19 @@ import {
 import { useSpecialistCustomToolsQuery, useCustomToolsQuery } from "@/hooks/use-custom-tools-query";
 import { useMcpServersQuery } from "@/hooks/use-mcp-servers-query";
 
+vi.mock("@/hooks/use-mcp-tool-catalog", () => ({
+  useMcpToolCatalog: () => ({
+    data: [
+      {
+        server: "github",
+        available: true,
+        tools: [{ id: "github_search", name: "search", description: "Search issues" }],
+      },
+    ],
+    error: null,
+  }),
+}));
+
 vi.mock("@/hooks/use-specialists-query", () => ({
   useSpecialistCatalogQuery: vi.fn(),
   useSpecialistMutations: vi.fn(),
@@ -191,6 +204,26 @@ beforeEach(() => {
 });
 
 describe("SpecialistEditorPage", () => {
+  it.each(["None", "Disabled"])("hides MCP tools when the server is %s", (action) => {
+    renderEditor();
+    fireEvent.click(screen.getByRole("button", { name: "github Allow" }));
+    expect(screen.getByRole("button", { name: "github search Ask" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: `github ${action}` }));
+    expect(screen.queryByRole("button", { name: "github search Ask" })).not.toBeInTheDocument();
+  });
+
+  it.each(["Ask", "Allow"])("allows collapsing MCP tools when the server is %s", (action) => {
+    renderEditor();
+    fireEvent.click(screen.getByRole("button", { name: `github ${action}` }));
+    const toggle = screen.getByRole("button", { name: /github tools/ });
+    expect(screen.getByRole("button", { name: "github search Ask" })).toBeInTheDocument();
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("button", { name: "github search Ask" })).not.toBeInTheDocument();
+    fireEvent.click(toggle);
+    expect(screen.getByRole("button", { name: "github search Ask" })).toBeInTheDocument();
+  });
+
   it("saves MCP server permission as allow when selected", async () => {
     updateMutateAsync.mockResolvedValue({ slug: "writer", name: "Writer" });
 
@@ -354,7 +387,7 @@ describe("SpecialistEditorPage", () => {
     });
   });
 
-  it("saves per-tool CC-managed MCP permissions when toggled", async () => {
+  it.each(["Allow", "Ask", "Deny"])("saves per-tool CC permission %s", async (action) => {
     updateMutateAsync.mockResolvedValue({ slug: "writer", name: "Writer" });
 
     renderEditor();
@@ -363,7 +396,9 @@ describe("SpecialistEditorPage", () => {
 
     expect(screen.getByText("Task run")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("switch", { name: "cc_app copy_custom_tool_to_specialist" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: `cc_app copy_custom_tool_to_specialist ${action}` }),
+    );
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
     await waitFor(() => {
@@ -379,7 +414,7 @@ describe("SpecialistEditorPage", () => {
               },
             ],
             appToolPermissions: [
-              { pattern: "cc_app_copy_custom_tool_to_specialist", action: "deny" },
+              { pattern: "cc_app_copy_custom_tool_to_specialist", action: action.toLowerCase() },
             ],
           }),
         }),

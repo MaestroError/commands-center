@@ -150,10 +150,12 @@ function escapeHeaderFilename(filename: string): string {
 export function registerPublicApiRoutes(server: AppServer, context: RuntimeContext): void {
   const app = server.withTypeProvider<ZodTypeProvider>();
 
-  const taskService = createTaskService({
-    db: context.database.db,
-    config: context.config,
-  });
+  const taskService =
+    context.taskService ??
+    createTaskService({
+      db: context.database.db,
+      config: context.config,
+    });
   const conversationService = createConversationService({
     db: context.database.db,
     config: context.config,

@@ -135,3 +135,19 @@ export type McpTool = z.infer<typeof mcpToolSchema>;
 export type McpTransport = z.infer<typeof mcpTransportSchema>;
 export type SetMcpServerEnabledInput = z.infer<typeof setMcpServerEnabledInputSchema>;
 export type UpdateMcpServerInput = z.infer<typeof updateMcpServerInputSchema>;
+
+export const mcpToolCatalogSchema = z.array(
+  z.object({
+    server: z.string().min(1),
+    available: z.boolean(),
+    tools: z.array(
+      z.object({
+        id: z.string().min(1),
+        name: z.string().min(1),
+        description: z.string(),
+      }),
+    ),
+  }),
+);
+
+export type McpToolCatalog = z.infer<typeof mcpToolCatalogSchema>;

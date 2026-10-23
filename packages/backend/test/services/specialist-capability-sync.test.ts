@@ -9,6 +9,36 @@ import {
 const server = (name: string) => ({ name, enabled: true, action: "allow" as const });
 
 describe("specialist capability sync (pure)", () => {
+  it.each(["send", "*"])("renames a destination-overlapping %s rule", (tool) => {
+    const result = renameMcpReferences(
+      { builtInSkills: [], toolPermissions: [{ pattern: `mail_v2_${tool}`, action: "deny" }] },
+      "mail",
+      "mail_v2",
+      ["mail_v2", "mail_archive"],
+    );
+    expect(result.toolPermissions).toEqual([{ pattern: `mail_v2_v2_${tool}`, action: "deny" }]);
+  });
+  it("preserves rules belonging to a longer configured namespace on rename", () => {
+    const result = renameMcpReferences(
+      {
+        builtInSkills: [],
+        workspaceSkills: [],
+        customTools: [],
+        mcpServers: [server("mail")],
+        toolPermissions: [
+          { pattern: "mail_send", action: "allow" },
+          { pattern: "mail_archive_*", action: "deny" },
+        ],
+      },
+      "mail",
+      "inbox",
+      ["mail", "mail_archive"],
+    );
+    expect(result.toolPermissions).toEqual([
+      { pattern: "inbox_send", action: "allow" },
+      { pattern: "mail_archive_*", action: "deny" },
+    ]);
+  });
   it("drops stale MCP servers and their tool permissions, dedupes, and defaults missing fields", () => {
     const result = normalizeSpecialistCapabilities(
       {

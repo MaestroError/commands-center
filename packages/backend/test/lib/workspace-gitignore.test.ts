@@ -54,6 +54,32 @@ describe("initial workspace gitignore", () => {
     await expect(readFile(ignorePath)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
+  it("ignores config credentials when the operator enables the optional rules", async () => {
+    await bootstrapRuntimePaths(config);
+    const defaults = await readFile(ignorePath, "utf8");
+    await writeFile(
+      ignorePath,
+      defaults
+        .replace("# /opencode.jsonc", "/opencode.jsonc")
+        .replace("# /specialists/**/opencode.jsonc", "/specialists/**/opencode.jsonc"),
+    );
+    await execFileAsync("git", ["init", "--quiet", config.paths.workspaceDir]);
+    const paths = [
+      "opencode.jsonc",
+      "specialists/test/opencode.jsonc",
+      "specialists/.archived/old/opencode.jsonc",
+    ];
+    const result = await execFileAsync("git", [
+      "-C",
+      config.paths.workspaceDir,
+      "check-ignore",
+      "--no-index",
+      "--",
+      ...paths,
+    ]);
+    expect(result.stdout.trim().split(/\r?\n/)).toEqual(paths);
+  });
+
   it("ignores private and generated files while keeping portable assets trackable", async () => {
     await bootstrapRuntimePaths(config);
     await execFileAsync("git", ["init", "--quiet", config.paths.workspaceDir]);
@@ -69,9 +95,6 @@ describe("initial workspace gitignore", () => {
       "tmp/upload.txt",
       "update-history.json",
       "configuration/secrets.json",
-      "opencode.jsonc",
-      "specialists/test/opencode.jsonc",
-      "specialists/.archived/old/opencode.jsonc",
       "Documents/private.md",
       "specialists/test/Documents/private.md",
       "specialists/test/memory/notes.md",
@@ -107,6 +130,10 @@ describe("initial workspace gitignore", () => {
       "project/Thumbs.db",
     ];
     const trackable = [
+      "opencode.jsonc",
+      "specialists/test/opencode.jsonc",
+      "specialists/.archived/old/opencode.jsonc",
+
       ".gitignore",
       ".env.example",
       "specialists/test/.env.example",
