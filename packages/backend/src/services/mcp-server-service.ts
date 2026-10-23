@@ -295,7 +295,6 @@ export function createMcpServerService(options: {
       }
 
       if (existing.name !== parsed.name) {
-        await renameTaskMcpReferences(options.db, options.config, existing.name, parsed.name);
         await assertNameAvailable(parsed.name, id);
       }
 

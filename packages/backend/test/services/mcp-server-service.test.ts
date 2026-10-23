@@ -1,3 +1,5 @@
+import { createTaskService } from "../../src/services/task-service.js";
+import { templateFilePath } from "../../src/services/task-service/template-files.js";
 import { readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -411,6 +413,65 @@ describe("mcp-server-service", () => {
     }
   });
 
+  it.each(["conflict", "prefix"] as const)(
+    "preserves task/template rules on a %s rename",
+    async (scenario) => {
+      const testDb = await createTestDatabase();
+      const opencodeService = createMockOpenCodeService();
+      const service = createMcpServerService({
+        db: testDb.client.db,
+        config: testDb.config,
+        opencodeService,
+        secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      });
+      try {
+        const agent = await createTestSpecialist(
+          createSpecialistService({ db: testDb.client.db, config: testDb.config, opencodeService }),
+          "Rename agent",
+        );
+        const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+        const permissionProfile = {
+          toolPermissions: [{ pattern: "mail_*", action: "deny" as const }],
+          mcpToolPermissions: [{ server: "mail", tool: "send", action: "allow" as const }],
+        };
+        const task = await taskService.create({
+          agentId: agent.id,
+          title: "Task",
+          permissionProfile,
+        });
+        const template = await taskService.createTemplate({
+          defaultAgentId: agent.id,
+          title: "Template",
+          permissionProfile,
+        });
+        const path = templateFilePath(testDb.config, template.id);
+        const before = await readFile(path, "utf8");
+        const mail = await service.create({
+          name: "mail",
+          enabled: true,
+          config: remoteMcpConfig(),
+        });
+        if (scenario === "conflict") {
+          await service.create({ name: "inbox", enabled: true, config: remoteMcpConfig() });
+          await expect(
+            service.update(mail.id, { name: "inbox", config: remoteMcpConfig() }),
+          ).rejects.toThrow();
+          expect((await taskService.get(task.id))?.permissionProfile).toEqual(permissionProfile);
+          expect(await readFile(path, "utf8")).toBe(before);
+        } else {
+          await service.update(mail.id, { name: "mail_v2", config: remoteMcpConfig() });
+          const expected = {
+            toolPermissions: [{ pattern: "mail_v2_*", action: "deny" }],
+            mcpToolPermissions: [{ server: "mail_v2", tool: "send", action: "allow" }],
+          };
+          expect((await taskService.get(task.id))?.permissionProfile).toEqual(expected);
+          expect(JSON.parse(await readFile(path, "utf8")).permissionProfile).toEqual(expected);
+        }
+      } finally {
+        await testDb.cleanup();
+      }
+    },
+  );
   it("renames MCP references across agent capabilities and workspaces", async () => {
     const testDb = await createTestDatabase();
     const opencodeService = createMockOpenCodeService();

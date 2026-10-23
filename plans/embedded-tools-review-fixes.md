@@ -65,3 +65,11 @@ Snapshot/form validation: 60 backend/SDK tests, 53 shared schema tests, and the 
 Decision: legacy task/template profile migration is out of scope; operator accepts recreating old tasks/templates. The specialist MCP hydration issue is already fixed in 8a8f96b6.
 
 Final functional validation: 97 unique adapter/service/SDK tests passed, ESLint --fix and backend typecheck passed. Template updates use existing task.json paths; no workspace gitignore change or migration is needed.
+
+## Rename ordering regression
+
+- [x] Remove the duplicate pre-validation task permission rewrite.
+- [x] Verify rejected renames leave task/template state untouched and prefix renames run exactly once.
+- [ ] Run lint/tests/typecheck and update PR.
+
+Rename-order validation: 42 tests, ESLint --fix, and backend typecheck passed.
