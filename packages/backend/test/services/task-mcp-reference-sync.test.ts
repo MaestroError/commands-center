@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import { agents, task_runs } from "../../src/db/schema/index.js";
+import { agents, task_runs, mcp_servers } from "../../src/db/schema/index.js";
 import { createTaskService } from "../../src/services/task-service.js";
 import { renameTaskMcpReferences } from "../../src/services/task-mcp-reference-sync.js";
 import { templateFilePath } from "../../src/services/task-service/template-files.js";
@@ -39,6 +39,45 @@ async function fixture() {
 }
 
 describe("task MCP references", () => {
+  it.each(["task", "template"] as const)(
+    "preserves overlapping server rules in a %s",
+    async (kind) => {
+      const f = await fixture();
+      try {
+        await f.db.client.db.insert(mcp_servers).values({
+          id: "archive",
+          name: "mail_archive",
+          transport: "stdio",
+          enabled: true,
+          config_json: JSON.stringify({ transport: "stdio", command: ["node", "server.js"] }),
+          created_at: new Date(),
+          updated_at: new Date(),
+        });
+        const profile = {
+          toolPermissions: [
+            { pattern: "mail_*", action: "allow" as const },
+            { pattern: "mail_archive_send", action: "deny" as const },
+            { pattern: "mail_archive_*", action: "deny" as const },
+          ],
+        };
+        if (kind === "task") await f.service.update(f.task.id, { permissionProfile: profile });
+        else await f.service.updateTemplate(f.template.id, { permissionProfile: profile });
+        await renameTaskMcpReferences(f.db.client.db, f.db.config, "mail", "inbox");
+        const actual =
+          kind === "task"
+            ? (await f.service.get(f.task.id))?.permissionProfile
+            : JSON.parse(await readFile(templateFilePath(f.db.config, f.template.id), "utf8"))
+                .permissionProfile;
+        expect(actual?.toolPermissions).toEqual([
+          { pattern: "inbox_*", action: "allow" },
+          { pattern: "mail_archive_send", action: "deny" },
+          { pattern: "mail_archive_*", action: "deny" },
+        ]);
+      } finally {
+        await f.db.cleanup();
+      }
+    },
+  );
   it("renames future task permissions while preserving unrelated fields", async () => {
     const f = await fixture();
     try {

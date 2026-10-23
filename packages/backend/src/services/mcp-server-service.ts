@@ -340,12 +340,15 @@ export function createMcpServerService(options: {
 
       if (existing.name !== parsed.name) {
         await renameTaskMcpReferences(options.db, options.config, existing.name, parsed.name);
+        const configuredNames = (
+          await options.db.select({ name: mcp_servers.name }).from(mcp_servers)
+        ).map((server) => server.name);
         await (options.rewriteAgents ?? rewriteAgentsForMcpChange)({
           db: options.db,
           config: options.config,
           opencodeService: options.opencodeService,
           transform: (capabilities) =>
-            renameMcpReferences(capabilities, existing.name, parsed.name),
+            renameMcpReferences(capabilities, existing.name, parsed.name, configuredNames),
         });
       }
 

@@ -6,7 +6,7 @@ import {
   type TaskPermissionProfile,
 } from "@cc/shared/schemas";
 import type { AppDb } from "../db/client.js";
-import { tasks, task_templates } from "../db/schema/index.js";
+import { tasks, task_templates, mcp_servers } from "../db/schema/index.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
 import { writeConfigFileAtomic } from "../lib/config-file.js";
 import { renameMcpReferences } from "./specialist-capability-sync.js";
@@ -18,11 +18,15 @@ export async function renameTaskMcpReferences(
   previousName: string,
   nextName: string,
 ): Promise<void> {
+  const configuredNames = (await db.select({ name: mcp_servers.name }).from(mcp_servers)).map(
+    (server) => server.name,
+  );
   function rename(profile: TaskPermissionProfile): TaskPermissionProfile {
     const renamed = renameMcpReferences(
       specialistCapabilitySelectionSchema.parse(profile),
       previousName,
       nextName,
+      configuredNames,
     );
     return taskPermissionProfileSchema.parse({
       ...profile,

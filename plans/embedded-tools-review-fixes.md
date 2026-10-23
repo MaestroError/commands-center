@@ -73,3 +73,11 @@ Final functional validation: 97 unique adapter/service/SDK tests passed, ESLint 
 - [ ] Run lint/tests/typecheck and update PR.
 
 Rename-order validation: 42 tests, ESLint --fix, and backend typecheck passed.
+
+## Overlapping MCP names
+
+- [x] Resolve rename rule ownership against configured namespaces, preferring the longest matching server name.
+- [x] Preserve unrelated overlapping-server rules in task, template and specialist profiles.
+- [ ] Test exact and wildcard rules, run checks, update PR.
+
+Overlapping-name validation: 49 service regressions, ESLint --fix and backend typecheck passed.

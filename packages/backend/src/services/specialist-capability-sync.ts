@@ -83,7 +83,13 @@ export function renameMcpReferences(
   capabilities: SpecialistCapabilitySelection,
   previousName: string,
   nextName: string,
+  configuredNames: readonly string[] = (capabilities.mcpServers ?? []).map((server) => server.name),
 ): SpecialistCapabilitySelection {
+  const namespace = (name: string) => name.replace(/[^a-zA-Z0-9_-]/g, "_");
+  const previousNamespace = namespace(previousName);
+  const namespaces = [...new Set([previousNamespace, ...configuredNames.map(namespace)])].sort(
+    (a, b) => b.length - a.length,
+  );
   return {
     builtInSkills: normalizeBuiltInSkillSlugs(capabilities.builtInSkills),
     workspaceSkills: capabilities.workspaceSkills ?? [],
@@ -98,9 +104,10 @@ export function renameMcpReferences(
     ),
     toolPermissions: (capabilities.toolPermissions ?? []).map((rule) => ({
       ...rule,
-      pattern: matchesMcpPrefix(rule.pattern, previousName)
-        ? `${nextName}${rule.pattern.slice(previousName.length)}`
-        : rule.pattern,
+      pattern:
+        namespaces.find((name) => matchesMcpPrefix(rule.pattern, name)) === previousNamespace
+          ? `${namespace(nextName)}${rule.pattern.slice(previousNamespace.length)}`
+          : rule.pattern,
     })),
     appMcpServers: capabilities.appMcpServers ?? [],
     appToolPermissions: capabilities.appToolPermissions ?? [],
