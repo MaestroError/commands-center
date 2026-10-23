@@ -473,6 +473,7 @@ lines.on("line", (line) => {
         trigger_source: "manual",
         rendered_prompt: "Test",
         effective_permissions_json: JSON.stringify({
+          snapshotVersion: 1,
           appMcpServers: [{ name: "cc_app", enabled: true, action: "allow" }],
           appToolPermissions: [{ pattern: "cc_app_task_run", action: allowed ? "allow" : "deny" }],
         }),
@@ -810,6 +811,102 @@ lines.on("line", (line) => {
         .update(task_runs)
         .set({ status: "completed" })
         .where(eq(task_runs.id, "mcp-denied-run"));
+    }
+  });
+  it.each([
+    {
+      label: "legacy MCP group grant",
+      tool: "local_greet",
+      profile: { mcpServers: [{ name: "local", enabled: true, action: "allow" }] },
+      allowed: true,
+      marker: "MCP:secret-from-env",
+    },
+    {
+      label: "legacy MCP wildcard denial",
+      tool: "local_greet",
+      profile: {
+        mcpServers: [{ name: "local", enabled: true, action: "allow" }],
+        toolPermissions: [{ pattern: "local_*", action: "deny" }],
+      },
+      allowed: false,
+      marker: "MCP:secret-from-env",
+    },
+    {
+      label: "legacy CC group grant",
+      tool: "cc_app_task_run",
+      profile: { appMcpServers: [{ name: "cc_app", enabled: true, action: "allow" }] },
+      allowed: true,
+      marker: "OWNED:",
+    },
+    {
+      label: "legacy CC wildcard denial",
+      tool: "cc_app_task_run",
+      profile: {
+        appMcpServers: [{ name: "cc_app", enabled: true, action: "allow" }],
+        appToolPermissions: [{ pattern: "cc_app_*", action: "deny" }],
+      },
+      allowed: false,
+      marker: "OWNED:",
+    },
+    {
+      label: "new CC incomplete matrix",
+      tool: "cc_app_task_run",
+      profile: {
+        snapshotVersion: 1,
+        appMcpServers: [{ name: "cc_app", enabled: true, action: "allow" }],
+      },
+      allowed: false,
+      marker: "OWNED:",
+    },
+    {
+      label: "new MCP incomplete matrix",
+      tool: "local_greet",
+      profile: {
+        snapshotVersion: 1,
+        mcpServers: [{ name: "local", enabled: true, action: "allow" }],
+      },
+      allowed: false,
+      marker: "MCP:secret-from-env",
+    },
+  ])("enforces stored $label", async ({ label, tool, profile, allowed, marker }) => {
+    const session = await host.sessions.create({
+      location: { directory },
+      permissions: [{ action: "*", resource: "*", effect: "allow" }],
+    });
+    const timestamp = new Date();
+    await db.client.db.insert(tasks).values({
+      id: label,
+      agent_id: "probe-agent",
+      title: label,
+      description: "",
+      context: "",
+      todos_json: "[]",
+      status: "backlog",
+      enabled: true,
+      archived: false,
+      created_at: timestamp,
+      updated_at: timestamp,
+    });
+    await db.client.db.insert(task_runs).values({
+      id: label,
+      task_id: label,
+      agent_id: "probe-agent",
+      opencode_session_id: session.id,
+      status: "running",
+      trigger_source: "manual",
+      rendered_prompt: "Test",
+      effective_permissions_json: JSON.stringify(profile),
+      created_at: timestamp,
+      updated_at: timestamp,
+    });
+    try {
+      await host.sessions.prompt({ sessionID: session.id, text: `CALL:${tool}` });
+      expect((await messages(session.id)).includes(marker)).toBe(allowed);
+    } finally {
+      await db.client.db
+        .update(task_runs)
+        .set({ status: "completed" })
+        .where(eq(task_runs.id, label));
     }
   });
   it("uses the task snapshot for a child session", async () => {

@@ -47,3 +47,11 @@ Fourth-review validation: 19 helper/component tests, frontend typecheck, and ESL
 No persisted files are migrated; existing MCP configuration remains available for renaming. No workspace gitignore changes are required.
 
 Collision validation: 86 integration/service tests passed; the final additional catalog regression passed with the six-test catalog suite (87 total unique tests). ESLint --fix and backend typecheck passed.
+
+## Persisted snapshots and specialist form review
+
+- [x] Preserve MCP per-tool defaults during specialist form hydration/save.
+- [x] Mark new run snapshots as version 1; interpret older snapshots using their stored group/wildcard rules when no complete matrix exists.
+- [ ] Verify legacy grants/denials, strict new matrices, and specialist reopen/save; run lint/typechecks and request review.
+
+Snapshot/form validation: 60 backend/SDK tests, 53 shared schema tests, and the specialist reopen/save regression passed. ESLint --fix and all package typechecks passed.

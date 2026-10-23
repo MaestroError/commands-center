@@ -58,6 +58,7 @@ export function createSpecialistFormFromSpecialist(
       workspaceSkills: existingCapabilities.workspaceSkills ?? [],
       customTools: existingCapabilities.customTools,
       mcpServers: existingCapabilities.mcpServers,
+      mcpToolPermissions: existingCapabilities.mcpToolPermissions,
       toolPermissions: existingCapabilities.toolPermissions,
       appMcpServers: existingCapabilities.appMcpServers ?? [],
       appToolPermissions: existingCapabilities.appToolPermissions ?? [],

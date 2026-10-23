@@ -42,7 +42,8 @@ export function createEmbeddedCcToolService(options: {
         const id = `${group.name}_${tool.name}`;
         const rule = profile.appToolPermissions?.find((entry) => entry.pattern === id);
         let action =
-          caller.context === "task_run"
+          caller.context === "task_run" &&
+          (profile.snapshotVersion === 1 || profile.mcpToolPermissions !== undefined)
             ? (rule?.action ?? "deny")
             : resolveMcpToolDefault(
                 {

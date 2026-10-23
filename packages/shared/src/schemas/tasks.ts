@@ -179,6 +179,7 @@ export const taskScheduleSchema = z.discriminatedUnion("mode", [
 const nullableDateTimeSchema = z.union([z.string().datetime(), z.null()]);
 
 export const taskPermissionProfileSchema = z.object({
+  snapshotVersion: z.literal(1).optional(),
   customTools: z.array(z.string().min(1)).optional(),
   mcpServers: z.array(specialistMcpServerSchema).optional(),
   appMcpServers: z.array(specialistAppMcpServerSchema).optional(),

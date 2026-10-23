@@ -94,6 +94,7 @@ export function createTaskPermissionService(options: {
       );
       const normalized = taskPermissionProfileSchema.parse({
         ...merged,
+        snapshotVersion: 1,
         ...(mcpToolPermissions ? { mcpToolPermissions } : {}),
         mcpServers: normalizeServerActionsForTask(merged.mcpServers ?? [], diagnostics),
         appMcpServers: normalizeServerActionsForTask(appMcpServers, diagnostics),

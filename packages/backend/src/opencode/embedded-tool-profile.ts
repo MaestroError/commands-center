@@ -18,5 +18,8 @@ export async function readEmbeddedToolProfile(db: AppDb, caller: EmbeddedToolCal
     where: (table, { eq }) => eq(table.id, caller.agentId),
   });
   if (!agent || agent.status !== "active") throw new Error("Tool specialist is not active.");
-  return specialistCapabilitySelectionSchema.parse(JSON.parse(agent.capabilities_json));
+  return {
+    ...specialistCapabilitySelectionSchema.parse(JSON.parse(agent.capabilities_json)),
+    snapshotVersion: undefined,
+  };
 }

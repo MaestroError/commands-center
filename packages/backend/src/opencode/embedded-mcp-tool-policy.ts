@@ -1,3 +1,5 @@
+import { resolveMcpToolDefault } from "@cc/shared/schemas";
+import { mcpRuntimeToolId } from "./embedded-mcp-permissions.js";
 import type { AppDb } from "../db/client.js";
 import type { EmbeddedOpenCodeHost } from "./embedded-host.js";
 import { createEmbeddedToolCallerResolver } from "./embedded-tool-caller.js";
@@ -23,9 +25,19 @@ export function createEmbeddedMcpToolPolicy(options: {
     const rule = profile.mcpToolPermissions?.find(
       (entry) => entry.server === server && entry.tool === tool,
     );
+    const legacy =
+      caller.context === "task_run" &&
+      profile.snapshotVersion === undefined &&
+      profile.mcpToolPermissions === undefined;
+    const action = legacy
+      ? resolveMcpToolDefault({ ...profile, mcpServers: profile.mcpServers ?? [] }, server, {
+          id: mcpRuntimeToolId(server, tool),
+          name: tool,
+        })
+      : rule?.action;
     if (
-      rule?.action === "deny" ||
-      (caller.context === "task_run" && rule?.action !== "allow" && rule?.action !== "ask")
+      action === "deny" ||
+      (caller.context === "task_run" && action !== "allow" && action !== "ask")
     ) {
       throw new Error("MCP tool permission denied.");
     }
