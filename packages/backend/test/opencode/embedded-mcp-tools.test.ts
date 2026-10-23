@@ -547,6 +547,43 @@ lines.on("line", (line) => {
         .where(eq(agents.id, "probe-agent"));
     }
   });
+  it.each([
+    [{ pattern: "cc_app_*", action: "ask" }],
+    [
+      { pattern: "cc_app_both", action: "allow" },
+      { pattern: "cc_app_*", action: "ask" },
+    ],
+  ])("waits before executing a CC tool under wildcard Ask: %j", async (...rules) => {
+    const original = await db.client.db.query.agents.findFirst({
+      where: eq(agents.id, "probe-agent"),
+    });
+    await db.client.db
+      .update(agents)
+      .set({
+        capabilities_json: JSON.stringify({
+          appMcpServers: [{ name: "cc_app", enabled: true, action: "allow" }],
+          appToolPermissions: rules,
+        }),
+      })
+      .where(eq(agents.id, "probe-agent"));
+    try {
+      const sessionID = await prompt("cc_app_both", "ask");
+      await expect
+        .poll(async () => (await host.permission.list({ sessionID })).length, { timeout: 10000 })
+        .toBe(1);
+      expect(
+        JSON.stringify((await host.message.list({ sessionID, order: "asc" })).data),
+      ).not.toContain(`OWNED:${sessionID}`);
+      const [permission] = await host.permission.list({ sessionID });
+      await host.permission.reply({ sessionID, requestID: permission!.id, decision: "once" });
+      expect(await messages(sessionID)).toContain(`OWNED:${sessionID}`);
+    } finally {
+      await db.client.db
+        .update(agents)
+        .set({ capabilities_json: original!.capabilities_json })
+        .where(eq(agents.id, "probe-agent"));
+    }
+  });
   it("supplies the calling session ID to a native tool", async () => {
     const sessionID = await prompt("cc_probe_both");
     expect(await messages(sessionID)).toContain(`\\"sessionID\\":\\"${sessionID}\\"`);

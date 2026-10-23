@@ -1,4 +1,5 @@
 import type { Tool } from "@opencode/sdk";
+import { resolveMcpToolDefault } from "@cc/shared/schemas";
 
 import { readEmbeddedToolProfile } from "./embedded-tool-profile.js";
 import type { AppDb } from "../db/client.js";
@@ -41,7 +42,16 @@ export function createEmbeddedCcToolService(options: {
         const id = `${group.name}_${tool.name}`;
         const rule = profile.appToolPermissions?.find((entry) => entry.pattern === id);
         let action =
-          rule?.action ?? (caller.context === "task_run" ? "deny" : (selection?.action ?? "allow"));
+          caller.context === "task_run"
+            ? (rule?.action ?? "deny")
+            : resolveMcpToolDefault(
+                {
+                  toolPermissions: profile.appToolPermissions,
+                  mcpServers: selection ? [selection] : [],
+                },
+                group.name,
+                { id, name: tool.name },
+              );
         if (!enabled || (tool.context !== "both" && tool.context !== caller.context))
           action = "deny";
         if (caller.context === "task_run" && action === "ask") action = "allow";

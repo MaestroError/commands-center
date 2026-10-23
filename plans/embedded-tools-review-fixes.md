@@ -20,3 +20,11 @@ Validation: 95 backend tests and 9 component tests passed; ESLint --fix and all 
 - [ ] Run regression tests and lint/typechecks, push, and request Copilot again.
 
 Second-review validation: 18 backend and 23 frontend regression tests passed, ESLint --fix passed, and all package typechecks passed.
+
+## Third review
+
+- [x] Apply ordered wildcard CC rules to chat authorization using the shared resolver; retain exact-only task snapshots.
+- [x] Verify wildcard Ask waits for approval before execution, including a later wildcard overriding an earlier exact Allow.
+- [ ] Run focused SDK tests, lint, typechecks; push and request Copilot review.
+
+Third-review validation: 32 SDK integration tests passed, including wildcard Ask waiting before handler execution and a later wildcard overriding an exact Allow. Backend typecheck and ESLint --fix passed.
