@@ -28,3 +28,11 @@ Second-review validation: 18 backend and 23 frontend regression tests passed, ES
 - [ ] Run focused SDK tests, lint, typechecks; push and request Copilot review.
 
 Third-review validation: 32 SDK integration tests passed, including wildcard Ask waiting before handler execution and a later wildcard overriding an exact Allow. Backend typecheck and ESLint --fix passed.
+
+## Fourth review
+
+- [x] Align specialist CC picker actions with ordered wildcard enforcement.
+- [x] Test wildcard Ask and later wildcard Deny; run lint and typecheck.
+- [ ] Push the fix and reply to the review.
+
+Fourth-review validation: 19 helper/component tests, frontend typecheck, and ESLint --fix passed.

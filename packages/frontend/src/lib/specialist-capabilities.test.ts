@@ -166,6 +166,23 @@ describe("specialist-capabilities", () => {
     expect(getAppMcpToolAction(updated, "github", "create_issue")).toBe(action);
   });
 
+  it("displays inherited wildcard Ask for a CC tool", () => {
+    const capabilities = makeCapabilities({
+      appMcpServers: [{ name: "cc_app", enabled: true, action: "allow" }],
+      appToolPermissions: [{ pattern: "cc_app_*", action: "ask" }],
+    });
+    expect(getAppMcpToolAction(capabilities, "cc_app", "read")).toBe("ask");
+  });
+  it("displays a later wildcard Deny over an earlier exact Allow", () => {
+    const capabilities = makeCapabilities({
+      appMcpServers: [{ name: "cc_app", enabled: true, action: "allow" }],
+      appToolPermissions: [
+        { pattern: "cc_app_read", action: "allow" },
+        { pattern: "cc_app_*", action: "deny" },
+      ],
+    });
+    expect(getAppMcpToolAction(capabilities, "cc_app", "read")).toBe("deny");
+  });
   it("inherits the CC group ask action when no tool override exists", () => {
     const capabilities = makeCapabilities({
       appMcpServers: [{ name: "github", enabled: true, action: "ask" }],

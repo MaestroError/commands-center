@@ -1,3 +1,4 @@
+import { resolveMcpToolDefault } from "@cc/shared/schemas";
 import type {
   SpecialistCapabilitySelection,
   SpecialistMcpOverride,
@@ -158,9 +159,13 @@ export function getAppMcpToolAction(
   toolName: string,
 ): "allow" | "ask" | "deny" {
   const pattern = buildAppMcpToolPattern(serverName, toolName);
-  const exact = (capabilities.appToolPermissions ?? []).find((rule) => rule.pattern === pattern);
-
-  return exact?.action ?? getAppMcpServerAction(capabilities, serverName);
+  const action = getAppMcpServerAction(capabilities, serverName);
+  if (action === "deny") return "deny";
+  return resolveMcpToolDefault(
+    { toolPermissions: capabilities.appToolPermissions, mcpServers: capabilities.appMcpServers },
+    serverName,
+    { id: pattern, name: toolName },
+  );
 }
 
 export function setAppMcpToolAction(
