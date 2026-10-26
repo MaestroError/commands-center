@@ -303,7 +303,7 @@ If it passes, the publish workflow should also pass for the same commit.
 
 ### OpenCode v2 migration branch
 
-The embedded host foundation uses pinned `@opencode/sdk@2.0.27`. Keep it external
+The embedded host foundation uses pinned `@opencode/sdk@2.1.4`. Keep it external
 to esbuild and declared in both the backend and CLI runtime dependencies: its
 native modules and assets must remain in the installed package tree.
 

@@ -60,7 +60,7 @@ These are the chosen technologies. Do not introduce alternatives without explici
 | WebSockets   | `ws` (terminal streams, real-time events)                        |
 | PTY          | `node-pty` (CC-owned shells; independent of OpenCode)            |
 | Logging      | Pino (structured JSON, correlation IDs)                          |
-| AI engine    | `@opencode/sdk@2.0.27` (one embedded host per process/workspace) |
+| AI engine    | `@opencode/sdk@2.1.4` (one embedded host per process/workspace)  |
 | Text search  | `@vscode/ripgrep` (bundled platform binary; external to esbuild) |
 | MCP          | `@modelcontextprotocol/sdk` (stdio + SSE transports)             |
 | Integrations | Composio (`composio-core`) for managed OAuth                     |

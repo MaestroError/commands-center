@@ -99,3 +99,21 @@ reported a healthy embedded engine and drained cleanly on SIGTERM.
 The final diagnostic tarball has no ineffective shrinkwrap and is not approved
 for publication. SHA-256:
 `ccb1ad8bd9f5f15e7318ebebc6f691af17e65195efca139dce98f720603caa67`.
+
+## SDK 2.1.4 upgrade audit (2026-10-26)
+
+A fresh macOS npm install of the SDK 2.1.4 CLI tarball reports 0 critical,
+1 high and 1 low advisory. The high finding is Zod
+[GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5)
+(affected versions below 4.6.6); the low finding is provider-utils
+[GHSA-866g-f22w-33x8](https://github.com/advisories/GHSA-866g-f22w-33x8).
+The old lockfile also contains affected Zod versions, so upgrading the SDK does
+not introduce this vulnerable dependency family. No security exception has
+been accepted. Before release, assess both bundled CC validation code and the
+SDK's installed dependency tree; the installed-package audit alone does not
+inspect bundled dependencies. Do not force Zod 4 over dependencies requiring
+Zod 3 without checking their contracts.
+
+The earlier MCP/braces advisories were not reported by this fresh install's
+audit. That observation is not a declaration that all previous release gates
+are cleared. Evidence: `/tmp/cc-21-package-audit.json`.

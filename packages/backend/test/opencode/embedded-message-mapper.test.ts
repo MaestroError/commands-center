@@ -19,9 +19,10 @@ describe("embedded message mapping", () => {
   it("keeps reasoning and text part identities stable for streaming", () => {
     const message = mapEmbeddedMessage("session", {
       ...assistant,
+      native: { replay: "provider-only" },
       content: [
-        { type: "reasoning", text: "Thinking" },
-        { type: "text", text: "Answer" },
+        { type: "reasoning", text: "Thinking", native: { replay: "reasoning-only" } },
+        { type: "text", text: "Answer", native: { replay: "text-only" } },
       ],
     });
     expect(message?.parts).toEqual([
@@ -139,7 +140,7 @@ describe("embedded message mapping", () => {
       status: "completed",
       reason: "manual",
       summary: "Work so far",
-      recent: "",
+      metadata: { keepID: "retained-message" },
     });
     expect(message?.parts[0]).toMatchObject({ type: "text", text: "Work so far" });
   });

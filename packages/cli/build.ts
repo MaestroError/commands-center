@@ -3,6 +3,7 @@ import { execSync } from "node:child_process";
 import { cpSync, mkdirSync, rmSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const cliDir = resolve(root, "packages/cli");
@@ -19,6 +20,11 @@ console.log("Bundling CLI...");
 await build({
   entryPoints: [resolve(cliDir, "src/bin.ts")],
   bundle: true,
+  alias: {
+    "jsonc-parser": createRequire(resolve(backendDir, "package.json")).resolve(
+      "jsonc-parser/lib/esm/main.js",
+    ),
+  },
   platform: "node",
   target: "node22",
   format: "esm",
