@@ -470,6 +470,7 @@ describe("task schemas", () => {
       ).toEqual({
         body: "Please retry with logs.",
         kind: "operator_reply",
+        attachments: [],
       });
     });
 

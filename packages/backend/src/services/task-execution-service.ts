@@ -1,3 +1,4 @@
+import { createTeamService } from "./team-service.js";
 import {
   cancelTaskRunInputSchema,
   MAX_FALLBACK_MODELS,
@@ -135,12 +136,14 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
     logger: options.logger,
     config: transportRetryConfig,
   });
-  const { scheduleAgentDrain, deferQueuedRunIfOpenCodeIsUnhealthy } = createAgentDrainQueue({
+  const agentDrainQueue = createAgentDrainQueue({
     options,
     agentDrainDeferrals,
     deferConfig,
     runQueuedTask,
+    dispatchNextReply: (agentId, before) => replyFlow.dispatchNextReply(agentId, before),
   });
+  const { scheduleAgentDrain, deferQueuedRunIfOpenCodeIsUnhealthy } = agentDrainQueue;
   const {
     queueFallbackRun,
     finalizeStalledRun,
@@ -176,18 +179,37 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
     },
   });
 
-  const { sendRunReply } = createTaskReplyFlow({
+  const replyFlow = createTaskReplyFlow({
     options,
     findRun,
-    startTaskRunPromptWithRetry,
-    resumeAcceptedPromptRun,
-    handleTerminalRun,
-    readRunContext,
-    monitorConfig,
-    monitorService,
+    scheduleAgentDrain,
+    startMonitor: (runId) => {
+      if (monitorConfig.autoStart) monitorService.start(runId);
+    },
   });
+  const teams =
+    options.db && options.config
+      ? createTeamService({
+          db: options.db,
+          config: options.config,
+          taskService: options.taskService,
+          queue: queueTask,
+          wake: scheduleAgentDrain,
+        })
+      : undefined;
+  let teamRecoveryTimer = teams
+    ? setInterval(() => {
+        void teams
+          .recover()
+          .catch((error: unknown) =>
+            options.logger?.error({ err: error }, "team handoff recovery failed"),
+          );
+      }, 5_000)
+    : undefined;
+  teamRecoveryTimer?.unref();
 
   return {
+    teams,
     async trigger(taskId: string, input: QueueTaskExecutionInput = {}): Promise<TaskRun> {
       return queueTask(taskId, input);
     },
@@ -205,14 +227,33 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
     },
 
     async sendRunReply(runId: string, input: unknown): Promise<TaskRunFollowup> {
-      return sendRunReply(runId, input);
+      return replyFlow.sendRunReply(runId, input);
     },
+
+    cancelRunReply: replyFlow.cancelRunReply,
 
     startTaskRunMonitor(runId: string): void {
       monitorService.start(runId);
     },
 
     async resumeRunningTaskRuns(): Promise<void> {
+      agentDrainQueue.resume();
+      if (teams && !teamRecoveryTimer) {
+        teamRecoveryTimer = setInterval(() => {
+          void teams
+            .recover()
+            .catch((error: unknown) =>
+              options.logger?.error({ err: error }, "team handoff recovery failed"),
+            );
+        }, 5_000);
+        teamRecoveryTimer.unref();
+      }
+      await teams
+        ?.recover()
+        .catch((error: unknown) =>
+          options.logger?.error({ err: error }, "team handoff recovery needs attention"),
+        );
+      await replyFlow.recoverPending();
       const runs = await options.taskService.listActiveRuns();
 
       for (const run of runs) {
@@ -263,7 +304,7 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
         guarded = await taskRunOperationGuard.runExclusive(runId, async () => {
           const run = await findRun(runId);
 
-          if (!["queued", "running"].includes(run.status)) {
+          if (!["queued", "running", "waiting"].includes(run.status)) {
             throw new BadRequestError("Only queued or running task runs can be cancelled.");
           }
 
@@ -284,7 +325,27 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
 
       const { run, cancelled } = guarded;
 
+      replyFlow.cancelPending(run.id);
+      const children = (await options.taskService.listSubtasks(run.taskId)).filter(
+        (child) => child.ownerRunId === run.id,
+      );
+      const childRuns = (await options.taskService.listRuns(run.taskId)).filter((childRun) =>
+        children.some((child) => child.id === childRun.subtaskId),
+      );
+      for (const childRun of childRuns) {
+        replyFlow.cancelPending(childRun.id);
+        if (["running", "queued", "waiting"].includes(childRun.status)) {
+          const stopped = await options.taskService.setRunStatus(childRun.id, "cancelled", {
+            cancelledAt: new Date().toISOString(),
+            cancellationReason: "Owner goal cancelled.",
+          });
+          if (stopped) await replyFlow.finalizeReply(stopped);
+          await abortOpenCodeTaskRun(childRun);
+          scheduleAgentDrain(childRun.agentId);
+        }
+      }
       await abortOpenCodeTaskRun(run);
+      await replyFlow.finalizeReply(cancelled);
       notifyRunTerminal(cancelled);
       scheduleAgentDrain(cancelled.agentId);
       return cancelled;
@@ -295,7 +356,10 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
     },
 
     dispose(): void {
+      agentDrainQueue.stop();
       monitorService.dispose();
+      clearInterval(teamRecoveryTimer);
+      teamRecoveryTimer = undefined;
 
       for (const deferral of agentDrainDeferrals.values()) {
         if (deferral.timer) {
@@ -506,9 +570,12 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
           running = sessionLinked;
         }
 
-        const attachments = options.taskContextAttachmentService
-          ? await options.taskContextAttachmentService.readConversationAttachments(task.context)
-          : [];
+        const teamInputs = await teams?.prepareRun(running);
+        const attachments = teamInputs
+          ? teamInputs.attachments
+          : options.taskContextAttachmentService
+            ? await options.taskContextAttachmentService.readConversationAttachments(task.context)
+            : [];
         const promptStart = await startTaskRunPromptWithRetry(running, conversation, {
           text: running.renderedPrompt,
           attachments,
@@ -758,6 +825,10 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
   }
 
   async function resumeRunningTaskRun(run: TaskRun): Promise<void> {
+    if (typeof run.triggerMetadata?.["replyId"] === "string") {
+      if (replyFlow.readReply(run.triggerMetadata["replyId"])?.status === "blocked") return;
+      if (await replyFlow.recoverReply(run)) return;
+    }
     const evidence = await readAcceptedPromptEvidence(run);
 
     if (evidence) {
@@ -881,16 +952,33 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
     const subtaskId = parsed.subtaskId ?? targetSubtask?.id;
     const runAgentId =
       targetSubtask?.agentId ?? parsed.agentId ?? task.defaultAgentId ?? task.agentId;
-    const { renderedContext, renderedPrompt } = await taskRunContextService.build({
-      task,
-      runId: taskRunId,
-      runAgentId,
-      subtaskId,
-      trigger: { ...parsed, context: triggerContext },
-    });
+    const delegated = Boolean(targetSubtask?.ownerRunId);
+    const worker =
+      delegated && options.db
+        ? await options.db.query.agents.findFirst({
+            where: (table, { eq }) => eq(table.id, runAgentId),
+          })
+        : undefined;
+    const context = delegated
+      ? {
+          renderedPrompt: `<TaskRunId>\n${taskRunId}\n</TaskRunId>\nYou are executing a bounded team assignment. Follow your own specialist instructions and permissions. You cannot delegate further.\nAssignment: ${targetSubtask!.id}\nBrief:\n${targetSubtask!.description}\nExpected output:\n${targetSubtask!.expectedOutput ?? ""}\nShared artifact IDs: ${JSON.stringify(targetSubtask!.inputArtifactIds ?? [])}\nReturn a concise outcome with validation and unresolved problems; register deliverables using add_task_artifact. Use read_team_artifact for shared files.`,
+          renderedContext: {
+            assignmentId: targetSubtask!.id,
+            ownerRunId: targetSubtask!.ownerRunId,
+          },
+        }
+      : await taskRunContextService.build({
+          task,
+          runId: taskRunId,
+          runAgentId,
+          subtaskId,
+          trigger: { ...parsed, context: triggerContext },
+        });
+    const { renderedContext, renderedPrompt } = context;
     const effectivePermissions = await options.taskPermissionService?.compute({
       ...task,
       agentId: runAgentId,
+      ...(delegated ? { permissionProfile: undefined } : {}),
     });
     const run = await options.taskService.queueTask({
       id: taskRunId,
@@ -898,8 +986,8 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
       subtaskId,
       agentId: runAgentId,
       triggerSource: parsed.triggerSource,
-      model: parsed.model,
-      fallbackModels: parsed.fallbackModels,
+      model: delegated ? worker?.default_model : parsed.model,
+      fallbackModels: delegated ? [] : parsed.fallbackModels,
       retryOfRunId: parsed.retryOfRunId,
       context: triggerContext,
       metadata: parsed.metadata,
@@ -919,7 +1007,9 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
   // the automatic path can auto-retry failures (bounded by a cap) while never
   // re-queuing a review hand-off, which is terminal.
   async function listRunnableSubtasks(taskId: string): Promise<RunnableSubtasks> {
-    const subtasks = await options.taskService.listSubtasks(taskId);
+    const subtasks = (await options.taskService.listSubtasks(taskId)).filter(
+      (subtask) => !subtask.ownerRunId,
+    );
 
     if (subtasks.length === 0) {
       return { unattempted: [], retryableErrored: [], retryableReview: [], hasActive: false };
@@ -970,7 +1060,12 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
     run: TaskRun,
     triggerContext: TaskContext | undefined,
   ): Promise<TaskRun | undefined> {
-    if (!run.subtaskId) {
+    if (
+      !run.subtaskId ||
+      (await options.taskService.listSubtasks(run.taskId)).some(
+        (child) => child.id === run.subtaskId && child.ownerRunId,
+      )
+    ) {
       return undefined;
     }
 
@@ -1143,45 +1238,30 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
   }
 
   function notifyRunTerminal(run: TaskRun): void {
-    void finalizeInFlightRunFollowup(run);
-    void finalizeRunArchive(run);
-    void emitTerminalActivity(run);
-    void options.onRunTerminal?.(run);
-  }
-
-  // Every terminal transition (completion, error, cancellation, skip) funnels
-  // through here, so this is the one place that can reliably close out a reply
-  // that reactivated this run — regardless of which path put it back into
-  // "running". Best-effort: never throw into the terminal path.
-  async function finalizeInFlightRunFollowup(run: TaskRun): Promise<void> {
-    try {
-      const inFlight = await options.taskService.findInFlightFollowup(run.id);
-
-      if (!inFlight) {
-        return;
-      }
-
-      if (run.status === "completed") {
-        await options.taskService.markFollowupAnswered(inFlight.id, {
-          answerBody: run.resultText ?? run.finalMessage ?? "No response text.",
-          // Prefer the run's own completion time so the answer's timestamp
-          // reflects when the run finished, not when this terminal hook happened
-          // to run.
-          answeredAt: run.completedAt ?? new Date().toISOString(),
-        });
-        return;
-      }
-
-      await options.taskService.markFollowupFailed(
-        inFlight.id,
-        run.errorMessage ?? `Run ended (${run.status}) before answering.`,
+    void replyFlow
+      .finalizeReply(run)
+      .then(async () => {
+        const current = await findRun(run.id);
+        if (
+          current.startedAt === run.startedAt &&
+          current.status === run.status &&
+          current.status !== "waiting" &&
+          !current.hasActiveReply
+        ) {
+          void finalizeRunArchive(current);
+          void emitTerminalActivity(current);
+          void options.onRunTerminal?.(current);
+        }
+        scheduleAgentDrain(run.agentId);
+      })
+      .catch((error: unknown) => {
+        options.logger?.error({ err: error, runId: run.id }, "failed to finalize queued reply");
+      });
+    void teams
+      ?.notify(run)
+      .catch((error: unknown) =>
+        options.logger?.error({ err: error, runId: run.id }, "team result delivery will retry"),
       );
-    } catch (error) {
-      options.logger?.warn(
-        { err: error, taskId: run.taskId, taskRunId: run.id },
-        "failed to finalize in-flight run reply",
-      );
-    }
   }
 
   // Drop an activity for the just-finished run. Best-effort: never throw into the

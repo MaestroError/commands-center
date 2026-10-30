@@ -9,26 +9,57 @@ export interface TaskAgentDrainContext {
   options: TaskExecutionServiceOptions;
   agentDrainDeferrals: Map<string, AgentDrainDeferral>;
   deferConfig: TaskRunDeferConfig;
+  dispatchNextReply: (agentId: string, before?: string) => Promise<boolean>;
   runQueuedTask: (runId: string) => Promise<TaskRun>;
 }
 
 export function createAgentDrainQueue(ctx: TaskAgentDrainContext) {
-  const { options, agentDrainDeferrals, deferConfig, runQueuedTask } = ctx;
+  const { options, agentDrainDeferrals, deferConfig, runQueuedTask, dispatchNextReply } = ctx;
+  const draining = new Set<string>();
+  const requested = new Set<string>();
+  let active = true;
 
   function scheduleAgentDrain(agentId: string): void {
-    void drainAgentQueue(agentId).catch((error: unknown) => {
-      options.logger?.error({ err: error, agentId }, "task queue drain failed");
-    });
+    if (!active) return;
+    requested.add(agentId);
+    if (draining.has(agentId)) return;
+    draining.add(agentId);
+    void (async () => {
+      try {
+        while (active && requested.delete(agentId)) await drainAgentQueue(agentId);
+      } catch (error) {
+        options.logger?.error({ err: error, agentId }, "task queue drain failed");
+      } finally {
+        draining.delete(agentId);
+      }
+    })();
   }
 
   async function drainAgentQueue(agentId: string): Promise<void> {
     const running = await options.taskService.getRunningRunForAgent(agentId);
 
-    if (running) {
+    if (!active || running) {
       return;
     }
 
     const nextRun = await options.taskService.getNextQueuedRunForAgent(agentId);
+
+    if (options.orchestrator && !options.orchestrator.getStatus().healthy) {
+      if (nextRun) deferQueuedRunIfOpenCodeIsUnhealthy(nextRun);
+      else if (!agentDrainDeferrals.get(agentId)?.timer) {
+        const timer = setTimeout(() => {
+          agentDrainDeferrals.delete(agentId);
+          scheduleAgentDrain(agentId);
+        }, deferConfig.initialDelayMs);
+        timer.unref?.();
+        agentDrainDeferrals.set(agentId, { timer, delayMs: deferConfig.initialDelayMs });
+      }
+      return;
+    }
+    if (await dispatchNextReply(agentId, nextRun?.createdAt)) {
+      requested.add(agentId);
+      return;
+    }
 
     if (!nextRun) {
       resetAgentDrainDeferral(agentId);
@@ -40,11 +71,9 @@ export function createAgentDrainQueue(ctx: TaskAgentDrainContext) {
     }
 
     resetAgentDrainDeferral(agentId);
-    const started = await runQueuedTask(nextRun.id);
-
-    if (started.status === "queued") {
-      return;
-    }
+    void runQueuedTask(nextRun.id).catch((error: unknown) => {
+      options.logger?.error({ err: error, runId: nextRun.id }, "queued task execution failed");
+    });
   }
 
   function deferQueuedRunIfOpenCodeIsUnhealthy(run: TaskRun): boolean {
@@ -91,9 +120,7 @@ export function createAgentDrainQueue(ctx: TaskAgentDrainContext) {
 
     deferral.timer = setTimeout(() => {
       deferral.timer = undefined;
-      void drainAgentQueue(run.agentId).catch((error: unknown) => {
-        options.logger?.error({ err: error, agentId: run.agentId }, "task queue drain failed");
-      });
+      scheduleAgentDrain(run.agentId);
     }, delayMs);
     deferral.timer.unref?.();
     agentDrainDeferrals.set(run.agentId, deferral);
@@ -121,5 +148,15 @@ export function createAgentDrainQueue(ctx: TaskAgentDrainContext) {
     return Math.max(0, Math.round(cappedDelayMs + jitterMs));
   }
 
-  return { scheduleAgentDrain, deferQueuedRunIfOpenCodeIsUnhealthy };
+  return {
+    scheduleAgentDrain,
+    deferQueuedRunIfOpenCodeIsUnhealthy,
+    stop: () => {
+      active = false;
+      requested.clear();
+    },
+    resume: () => {
+      active = true;
+    },
+  };
 }

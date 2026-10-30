@@ -220,7 +220,7 @@ describe("task routes", () => {
       expect(session.statusCode).toBe(200);
       expect(session.json().conversation.source).toBe("task_run");
       expect(openInChat.statusCode).toBe(200);
-      expect(openInChat.json().current.source).toBe("chat");
+      expect(openInChat.json().current.source).toBe("task_run");
       expect(activeRuns.statusCode).toBe(200);
       expect(activeRuns.json()).toEqual([]);
       expect(accepted.statusCode).toBe(200);
@@ -542,6 +542,9 @@ describe("task routes", () => {
         url: `/api/tasks/${task.id}/runs/${run.id}/followups`,
         payload: { body: "Please double-check the docs." },
       });
+      await expect
+        .poll(async () => (await harness.taskService.getRunById(run.id))?.status)
+        .toBe("running");
       const reactivated = await harness.taskService.getRunById(run.id);
       const taskAfter = await harness.taskService.get(task.id);
 
@@ -550,7 +553,7 @@ describe("task routes", () => {
         taskId: task.id,
         runId: run.id,
         kind: "operator_reply",
-        status: "sending",
+        status: "queued",
         body: "Please double-check the docs.",
       });
       expect(reactivated?.status).toBe("running");
@@ -563,7 +566,7 @@ describe("task routes", () => {
     }
   });
 
-  it("rejects sending a reply while the run is in progress", async () => {
+  it("queues a reply while the run is in progress", async () => {
     const harness = await createTaskRouteHarness();
 
     try {
@@ -583,10 +586,8 @@ describe("task routes", () => {
         payload: { body: "Are you still working on this?" },
       });
 
-      expect(response.statusCode).toBe(409);
-      expect(response.json().error.message).toBe(
-        "Cannot send a reply while the run is in progress.",
-      );
+      expect(response.statusCode).toBe(201);
+      expect(response.json().status).toBe("queued");
     } finally {
       await harness.close();
     }
@@ -610,13 +611,13 @@ describe("task routes", () => {
 
       expect(response.statusCode).toBe(200);
       expect(response.json()).toHaveLength(1);
-      expect(response.json()).toMatchObject([{ body: "First reply.", status: "sending" }]);
+      expect(response.json()).toMatchObject([{ body: "First reply." }]);
     } finally {
       await harness.close();
     }
   });
 
-  it("returns conflict when sending a reply to a run without a recorded session", async () => {
+  it("records a blocked reply when the session is unavailable", async () => {
     const harness = await createTaskRouteHarness();
 
     try {
@@ -638,8 +639,10 @@ describe("task routes", () => {
         payload: { body: "Please retry." },
       });
 
-      expect(response.statusCode).toBe(409);
-      expect(response.json().error.message).toBe("Task run does not have an OpenCode session.");
+      expect(response.statusCode).toBe(201);
+      await expect
+        .poll(async () => (await harness.taskService.listFollowups(run.id))[0]?.status)
+        .toBe("blocked");
     } finally {
       await harness.close();
     }

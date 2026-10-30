@@ -247,7 +247,7 @@ describe("task actions", () => {
     expect(fetchSpy).toHaveBeenCalledWith("/api/tasks/task-1/runs/run-1/followups", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ body: "Answer A", kind: "review_answer" }),
+      body: JSON.stringify({ body: "Answer A", kind: "review_answer", attachments: [] }),
     });
   });
 

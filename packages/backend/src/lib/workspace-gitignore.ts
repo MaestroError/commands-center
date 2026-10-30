@@ -1,4 +1,6 @@
 export const DEFAULT_WORKSPACE_GITIGNORE = `# CommandsCenter runtime state and credentials
+# Materialized team input snapshots
+**/.team-inputs/
 /.cc/
 /auth/
 /database/

@@ -328,6 +328,18 @@ export async function listRunFollowups(taskId: string, runId: string): Promise<T
   );
 }
 
+export async function cancelRunFollowup(
+  taskId: string,
+  runId: string,
+  id: string,
+): Promise<TaskRunFollowup> {
+  return requestJson(
+    `/api/tasks/${encodeURIComponent(taskId)}/runs/${encodeURIComponent(runId)}/followups/${encodeURIComponent(id)}`,
+    taskRunFollowupSchema,
+    { method: "DELETE" },
+  );
+}
+
 export async function createRunFollowup(
   taskId: string,
   runId: string,

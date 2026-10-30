@@ -120,7 +120,7 @@ export function RunHistory(props: {
                         <Button
                           variant="secondary"
                           data-testid={`task-run-reply-${run.id}`}
-                          disabled={!run.opencodeSessionId}
+                          disabled={["cancelled", "skipped"].includes(run.status)}
                           onClick={() =>
                             setOpenReplyRunId((current) =>
                               current === run.id ? undefined : run.id,

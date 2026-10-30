@@ -11,7 +11,14 @@ import { eq } from "drizzle-orm";
 import type { AppDb } from "../../src/db/client";
 import { createTaskService } from "../../src/services/task-service";
 import { createTestDatabase } from "../helpers/db";
-import { agents, conversations, tasks, task_runs, task_templates } from "../../src/db/schema/index";
+import {
+  agents,
+  conversations,
+  tasks,
+  task_runs,
+  task_templates,
+  task_run_followups,
+} from "../../src/db/schema/index";
 
 describe("createTaskService", () => {
   it("validates new task rules against its default assignee", async () => {
@@ -784,6 +791,10 @@ describe("createTaskService", () => {
       });
 
       const first = await service.insertFollowup(run, { body: "Please add logs." });
+      await testDb.client.db
+        .update(task_run_followups)
+        .set({ status: "sending" })
+        .where(eq(task_run_followups.id, first.id));
       const inFlight = await service.findInFlightFollowup(run.id);
       await service.markFollowupAnswered(first.id, {
         answerBody: "Added.",
@@ -800,7 +811,7 @@ describe("createTaskService", () => {
       expect(inFlight?.id).toBe(first.id);
       expect(listed.map((followup) => followup.id)).toEqual([first.id, second.id]);
       expect(listed.find((followup) => followup.id === first.id)?.status).toBe("answered");
-      expect(listed.find((followup) => followup.id === second.id)?.status).toBe("sending");
+      expect(listed.find((followup) => followup.id === second.id)?.status).toBe("queued");
     } finally {
       await testDb.cleanup();
     }
@@ -823,6 +834,10 @@ describe("createTaskService", () => {
       const answered = await service.insertFollowup(run, { body: "Deliver me." });
       const failed = await service.insertFollowup(run, { body: "I failed." });
 
+      await testDb.client.db
+        .update(task_run_followups)
+        .set({ status: "sending" })
+        .where(eq(task_run_followups.run_id, run.id));
       const answeredFollowup = await service.markFollowupAnswered(answered.id, {
         answerBody: "Done.",
         answeredAt: "2026-06-01T12:00:00.000Z",
@@ -854,6 +869,10 @@ describe("createTaskService", () => {
         renderedPrompt: "Do the task.",
       });
       const followup = await service.insertFollowup(run, { body: "Already answered." });
+      await testDb.client.db
+        .update(task_run_followups)
+        .set({ status: "sending" })
+        .where(eq(task_run_followups.id, followup.id));
       await service.markFollowupAnswered(followup.id, {
         answerBody: "Done.",
         answeredAt: "2026-06-01T11:00:00.000Z",

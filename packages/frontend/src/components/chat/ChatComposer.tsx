@@ -22,13 +22,15 @@ import { Button } from "@/components/ui/button";
 type ComposerMode = "normal" | "shell";
 
 interface ComposerSendInput {
+  requestId?: string;
   text: string;
   attachments: SendConversationAttachmentInput[];
   model?: string;
 }
 
 type ChatComposerProps = {
-  onSend: (input: ComposerSendInput) => void;
+  onSend: (input: ComposerSendInput) => void | Promise<void>;
+  queueMode?: boolean;
   onShell: (command: string) => void;
   onCommand: (command: string, args?: string) => void;
   onSummarize: () => void;
@@ -71,6 +73,7 @@ function writeChatModel(conversationId: string, model: string | null): void {
 
 export function ChatComposer({
   onSend,
+  queueMode = false,
   onShell,
   onCommand,
   onSummarize,
@@ -85,6 +88,8 @@ export function ChatComposer({
   autoFocusKey,
   defaultModel,
 }: ChatComposerProps) {
+  const [submissionError, setSubmissionError] = useState<string>();
+  const [submitting, setSubmitting] = useState(false);
   const [text, setText] = useState("");
   const [mode, setMode] = useState<ComposerMode>("normal");
   const [selectedModel, setSelectedModel] = useState<string | null>(
@@ -98,6 +103,7 @@ export function ChatComposer({
   const [activePopover, setActivePopover] = useState<"file" | "slash" | null>(null);
   const [popoverQuery, setPopoverQuery] = useState("");
 
+  const queuedRequest = useRef<{ payload: string; id: string } | undefined>(undefined);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const popoverKeyHandlerRef = useRef<((e: React.KeyboardEvent) => boolean) | null>(null);
@@ -194,7 +200,37 @@ export function ChatComposer({
     el.setSelectionRange(pos, pos);
   }, []);
 
-  const handleSend = useCallback(() => {
+  const handleSend = useCallback(async () => {
+    if (submitting) return;
+    setSubmissionError(undefined);
+    if (queueMode) {
+      if (!text.trim()) return;
+      setSubmitting(true);
+      try {
+        const prefix = buildMentionPrefix(mentionedFiles);
+        const input = {
+          text: [selectedSkill ? `Use skill "${selectedSkill.slug}".` : "", prefix, text.trim()]
+            .filter(Boolean)
+            .join(" "),
+          attachments,
+          model: selectedModel ?? undefined,
+        };
+        const payload = JSON.stringify(input);
+        if (queuedRequest.current?.payload !== payload)
+          queuedRequest.current = { payload, id: crypto.randomUUID() };
+        await onSend({ ...input, requestId: queuedRequest.current.id });
+        queuedRequest.current = undefined;
+        setText("");
+        setAttachments([]);
+        setMentionedFiles([]);
+        setSelectedSkill(null);
+      } catch (error) {
+        setSubmissionError(error instanceof Error ? error.message : "Reply could not be queued.");
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
     const trimmed = text.trim();
     if (!trimmed && mentionedFiles.length === 0 && !selectedSkill) return;
 
@@ -208,7 +244,7 @@ export function ChatComposer({
         // sees attachments + file mentions and can invoke the skill naturally
         const filePrefixes = buildMentionPrefix(mentionedFiles);
         const parts = [`Use skill "${selectedSkill.slug}".`, filePrefixes, trimmed].filter(Boolean);
-        onSend({
+        await onSend({
           text: parts.join(" "),
           attachments,
           model: selectedModel ?? undefined,
@@ -225,7 +261,7 @@ export function ChatComposer({
       // Prepend file mentions as #path references
       const filePrefixes = buildMentionPrefix(mentionedFiles);
       const fullText = filePrefixes ? `${filePrefixes} ${trimmed}` : trimmed;
-      onSend({
+      await onSend({
         text: fullText,
         attachments,
         model: selectedModel ?? undefined,
@@ -240,6 +276,8 @@ export function ChatComposer({
     history.reset();
   }, [
     text,
+    queueMode,
+    submitting,
     mode,
     attachments,
     mentionedFiles,
@@ -256,7 +294,7 @@ export function ChatComposer({
       const cursorPosition = getCursorPosition();
 
       // Shell mode entry: ! at position 0 when empty
-      if (e.key === "!" && cursorPosition === 0 && text === "" && mode === "normal") {
+      if (!queueMode && e.key === "!" && cursorPosition === 0 && text === "" && mode === "normal") {
         e.preventDefault();
         setMode("shell");
         return;
@@ -315,7 +353,7 @@ export function ChatComposer({
       // the return key must insert a newline; the Send button submits instead.
       if (e.key === "Enter" && !e.shiftKey && !activePopover && !isTouch) {
         e.preventDefault();
-        handleSend();
+        void handleSend();
       }
     },
     [
@@ -328,6 +366,7 @@ export function ChatComposer({
       setCursorPosition,
       onAbort,
       handleSend,
+      queueMode,
       isTouch,
     ],
   );
@@ -337,7 +376,7 @@ export function ChatComposer({
       const newValue = e.target.value;
 
       // Shell mode entry: text starts with "!" when mode is normal and was empty
-      if (mode === "normal" && text === "" && newValue === "!") {
+      if (!queueMode && mode === "normal" && text === "" && newValue === "!") {
         setMode("shell");
         setText("");
         return;
@@ -349,7 +388,7 @@ export function ChatComposer({
         history.reset();
       }
     },
-    [history, mode, text],
+    [history, mode, text, queueMode],
   );
 
   const handleFileMentionSelect = useCallback(
@@ -410,6 +449,8 @@ export function ChatComposer({
         // Skills become a pill — user can compose a message with it
         setSelectedSkill({ slug: command.name, description: command.description });
         setTimeout(() => textareaRef.current?.focus(), 0);
+      } else if (queueMode) {
+        setText(`/${command.name} `);
       } else if (command.name === "new") {
         onStartFresh();
       } else if (command.name === "compact") {
@@ -418,7 +459,7 @@ export function ChatComposer({
         onCommand(command.name, "");
       }
     },
-    [onCommand, onStartFresh, onSummarize],
+    [onCommand, onStartFresh, onSummarize, queueMode],
   );
 
   const handlePopoverKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -511,7 +552,7 @@ export function ChatComposer({
     [],
   );
 
-  const isBusy = agentStatus !== "idle";
+  const isBusy = !queueMode && agentStatus !== "idle";
   const showShortcutPills = text.length === 0 && !selectedSkill && mentionedFiles.length === 0;
 
   const activateShortcut = useCallback(
@@ -553,6 +594,11 @@ export function ChatComposer({
       onDragOver={handleDragOver}
     >
       {/* Attachment Bar */}
+      {submissionError && (
+        <p role="alert" className="text-sm text-danger">
+          {submissionError}
+        </p>
+      )}
       <AttachmentBar attachments={attachments} onRemove={handleRemoveAttachment} />
 
       {/* Top toolbar: attach + auto toggle + pills */}
@@ -647,7 +693,7 @@ export function ChatComposer({
             </button>
             <button
               className="rounded-full border border-border px-2 py-0.5 font-mono transition hover:border-accent hover:text-text-primary"
-              disabled={disabled}
+              disabled={disabled || queueMode}
               onClick={() => activateShortcut("!")}
               type="button"
             >
@@ -688,6 +734,11 @@ export function ChatComposer({
             onPaste={handlePaste}
           />
 
+          {queueMode && agentStatus !== "idle" && (
+            <Button variant="danger" type="button" onClick={onAbort}>
+              Stop
+            </Button>
+          )}
           {isBusy ? (
             <Button variant="danger" type="button" className="shrink-0" onClick={onAbort}>
               Stop
@@ -696,11 +747,15 @@ export function ChatComposer({
             <Button
               type="button"
               className="shrink-0"
-              disabled={disabled || (!text.trim() && mentionedFiles.length === 0 && !selectedSkill)}
+              disabled={
+                disabled ||
+                submitting ||
+                (!text.trim() && mentionedFiles.length === 0 && !selectedSkill)
+              }
               data-testid="chat-send"
-              onClick={handleSend}
+              onClick={() => void handleSend()}
             >
-              Send
+              {submitting ? "Queuing…" : queueMode ? "Queue reply" : "Send"}
             </Button>
           )}
         </div>

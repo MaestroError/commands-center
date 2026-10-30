@@ -1,3 +1,5 @@
+import { TaskCollaborationPanel } from "./TaskCollaborationPanel";
+import { TaskRunReplyQueue } from "./TaskRunReplyQueue";
 import { useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { Link } from "react-router";
 
@@ -62,6 +64,7 @@ export function TaskFeedbackPanelSection(props: {
           Comments, follow-up requests, and specialist replies for this task.
         </p>
       </div>
+      <TaskCollaborationPanel taskId={props.taskId} runs={props.runs} agents={props.agents} />
       <TaskFeedbackSection
         agents={props.agents}
         error={feedbackQuery.error}
@@ -383,9 +386,9 @@ function SendButtons(props: {
 export function RunReplyPanel(props: { taskId: string; run: TaskRun; agent?: Specialist }) {
   const [isComposerOpen, setIsComposerOpen] = useState(false);
   const [body, setBody] = useState("");
+  const [request, setRequest] = useState<{ body: string; id: string }>();
   const [error, setError] = useState<string>();
-  const isRunning = props.run.status === "running";
-  const canReply = Boolean(props.run.opencodeSessionId) && !isRunning;
+  const canReply = !["cancelled", "skipped"].includes(props.run.status);
   const followupsQuery = useTaskRunFollowupsQuery(props.taskId, props.run.id);
   const mutations = useTaskMutations();
 
@@ -395,15 +398,18 @@ export function RunReplyPanel(props: { taskId: string; run: TaskRun; agent?: Spe
     if (!canReply || !trimmedBody) return;
 
     setError(undefined);
+    const requestId = request?.body === trimmedBody ? request.id : crypto.randomUUID();
+    setRequest({ body: trimmedBody, id: requestId });
 
     try {
       await mutations.createRunFollowup.mutateAsync({
         taskId: props.taskId,
         runId: props.run.id,
-        input: { body: trimmedBody },
+        input: { body: trimmedBody, requestId },
       });
 
       setBody("");
+      setRequest(undefined);
       setIsComposerOpen(false);
     } catch (submitError) {
       setError(readError(submitError));
@@ -412,22 +418,26 @@ export function RunReplyPanel(props: { taskId: string; run: TaskRun; agent?: Spe
 
   const followups = followupsQuery.data ?? [];
   const isSending = mutations.createRunFollowup.isPending;
-  const disabledReason = isRunning
-    ? "Replies are disabled while the run is in progress."
-    : !props.run.opencodeSessionId
-      ? "Replies require a recorded OpenCode session."
-      : undefined;
+  const disabledReason = !canReply
+    ? "Cancelled or skipped runs cannot receive replies."
+    : undefined;
 
   return (
     <div className="mt-3 grid gap-3 rounded-lg border border-border bg-surface p-3">
+      <TaskRunReplyQueue taskId={props.taskId} runId={props.run.id} />
       {followupsQuery.isLoading ? (
         <p className="text-xs text-text-secondary">Loading replies...</p>
       ) : null}
       {followups.length > 0 ? (
         <div aria-label="Replies" className="grid gap-3">
-          {followups.map((followup) => (
-            <RunFollowupThreadItem agent={props.agent} followup={followup} key={followup.id} />
-          ))}
+          {followups
+            .filter(
+              (followup) =>
+                !["queued", "delivering", "sending", "blocked"].includes(followup.status),
+            )
+            .map((followup) => (
+              <RunFollowupThreadItem agent={props.agent} followup={followup} key={followup.id} />
+            ))}
         </div>
       ) : null}
 
@@ -435,7 +445,7 @@ export function RunReplyPanel(props: { taskId: string; run: TaskRun; agent?: Spe
         <div>
           <p className="text-sm font-medium text-text-primary">Reply to this run</p>
           <p className="text-xs text-text-secondary">
-            Replies are sent immediately into this run&apos;s existing session.
+            Replies are queued for this run and delivered when the specialist is available.
           </p>
         </div>
         <Button

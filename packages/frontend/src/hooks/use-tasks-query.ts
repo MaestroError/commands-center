@@ -29,6 +29,7 @@ import {
   createArtifactShareLink,
   getArtifactDeliveryUrls,
   createRunFollowup,
+  cancelRunFollowup,
   createTask,
   createTaskFeedback,
   createTaskFromTemplate,
@@ -123,6 +124,7 @@ export function useTaskRunsQuery(taskId?: string) {
     queryKey: queryKeys.taskRuns(taskId ?? "missing"),
     queryFn: () => listTaskRuns(taskId ?? ""),
     enabled: Boolean(taskId),
+    refetchInterval: 3_000,
   });
 }
 
@@ -149,6 +151,7 @@ export function useTaskSubtasksQuery(taskId?: string) {
     queryKey: queryKeys.taskSubtasks(taskId ?? "missing"),
     queryFn: () => listTaskSubtasks(taskId ?? ""),
     enabled: Boolean(taskId),
+    refetchInterval: 3_000,
   });
 }
 
@@ -177,8 +180,7 @@ export function useTaskRunFollowupsQuery(
     queryKey: queryKeys.taskRunFollowups(taskId ?? "missing", runId ?? "missing"),
     queryFn: () => listRunFollowups(taskId ?? "", runId ?? ""),
     enabled: Boolean(taskId && runId && (options.enabled ?? true)),
-    refetchInterval: (query) =>
-      query.state.data?.some((followup) => followup.status === "sending") ? 5_000 : false,
+    refetchInterval: 3_000,
   });
 }
 
@@ -417,6 +419,11 @@ export function useTaskMutations() {
           queryClient.invalidateQueries({ queryKey: ["tasks"] }),
         ]);
       },
+    }),
+    cancelRunFollowup: useMutation({
+      mutationFn: ({ taskId, runId, id }: { taskId: string; runId: string; id: string }) =>
+        cancelRunFollowup(taskId, runId, id),
+      onSuccess: async (_reply, { taskId, runId }) => invalidateRunFollowups(taskId, runId),
     }),
     createRunFollowup: useMutation({
       mutationFn: ({

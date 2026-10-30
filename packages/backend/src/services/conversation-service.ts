@@ -194,7 +194,10 @@ export function createConversationService(options: {
           operators.and(
             operators.eq(table.agent_id, agent.id),
             operators.eq(table.is_current, true),
-            operators.eq(table.source, "chat"),
+            operators.or(
+              operators.eq(table.source, "chat"),
+              operators.isNotNull(table.converted_at),
+            ),
           ),
         orderBy: (table, operators) => [operators.desc(table.updated_at)],
       });
@@ -301,7 +304,7 @@ export function createConversationService(options: {
       const parsed = sendConversationPromptInputSchema.parse(input);
       const loaded = await getConversationAgent(conversationId, { includeTaskRun: true });
 
-      if (loaded.conversation.source !== "task_run") {
+      if (!loaded.conversation.task_run_id) {
         throw new BadRequestError("Conversation is not a task run session.");
       }
 
@@ -340,7 +343,7 @@ export function createConversationService(options: {
       const parsed = sendConversationPromptInputSchema.parse(input);
       const loaded = await getConversationAgent(conversationId, { includeTaskRun: true });
 
-      if (loaded.conversation.source !== "task_run") {
+      if (!loaded.conversation.task_run_id) {
         throw new BadRequestError("Conversation is not a task run session.");
       }
 
@@ -457,7 +460,7 @@ export function createConversationService(options: {
       await options.db
         .update(conversations)
         .set({
-          source: "chat",
+          source: "task_run",
           converted_at: conversation.converted_at ?? new Date(),
           updated_at: new Date(),
         })
@@ -473,6 +476,10 @@ export function createConversationService(options: {
       const parsed = sendConversationPromptInputSchema.parse(input);
       return serializeConversationOperation(conversationId, async () => {
         const loaded = await getConversationAgent(conversationId);
+        if (loaded.conversation.task_run_id)
+          throw new BadRequestError(
+            "Task sessions accept queued replies through the task reply API.",
+          );
         const watchdog = await prepareInteractiveChatWatchdog(loaded);
         let promptStarted = false;
         let openCodeAccepted = false;
@@ -532,6 +539,10 @@ export function createConversationService(options: {
       const parsed = sendConversationCommandInputSchema.parse(input);
       return serializeConversationOperation(conversationId, async () => {
         const loaded = await getConversationAgent(conversationId);
+        if (loaded.conversation.task_run_id)
+          throw new BadRequestError(
+            "Task sessions accept queued replies through the task reply API.",
+          );
         let commandStarted = false;
         let openCodeAccepted = false;
         let uploadPersistence: ChatUploadPersistence | undefined;
@@ -589,6 +600,10 @@ export function createConversationService(options: {
     ): Promise<ConversationDetail> {
       const parsed = sendConversationShellInputSchema.parse(input);
       const loaded = await getConversationAgent(conversationId);
+      if (loaded.conversation.task_run_id)
+        throw new BadRequestError(
+          "Task sessions accept queued replies through the task reply API.",
+        );
 
       await setCurrentConversation(loaded.agent.id, loaded.conversation.id);
       await options.opencodeService.shellSession({
@@ -609,6 +624,10 @@ export function createConversationService(options: {
       const parsed = sendConversationPromptInputSchema.parse(input);
       return serializeConversationOperation(conversationId, async () => {
         const loaded = await getConversationAgent(conversationId);
+        if (loaded.conversation.task_run_id)
+          throw new BadRequestError(
+            "Task sessions accept queued replies through the task reply API.",
+          );
         const watchdog = await prepareInteractiveChatWatchdog(loaded);
 
         let promptStarted = false;
@@ -1045,7 +1064,10 @@ export function createConversationService(options: {
               where: (table, operators) =>
                 operators.and(
                   operators.eq(table.status, "active"),
-                  operators.eq(table.source, "chat"),
+                  operators.and(
+                    operators.eq(table.source, "chat"),
+                    operators.isNull(table.task_run_id),
+                  ),
                 ),
             });
         break;
@@ -1072,7 +1094,10 @@ export function createConversationService(options: {
                 operators.and(
                   operators.eq(table.id, conversation.id),
                   operators.eq(table.status, "active"),
-                  operators.eq(table.source, "chat"),
+                  operators.and(
+                    operators.eq(table.source, "chat"),
+                    operators.isNull(table.task_run_id),
+                  ),
                 ),
             });
             if (!currentConversation || signal.aborted) return undefined;
@@ -1265,7 +1290,7 @@ export function createConversationService(options: {
       const title = conversation.title ?? null;
       let archivePath: string;
 
-      if (conversation.source === "task_run" && conversation.task_id && conversation.task_run_id) {
+      if (conversation.task_id && conversation.task_run_id) {
         await archiveService.ensureTaskRunArchive({
           specialist,
           conversationId: conversation.id,
@@ -1317,7 +1342,7 @@ export function createConversationService(options: {
 
     try {
       const archivePath =
-        conversation.source === "task_run" && conversation.task_id && conversation.task_run_id
+        conversation.task_id && conversation.task_run_id
           ? archiveService.resolveTaskRunArchivePath({
               agentId: agent.id,
               taskId: conversation.task_id,
@@ -1358,7 +1383,7 @@ export function createConversationService(options: {
           operators.eq(table.id, conversationId),
           operators.eq(table.agent_id, agentId),
           operators.eq(table.status, "active"),
-          operators.eq(table.source, "chat"),
+          operators.or(operators.eq(table.source, "chat"), operators.isNotNull(table.converted_at)),
         ),
     });
 
@@ -1414,7 +1439,9 @@ export function createConversationService(options: {
     if (
       !conversation ||
       conversation.status !== "active" ||
-      (!optionsOverride.includeTaskRun && conversation.source !== "chat")
+      (!optionsOverride.includeTaskRun &&
+        conversation.source !== "chat" &&
+        !conversation.converted_at)
     ) {
       throw new NotFoundError("Conversation not found.");
     }
@@ -1461,14 +1488,14 @@ export function createConversationService(options: {
   }
 
   function scopeFor(conversation: ConversationRow): SystemPromptScope {
-    return conversation.source === "task_run" ? "task" : "chat";
+    return conversation.task_run_id ? "task" : "chat";
   }
 
   function buildSystemContext(
     agent: AgentRuntimeRow,
     conversation: ConversationRow,
   ): SystemPromptRenderContext {
-    const isTaskRun = conversation.source === "task_run";
+    const isTaskRun = Boolean(conversation.task_run_id);
     return {
       appName: APP_NAME,
       currentDate: new Date().toISOString().slice(0, 10),
@@ -1543,7 +1570,7 @@ export function createConversationService(options: {
     agent: AgentRuntimeRow,
     conversation: ConversationRow,
   ): Promise<{ appMcpServers?: SpecialistCapabilitySelection["appMcpServers"] }> {
-    if (conversation.source === "task_run" && conversation.task_run_id) {
+    if (conversation.task_run_id) {
       const run = await options.db.query.task_runs.findFirst({
         where: (table, operators) => operators.eq(table.id, conversation.task_run_id ?? ""),
         columns: { effective_permissions_json: true },
@@ -1767,7 +1794,7 @@ export function createConversationService(options: {
         operators.and(
           operators.eq(table.agent_id, agentId),
           operators.eq(table.status, "active"),
-          operators.eq(table.source, "chat"),
+          operators.or(operators.eq(table.source, "chat"), operators.isNotNull(table.converted_at)),
         ),
       orderBy: (table) => [desc(table.updated_at), desc(table.created_at)],
     });

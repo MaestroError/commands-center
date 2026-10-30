@@ -1108,10 +1108,7 @@ describe("TasksPage", () => {
         "/api/tasks/task-1/runs/run-1/followups",
         expect.objectContaining({
           method: "POST",
-          body: JSON.stringify({
-            body: "Please double-check the changelog.",
-            kind: "operator_reply",
-          }),
+          body: expect.stringContaining('"body":"Please double-check the changelog."'),
         }),
       );
     });
@@ -2784,7 +2781,7 @@ describe("TaskDetailPage", () => {
     ).toBe(true);
   });
 
-  it("disables feedback run replies when the run has no recorded session", async () => {
+  it("allows queued feedback replies before a session exists", async () => {
     const noSessionFeedback: TaskFeedbackThread = {
       ...feedbackThread,
       subtasks: feedbackThread.subtasks.map((subtask) => ({
@@ -2808,10 +2805,7 @@ describe("TaskDetailPage", () => {
     const comments = await screen.findByRole("region", { name: "Feedback comments" });
     const replyButtons = await within(comments).findAllByRole("button", { name: "Reply" });
 
-    expect(
-      within(comments).getAllByText("Replies require a recorded OpenCode session.").length,
-    ).toBeGreaterThan(0);
-    expect(replyButtons.every((button) => button.hasAttribute("disabled"))).toBe(true);
+    expect(replyButtons.every((button) => !button.hasAttribute("disabled"))).toBe(true);
   });
 
   it("updates the task detail page title from inline edit mode", async () => {
@@ -2993,16 +2987,13 @@ describe("TaskDetailPage", () => {
         "/api/tasks/task-1/runs/run-1/followups",
         expect.objectContaining({
           method: "POST",
-          body: JSON.stringify({
-            body: "Please double-check the changelog.",
-            kind: "operator_reply",
-          }),
+          body: expect.stringContaining('"body":"Please double-check the changelog."'),
         }),
       );
     });
   });
 
-  it("disables run replies when the run has no recorded session", async () => {
+  it("allows queued run replies before a session exists", async () => {
     mockFetch({ runsPayload: [{ ...run, opencodeSessionId: undefined }] });
 
     renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
@@ -3013,10 +3004,10 @@ describe("TaskDetailPage", () => {
     expect(runHistory).not.toBeNull();
 
     expect(within(runHistory as HTMLElement).getByText("Unavailable")).toBeInTheDocument();
-    expect(within(runHistory as HTMLElement).getByTestId("task-run-reply-run-1")).toBeDisabled();
+    expect(within(runHistory as HTMLElement).getByTestId("task-run-reply-run-1")).toBeEnabled();
   });
 
-  it("disables run replies while the run is in progress", async () => {
+  it("allows queued replies while the run is in progress", async () => {
     mockFetch({ runsPayload: [{ ...run, status: "running" }] });
 
     renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
@@ -3026,8 +3017,6 @@ describe("TaskDetailPage", () => {
     const runHistory = screen.getByRole("heading", { name: "Run history" }).closest("section");
     expect(runHistory).not.toBeNull();
 
-    // The row-level toggle stays enabled (viewing the reply thread is always
-    // allowed); only the panel's own Reply control is disabled while running.
     await user.click(within(runHistory as HTMLElement).getByTestId("task-run-reply-run-1"));
     const replyButtons = within(runHistory as HTMLElement).getAllByRole("button", {
       name: "Reply",
@@ -3035,10 +3024,10 @@ describe("TaskDetailPage", () => {
     const panelReplyButton = replyButtons[1];
     if (!panelReplyButton) throw new Error("Expected run reply panel button.");
 
-    expect(panelReplyButton).toBeDisabled();
+    expect(panelReplyButton).toBeEnabled();
     expect(
       within(runHistory as HTMLElement).getByText(
-        "Replies are disabled while the run is in progress.",
+        "Replies are queued for this run and delivered when the specialist is available.",
       ),
     ).toBeInTheDocument();
   });
@@ -3062,7 +3051,7 @@ describe("TaskDetailPage", () => {
       await within(runHistory as HTMLElement).findByText("Please verify the release notes."),
     ).toBeInTheDocument();
     expect(
-      within(runHistory as HTMLElement).getByText("Waiting for a response…"),
+      within(runHistory as HTMLElement).getByText(/Delivered — awaiting answer/),
     ).toBeInTheDocument();
     expect(within(runHistory as HTMLElement).getByText("Already delivered.")).toBeInTheDocument();
     expect(within(runHistory as HTMLElement).getByText("Verified, all good.")).toBeInTheDocument();

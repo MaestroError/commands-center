@@ -212,7 +212,7 @@ export function createTaskRunOps(ctx: TaskServiceContext, service: TaskServiceRe
       // rewriting final_message/result_text without retroactively changing
       // what the Feedback timeline already showed as this run's comment.
       const mergedStatus = parsed.status ?? existing.status;
-      const isTerminalStatus = mergedStatus !== "queued" && mergedStatus !== "running";
+      const isTerminalStatus = !["queued", "running", "waiting"].includes(mergedStatus);
       const mergedOutcomeText =
         parsed.resultText ??
         existing.result_text ??
@@ -292,6 +292,13 @@ export function createTaskRunOps(ctx: TaskServiceContext, service: TaskServiceRe
       status: TaskRunStatus,
       input: Omit<UpdateTaskRunInput, "status"> = {},
     ): Promise<TaskRun | undefined> {
+      if (status === "completed") {
+        const outstanding = await options.db.query.task_subtasks.findFirst({
+          where: (table, { and, eq, isNull }) =>
+            and(eq(table.owner_run_id, id), isNull(table.accepted_at), isNull(table.deleted_at)),
+        });
+        if (outstanding) status = "waiting";
+      }
       const run = await service.updateRun(id, { ...input, status });
 
       if (run) {

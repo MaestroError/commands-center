@@ -939,6 +939,21 @@ export function registerTaskServiceRoutes(
     },
   );
 
+  app.delete(
+    "/api/tasks/:id/runs/:runId/followups/:followupId",
+    {
+      schema: {
+        params: taskRunParamsSchema.extend({ followupId: z.string().min(1) }),
+        response: { 200: taskRunFollowupSchema },
+      },
+    },
+    async (request) => {
+      if (!(await service.getRun(request.params.id, request.params.runId)))
+        throw new NotFoundError("Task run not found.");
+      return executionService.cancelRunReply(request.params.runId, request.params.followupId);
+    },
+  );
+
   app.get(
     "/api/tasks/:id/runs/:runId/artifacts",
     {

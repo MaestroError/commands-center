@@ -18,7 +18,7 @@ import {
 import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { createId, now } from "../../db/ids.js";
-import { task_feedback, task_run_followups, task_subtasks } from "../../db/schema/index.js";
+import { task_feedback, task_run_followups, task_subtasks, tasks } from "../../db/schema/index.js";
 import { ConflictError } from "../../lib/api-error.js";
 import { mapSubtaskDetail, mapTaskRunFollowup, mapTaskSubtask } from "./mappers.js";
 
@@ -151,26 +151,56 @@ export function createTaskFeedbackSubtaskOps(ctx: TaskServiceContext, service: T
 
     async insertFollowup(run: TaskRun, input: unknown): Promise<TaskRunFollowup> {
       const parsed = createTaskRunFollowupInputSchema.parse(input);
+      const requestId = parsed.requestId ? `operator:${parsed.requestId}` : undefined;
+      if (requestId) {
+        const existing = await options.db.query.task_run_followups.findFirst({
+          where: (table, { and, eq }) =>
+            and(eq(table.run_id, run.id), eq(table.request_id, requestId)),
+        });
+        if (existing) {
+          if (existing.body !== parsed.body || existing.payload_json !== JSON.stringify(parsed))
+            throw new ConflictError("Request ID already used for a different reply.");
+          return mapTaskRunFollowup(existing);
+        }
+      }
       const timestamp = now();
-      const [row] = await options.db
-        .insert(task_run_followups)
-        .values({
-          id: createId(),
-          task_id: run.taskId,
-          run_id: run.id,
-          kind: parsed.kind,
-          status: "sending",
-          body: parsed.body,
-          answer_body: null,
-          answered_at: null,
-          error_message: null,
-          created_at: timestamp,
-          updated_at: timestamp,
-        })
-        .returning();
+      const row = options.db.transaction((tx) => {
+        const inserted = tx
+          .insert(task_run_followups)
+          .values({
+            id: createId(),
+            task_id: run.taskId,
+            run_id: run.id,
+            kind: parsed.kind,
+            status: "queued",
+            request_id: requestId,
+            payload_json: JSON.stringify(parsed),
+            body: parsed.body,
+            answer_body: null,
+            answered_at: null,
+            error_message: null,
+            created_at: timestamp,
+            updated_at: timestamp,
+          })
+          .onConflictDoNothing()
+          .returning()
+          .get();
+        if (inserted && !run.subtaskId)
+          tx.update(tasks)
+            .set({ status: "queued", updated_at: timestamp })
+            .where(and(eq(tasks.id, run.taskId), isNull(tasks.deleted_at)))
+            .run();
+        return inserted;
+      });
 
       if (!row) {
-        throw new Error("Failed to create task run reply record.");
+        const existing = await options.db.query.task_run_followups.findFirst({
+          where: (table, { and, eq }) =>
+            and(eq(table.run_id, run.id), eq(table.request_id, requestId ?? "")),
+        });
+        if (!existing || existing.payload_json !== JSON.stringify(parsed))
+          throw new ConflictError("Request ID already used for a different reply.");
+        return mapTaskRunFollowup(existing);
       }
 
       return mapTaskRunFollowup(row);

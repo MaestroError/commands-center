@@ -203,6 +203,13 @@ export function mapTaskSubtask(row: typeof task_subtasks.$inferSelect): TaskSubt
   return taskSubtaskSchema.parse({
     id: row.id,
     taskId: row.task_id,
+    ownerRunId: row.owner_run_id ?? undefined,
+    expectedOutput: row.expected_output ?? undefined,
+    inputArtifactIds: row.input_artifact_ids
+      ? (JSON.parse(row.input_artifact_ids) as string[])
+      : undefined,
+    acceptedAt: row.accepted_at?.toISOString(),
+    revisionCount: row.owner_run_id ? row.revision_count : undefined,
     feedbackId: row.feedback_id ?? undefined,
     agentId: row.agent_id,
     description: row.description,
@@ -278,6 +285,17 @@ export function mapTaskRunFollowup(row: typeof task_run_followups.$inferSelect):
     kind: row.kind,
     status: row.status,
     body: row.body,
+    requestId: row.request_id?.startsWith("operator:")
+      ? row.request_id.slice("operator:".length)
+      : (row.request_id ?? undefined),
+    deliveredAt: row.delivered_at?.toISOString(),
+    deliveryStartedAt: row.delivery_started_at?.toISOString(),
+    waitingReason:
+      row.status === "queued"
+        ? "Waiting for the specialist and a safe turn boundary."
+        : row.status === "blocked"
+          ? (row.error_message ?? "Delivery requires attention.")
+          : undefined,
     createdAt: row.created_at.toISOString(),
     answerBody: row.answer_body ?? undefined,
     answeredAt: row.answered_at?.toISOString(),
@@ -456,7 +474,7 @@ export async function getActiveReplyRunIds(db: AppDb, runIds: string[]): Promise
     .where(
       and(
         inArray(task_run_followups.run_id, uniqueRunIds),
-        eq(task_run_followups.status, "sending"),
+        inArray(task_run_followups.status, ["queued", "delivering", "sending", "blocked"]),
       ),
     )
     .groupBy(task_run_followups.run_id);

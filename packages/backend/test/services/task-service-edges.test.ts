@@ -3,7 +3,8 @@ import { randomUUID } from "node:crypto";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { AppDb } from "../../src/db/client";
-import { agents } from "../../src/db/schema/index";
+import { eq } from "drizzle-orm";
+import { agents, task_run_followups } from "../../src/db/schema/index";
 import { BadRequestError, ConflictError, NotFoundError } from "../../src/lib/api-error";
 import { createTaskService } from "../../src/services/task-service";
 import { createTestDatabase } from "../helpers/db";
@@ -186,7 +187,7 @@ describe("task-service edge cases", () => {
   });
 
   it("records and resolves run followups", async () => {
-    const { taskService, agentId } = await setup();
+    const { taskService, agentId, testDb } = await setup();
     const task = await taskService.create({ agentId, title: "Followup task" });
     const run = await taskService.createRun({
       taskId: task.id,
@@ -197,6 +198,10 @@ describe("task-service edge cases", () => {
     });
 
     const followup = await taskService.insertFollowup(run, { body: "Need input." });
+    await testDb.client.db
+      .update(task_run_followups)
+      .set({ status: "sending" })
+      .where(eq(task_run_followups.id, followup.id));
     expect(await taskService.listFollowups(run.id)).toHaveLength(1);
     expect(await taskService.findInFlightFollowup(run.id)).toBeDefined();
 
@@ -205,6 +210,10 @@ describe("task-service edge cases", () => {
 
     // A second follow-up can be marked failed instead of answered.
     const second = await taskService.insertFollowup(run, { body: "Still need input." });
+    await testDb.client.db
+      .update(task_run_followups)
+      .set({ status: "sending" })
+      .where(eq(task_run_followups.id, second.id));
     await taskService.markFollowupFailed(second.id, "delivery failed");
     expect(await taskService.findInFlightFollowup(run.id)).toBeUndefined();
   });
