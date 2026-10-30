@@ -3,6 +3,7 @@
 
 import type { ConversationDetail, TaskRun } from "@cc/shared/schemas";
 import type { Logger } from "pino";
+import type { RuntimeConfig } from "../../lib/runtime-config.js";
 import type { AppDb } from "../../db/client.js";
 import type { ActivityService } from "../activity-service.js";
 import type { ConversationService } from "../conversation-service.js";
@@ -20,6 +21,7 @@ import type { TaskRunTransportRetryOptions } from "../task-run-support.js";
 import type { TaskService } from "../task-service.js";
 
 export interface TaskExecutionServiceOptions {
+  config?: RuntimeConfig;
   db?: AppDb;
   taskService: TaskService;
   conversationService?: ConversationService;

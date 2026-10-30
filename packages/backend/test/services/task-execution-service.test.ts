@@ -1,5 +1,7 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import type { Logger } from "pino";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AppDb } from "../../src/db/client";
 import { agents } from "../../src/db/schema/index";
@@ -11,19 +13,19 @@ import {
   createConversationService,
   TaskRunPromptError,
 } from "../../src/services/conversation-service";
-import { createTaskPermissionService } from "../../src/services/task-permission-service";
-import { createTaskExecutionService as createBaseTaskExecutionService } from "../../src/services/task-execution-service";
-import type { TaskRunMonitorSettingsService } from "../../src/services/task-run-monitor-settings-service";
-import { createTaskService } from "../../src/services/task-service";
 import type {
   CreateOpenCodeSessionOptions,
-  OpenCodeService,
   OpenCodePendingPermission,
   OpenCodePendingQuestion,
+  OpenCodeService,
   OpenCodeSession,
   OpenCodeSessionMessage,
   OpenCodeSessionStatus,
 } from "../../src/services/opencode-service";
+import { createTaskExecutionService as createBaseTaskExecutionService } from "../../src/services/task-execution-service";
+import { createTaskPermissionService } from "../../src/services/task-permission-service";
+import type { TaskRunMonitorSettingsService } from "../../src/services/task-run-monitor-settings-service";
+import { createTaskService } from "../../src/services/task-service";
 import { createTestDatabase } from "../helpers/db";
 
 const taskExecutionServices: Array<ReturnType<typeof createBaseTaskExecutionService>> = [];
@@ -45,6 +47,671 @@ function createTaskExecutionService(
 }
 
 describe("createTaskExecutionService", () => {
+  it("delivers a delayed worker result only after the owner's other queued task finishes", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const workerGate = Promise.withResolvers<void>();
+    const otherGate = Promise.withResolvers<void>();
+    const prompts: string[] = [];
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService({
+        promptGates: [workerGate.promise, otherGate.promise],
+        completeAsyncPrompt: true,
+        statusSequence: [{ type: "idle" }],
+        onPrompt: ({ text }) => prompts.push(text),
+      }),
+    });
+    const execution = createTaskExecutionService({
+      db: testDb.client.db,
+      config: testDb.config,
+      taskService,
+      conversationService,
+      monitor: { initialPollMs: 1, maxPollMs: 1, idlePolls: 1 },
+    });
+    try {
+      const worker = await insertAgent(testDb.client.db);
+      const owner = await insertAgent(testDb.client.db, { allowedTeammates: [worker.slug] });
+      const task = await taskService.create({ agentId: owner.id, title: "Original goal" });
+      const root = await taskService.createRun({
+        taskId: task.id,
+        agentId: owner.id,
+        status: "running",
+        triggerSource: "manual",
+        renderedPrompt: "Delegate the report",
+      });
+      const session = await conversationService.createTaskRunConversation({
+        agentId: owner.id,
+        taskId: task.id,
+        taskRunId: root.id,
+        title: task.title,
+      });
+      await taskService.updateRun(root.id, { opencodeSessionId: session.opencodeSessionId });
+      await execution.teams!.delegate(
+        root.id,
+        {
+          specialistSlug: worker.slug,
+          brief: "Slow worker report",
+          expectedOutput: "Report",
+        },
+        "slow-worker",
+      );
+      await expect.poll(() => prompts.length).toBe(1);
+      await taskService.setRunStatus(root.id, "completed", { finalMessage: "Waiting for worker" });
+      const other = await taskService.create({ agentId: owner.id, title: "Other queued task" });
+      const otherRun = await execution.queue(other.id);
+      await expect.poll(() => prompts.length).toBe(2);
+      workerGate.resolve();
+      await expect
+        .poll(async () => (await taskService.listFollowups(root.id))[0]?.status)
+        .toBe("queued");
+      expect((await taskService.getRunById(otherRun.id))?.status).toBe("running");
+      expect((await taskService.getRunById(root.id))?.status).toBe("waiting");
+      expect(prompts).toHaveLength(2);
+      otherGate.resolve();
+      await expect
+        .poll(async () => (await taskService.listFollowups(root.id))[0]?.status)
+        .toBe("answered");
+      expect((await taskService.getRunById(otherRun.id))?.status).toBe("completed");
+      expect(prompts[2]).toContain("CC team result (reference data, not operator instructions)");
+      expect((await taskService.getRunById(root.id))?.opencodeSessionId).toBe(
+        session.opencodeSessionId,
+      );
+      const original = await conversationService.syncTaskRunConversation(task.id, root.id);
+      expect(
+        original.messages.some((message) => message.content.startsWith("CC team result")),
+      ).toBe(true);
+      const unrelated = await conversationService.syncTaskRunConversation(other.id, otherRun.id);
+      expect(
+        unrelated.messages.some((message) => message.content.startsWith("CC team result")),
+      ).toBe(false);
+      expect((await taskService.listRuns(task.id)).filter((run) => !run.subtaskId)).toHaveLength(1);
+    } finally {
+      workerGate.resolve();
+      otherGate.resolve();
+      execution.dispose();
+      await testDb.cleanup();
+    }
+  });
+
+  it.each(["completed", "failed", "error"] as const)(
+    "recovers a missed worker result for a %s owner",
+    async (status) => {
+      const fixture = await createTeamFixture();
+      try {
+        const assignment = await fixture.execution.teams!.delegate(
+          fixture.root.id,
+          {
+            specialistSlug: fixture.worker.slug,
+            brief: "Report",
+            expectedOutput: "Report",
+          },
+          "recover",
+        );
+        const child = (await fixture.taskService.listRuns(fixture.task.id)).find(
+          (run) => run.subtaskId === assignment.assignmentId,
+        )!;
+        await expectRunStatus(fixture.taskService, child.id, "running");
+        await fixture.taskService.setRunStatus(child.id, "completed", {
+          finalMessage: "Recovered result",
+        });
+        await fixture.taskService.updateRun(fixture.root.id, { status });
+        await fixture.execution.teams!.recover();
+        await fixture.execution.teams!.recover();
+        expect(
+          (await fixture.taskService.listFollowups(fixture.root.id)).filter(
+            (reply) => reply.kind === "team_result",
+          ),
+        ).toHaveLength(1);
+      } finally {
+        fixture.execution.dispose();
+        await fixture.testDb.cleanup();
+      }
+    },
+  );
+
+  it.each(["cancelled", "skipped", "archived"] as const)(
+    "does not recover results for a %s goal",
+    async (state) => {
+      const fixture = await createTeamFixture();
+      try {
+        const assignment = await fixture.execution.teams!.delegate(
+          fixture.root.id,
+          {
+            specialistSlug: fixture.worker.slug,
+            brief: "Report",
+            expectedOutput: "Report",
+          },
+          "excluded",
+        );
+        const child = (await fixture.taskService.listRuns(fixture.task.id)).find(
+          (run) => run.subtaskId === assignment.assignmentId,
+        )!;
+        await expectRunStatus(fixture.taskService, child.id, "running");
+        await fixture.taskService.setRunStatus(child.id, "completed", { finalMessage: "Done" });
+        if (state === "archived") {
+          await fixture.taskService.updateRun(fixture.root.id, { status: "completed" });
+          await fixture.taskService.archive(fixture.task.id);
+        } else {
+          await fixture.taskService.updateRun(fixture.root.id, { status: state });
+        }
+        await fixture.execution.teams!.recover();
+        expect(await fixture.taskService.listFollowups(fixture.root.id)).toHaveLength(0);
+      } finally {
+        fixture.execution.dispose();
+        await fixture.testDb.cleanup();
+      }
+    },
+  );
+
+  it("marks an undelivered result as handled when the owner accepts it directly", async () => {
+    const fixture = await createTeamFixture();
+    try {
+      const assignment = await fixture.execution.teams!.delegate(
+        fixture.root.id,
+        {
+          specialistSlug: fixture.worker.slug,
+          brief: "Report",
+          expectedOutput: "Report",
+        },
+        "accept",
+      );
+      const child = (await fixture.taskService.listRuns(fixture.task.id)).find(
+        (run) => run.subtaskId === assignment.assignmentId,
+      )!;
+      await expectRunStatus(fixture.taskService, child.id, "running");
+      await fixture.taskService.setRunStatus(child.id, "completed", { finalMessage: "Done" });
+      await fixture.execution.teams!.recover();
+      await fixture.execution.teams!.accept(fixture.root.id, assignment.assignmentId);
+      await fixture.execution.teams!.recover();
+      expect(
+        (await fixture.taskService.listFollowups(fixture.root.id)).find(
+          (reply) => reply.kind === "team_result",
+        ),
+      ).toMatchObject({ status: "handled", deliveredAt: undefined });
+    } finally {
+      fixture.execution.dispose();
+      await fixture.testDb.cleanup();
+    }
+  });
+  it("delivers a busy specialist's queued reply after restart", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const prompts: string[] = [];
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService({
+        completeAsyncPrompt: true,
+        statusSequence: [{ type: "idle" }],
+        onPrompt: (input) => prompts.push(input.text),
+      }),
+    });
+    const options = {
+      db: testDb.client.db,
+      taskService,
+      conversationService,
+      monitor: { initialPollMs: 1, maxPollMs: 1, idlePolls: 1 },
+    };
+    const before = createTaskExecutionService(options);
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Reply destination" });
+      const run = await taskService.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        status: "completed",
+        triggerSource: "manual",
+        renderedPrompt: "Original goal",
+      });
+      const session = await conversationService.createTaskRunConversation({
+        agentId: agent.id,
+        taskId: task.id,
+        taskRunId: run.id,
+        title: task.title,
+      });
+      await taskService.updateRun(run.id, { opencodeSessionId: session.opencodeSessionId });
+      const busyTask = await taskService.create({ agentId: agent.id, title: "Busy task" });
+      const busy = await taskService.createRun({
+        taskId: busyTask.id,
+        agentId: agent.id,
+        status: "running",
+        triggerSource: "manual",
+        renderedPrompt: "Busy",
+      });
+      await before.sendRunReply(run.id, {
+        body: "Continue after restart",
+        requestId: "restart-reply",
+      });
+      before.dispose();
+      await taskService.setRunStatus(busy.id, "completed", {
+        completedAt: new Date().toISOString(),
+      });
+      const after = createTaskExecutionService(options);
+      await after.resumeRunningTaskRuns();
+      await expect
+        .poll(async () => (await taskService.listFollowups(run.id))[0]?.status)
+        .toBe("answered");
+      expect(prompts).toEqual(["Continue after restart"]);
+      expect((await taskService.getRunById(run.id))?.opencodeSessionId).toBe(
+        session.opencodeSessionId,
+      );
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("deduplicates concurrent submissions with the same request ID", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService(),
+    });
+    const execution = createTaskExecutionService({
+      db: testDb.client.db,
+      taskService,
+      conversationService,
+    });
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Deduplicate" });
+      const run = await taskService.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        status: "running",
+        triggerSource: "manual",
+        renderedPrompt: "Busy",
+      });
+      const replies = await Promise.all([
+        execution.sendRunReply(run.id, { body: "Next", requestId: "same" }),
+        execution.sendRunReply(run.id, { body: "Next", requestId: "same" }),
+      ]);
+      expect(replies[0]?.id).toBe(replies[1]?.id);
+      expect(await taskService.listFollowups(run.id)).toHaveLength(1);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("cancels a pending reply without cancelling the active run", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService(),
+    });
+    const execution = createTaskExecutionService({
+      db: testDb.client.db,
+      taskService,
+      conversationService,
+    });
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Cancellation" });
+      const run = await taskService.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        status: "running",
+        triggerSource: "manual",
+        renderedPrompt: "Busy",
+      });
+      const reply = await execution.sendRunReply(run.id, { body: "Never deliver" });
+      expect(execution.cancelRunReply(run.id, reply.id).status).toBe("cancelled");
+      expect((await taskService.getRunById(run.id))?.status).toBe("running");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("answers consecutive queued replies in acceptance order", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const prompts: string[] = [];
+    const terminal = vi.fn();
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService({
+        completeAsyncPrompt: true,
+        statusSequence: [{ type: "idle" }],
+        onPrompt: (input) => prompts.push(input.text),
+      }),
+    });
+    const execution = createTaskExecutionService({
+      db: testDb.client.db,
+      taskService,
+      conversationService,
+      monitor: { initialPollMs: 1, maxPollMs: 1, idlePolls: 1 },
+      onRunTerminal: terminal,
+    });
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Ordered replies" });
+      const run = await taskService.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        status: "completed",
+        triggerSource: "manual",
+        renderedPrompt: "Initial",
+      });
+      const session = await conversationService.createTaskRunConversation({
+        agentId: agent.id,
+        taskId: task.id,
+        taskRunId: run.id,
+        title: task.title,
+      });
+      await taskService.updateRun(run.id, { opencodeSessionId: session.opencodeSessionId });
+      await execution.sendRunReply(run.id, { body: "First" });
+      await execution.sendRunReply(run.id, { body: "Second" });
+      await expect
+        .poll(async () => (await taskService.listFollowups(run.id)).map((reply) => reply.status))
+        .toEqual(["answered", "answered"]);
+      expect(prompts).toEqual(["First", "Second"]);
+      await expect.poll(() => terminal.mock.calls.length).toBe(1);
+      expect((await taskService.listFollowups(run.id)).map((reply) => reply.answerBody)).toEqual([
+        expect.stringContaining("First"),
+        expect.stringContaining("Second"),
+      ]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("uses the delegated worker's model and permission defaults", async () => {
+    const fixture = await createTeamFixture();
+    try {
+      const delegated = await fixture.execution.teams!.delegate(
+        fixture.root.id,
+        {
+          specialistSlug: fixture.worker.slug,
+          brief: "Produce a bounded result",
+          expectedOutput: "A short report",
+        },
+        "call-one",
+      );
+      const run = (await fixture.taskService.listRuns(fixture.task.id)).find(
+        (run) => run.subtaskId === delegated.assignmentId,
+      )!;
+      expect(run.model).toBe("openai/worker-model");
+      expect(run.effectivePermissions?.appToolPermissions).toContainEqual({
+        pattern: "cc_default_set_task_result",
+        action: "allow",
+      });
+      expect(run.renderedPrompt).not.toContain("private parent context");
+    } finally {
+      fixture.execution.dispose();
+      await fixture.testDb.cleanup();
+    }
+  });
+
+  it("rejects delegation outside the permitted collaborator list", async () => {
+    const fixture = await createTeamFixture();
+    try {
+      await expect(
+        fixture.execution.teams!.delegate(
+          fixture.root.id,
+          { specialistSlug: fixture.owner.slug, brief: "Self", expectedOutput: "No" },
+          "self",
+        ),
+      ).rejects.toThrow("not permitted");
+      expect(await fixture.taskService.listSubtasks(fixture.task.id)).toEqual([]);
+    } finally {
+      fixture.execution.dispose();
+      await fixture.testDb.cleanup();
+    }
+  });
+
+  it("deduplicates delegated assignments by tool-call identity", async () => {
+    const fixture = await createTeamFixture();
+    try {
+      const input = {
+        specialistSlug: fixture.worker.slug,
+        brief: "Report",
+        expectedOutput: "Report",
+      };
+      const first = await fixture.execution.teams!.delegate(fixture.root.id, input, "same-call");
+      const second = await fixture.execution.teams!.delegate(fixture.root.id, input, "same-call");
+      expect(second.assignmentId).toBe(first.assignmentId);
+      expect(await fixture.taskService.listSubtasks(fixture.task.id)).toHaveLength(1);
+    } finally {
+      fixture.execution.dispose();
+      await fixture.testDb.cleanup();
+    }
+  });
+
+  it("keeps the owner waiting until delegated work is accepted", async () => {
+    const fixture = await createTeamFixture();
+    try {
+      await fixture.execution.teams!.delegate(
+        fixture.root.id,
+        { specialistSlug: fixture.worker.slug, brief: "Report", expectedOutput: "Report" },
+        "one",
+      );
+      const waiting = await fixture.taskService.setRunStatus(fixture.root.id, "completed", {
+        finalMessage: "Waiting for result",
+      });
+      expect(waiting?.status).toBe("waiting");
+      expect((await fixture.taskService.get(fixture.task.id))?.status).toBe("queued");
+    } finally {
+      fixture.execution.dispose();
+      await fixture.testDb.cleanup();
+    }
+  });
+
+  it("does not overwrite the parent's final result when a worker finishes", async () => {
+    const fixture = await createTeamFixture();
+    try {
+      const assignment = await fixture.execution.teams!.delegate(
+        fixture.root.id,
+        { specialistSlug: fixture.worker.slug, brief: "Report", expectedOutput: "Report" },
+        "one",
+      );
+      const child = (await fixture.taskService.listRuns(fixture.task.id)).find(
+        (run) => run.subtaskId === assignment.assignmentId,
+      )!;
+      await expectRunStatus(fixture.taskService, child.id, "running");
+      await fixture.taskService.setRunStatus(child.id, "completed", {
+        resultText: "Worker only",
+        completedAt: new Date().toISOString(),
+      });
+      expect((await fixture.taskService.get(fixture.task.id))?.latestResultText).not.toBe(
+        "Worker only",
+      );
+    } finally {
+      fixture.execution.dispose();
+      await fixture.testDb.cleanup();
+    }
+  });
+
+  it("recovers a worker artifact handoff without repeating the notification", async () => {
+    const fixture = await createTeamFixture();
+    try {
+      const assignment = await fixture.execution.teams!.delegate(
+        fixture.root.id,
+        {
+          specialistSlug: fixture.worker.slug,
+          brief: "Produce output",
+          expectedOutput: "Markdown file",
+        },
+        "artifact",
+      );
+      const child = (await fixture.taskService.listRuns(fixture.task.id)).find(
+        (run) => run.subtaskId === assignment.assignmentId,
+      )!;
+      await expectRunStatus(fixture.taskService, child.id, "running");
+      await writeFile(
+        join(fixture.testDb.config.paths.workspaceDir, "team-output.md"),
+        "Original output",
+      );
+      const withArtifact = await fixture.taskService.addRunArtifact(child.id, fixture.worker.id, {
+        title: "Output",
+        type: "file",
+        link: "team-output.md",
+      });
+      await fixture.taskService.setRunStatus(child.id, "completed", {
+        resultText: "Output ready",
+        completedAt: new Date().toISOString(),
+      });
+      await fixture.execution.teams!.recover();
+      await fixture.execution.teams!.recover();
+      const messages = await fixture.taskService.listFollowups(fixture.root.id);
+      expect(messages.filter((entry) => entry.kind === "team_result")).toHaveLength(1);
+      await writeFile(
+        join(fixture.testDb.config.paths.workspaceDir, "team-output.md"),
+        "Changed later",
+      );
+      const shared = await fixture.execution.teams!.readArtifact(
+        fixture.root.id,
+        withArtifact.artifacts[0]!.id,
+      );
+      expect(shared).toMatchObject({ text: "Original output" });
+    } finally {
+      fixture.execution.dispose();
+      await fixture.testDb.cleanup();
+    }
+  });
+
+  it("rejects recursive delegation from a worker session", async () => {
+    const fixture = await createTeamFixture();
+    try {
+      const assignment = await fixture.execution.teams!.delegate(
+        fixture.root.id,
+        { specialistSlug: fixture.worker.slug, brief: "Report", expectedOutput: "Report" },
+        "one",
+      );
+      const child = (await fixture.taskService.listRuns(fixture.task.id)).find(
+        (run) => run.subtaskId === assignment.assignmentId,
+      )!;
+      await expect(
+        fixture.execution.teams!.delegate(
+          child.id,
+          { specialistSlug: fixture.owner.slug, brief: "Recursion", expectedOutput: "None" },
+          "nested",
+        ),
+      ).rejects.toThrow("Only the main task owner");
+    } finally {
+      fixture.execution.dispose();
+      await fixture.testDb.cleanup();
+    }
+  });
+
+  it("cancels delegated runs when the owner goal is cancelled", async () => {
+    const fixture = await createTeamFixture();
+    try {
+      const assignment = await fixture.execution.teams!.delegate(
+        fixture.root.id,
+        { specialistSlug: fixture.worker.slug, brief: "Report", expectedOutput: "Report" },
+        "one",
+      );
+      const child = (await fixture.taskService.listRuns(fixture.task.id)).find(
+        (run) => run.subtaskId === assignment.assignmentId,
+      )!;
+      await expectRunStatus(fixture.taskService, child.id, "running");
+      await fixture.execution.cancel(fixture.root.id);
+      expect((await fixture.taskService.getRunById(child.id))?.status).toBe("cancelled");
+      await fixture.execution.teams!.notify((await fixture.taskService.getRunById(child.id))!);
+      expect(await fixture.taskService.listFollowups(fixture.root.id)).toEqual([]);
+    } finally {
+      fixture.execution.dispose();
+      await fixture.testDb.cleanup();
+    }
+  });
+
+  it("reuses the worker session for an idempotent revision", async () => {
+    const fixture = await createTeamFixture();
+    try {
+      const assignment = await fixture.execution.teams!.delegate(
+        fixture.root.id,
+        { specialistSlug: fixture.worker.slug, brief: "Report", expectedOutput: "Report" },
+        "one",
+      );
+      const child = (await fixture.taskService.listRuns(fixture.task.id)).find(
+        (run) => run.subtaskId === assignment.assignmentId,
+      )!;
+      await expectRunStatus(fixture.taskService, child.id, "running");
+      await expect
+        .poll(async () => (await fixture.taskService.getRunById(child.id))?.opencodeSessionId)
+        .toBeTruthy();
+      const session = (await fixture.taskService.getRunById(child.id))!.opencodeSessionId;
+      await fixture.taskService.setRunStatus(child.id, "completed", {
+        completedAt: new Date().toISOString(),
+      });
+      await fixture.execution.teams!.revise(
+        fixture.root.id,
+        assignment.assignmentId,
+        "Clarify the result",
+        "revision-one",
+      );
+      await fixture.execution.teams!.revise(
+        fixture.root.id,
+        assignment.assignmentId,
+        "Clarify the result",
+        "revision-one",
+      );
+      await expectRunStatus(fixture.taskService, child.id, "running");
+      expect((await fixture.taskService.getRunById(child.id))?.opencodeSessionId).toBe(session);
+      expect(await fixture.taskService.listFollowups(child.id)).toHaveLength(1);
+      expect((await fixture.taskService.listSubtasks(fixture.task.id))[0]?.revisionCount).toBe(1);
+    } finally {
+      fixture.execution.dispose();
+      await fixture.testDb.cleanup();
+    }
+  });
+
+  it("completes the goal only after the owner accepts the worker result", async () => {
+    const fixture = await createTeamFixture();
+    try {
+      const assignment = await fixture.execution.teams!.delegate(
+        fixture.root.id,
+        { specialistSlug: fixture.worker.slug, brief: "Report", expectedOutput: "Report" },
+        "one",
+      );
+      const child = (await fixture.taskService.listRuns(fixture.task.id)).find(
+        (run) => run.subtaskId === assignment.assignmentId,
+      )!;
+      await expectRunStatus(fixture.taskService, child.id, "running");
+      await fixture.taskService.setRunStatus(child.id, "completed", {
+        completedAt: new Date().toISOString(),
+      });
+      await fixture.execution.teams!.accept(fixture.root.id, assignment.assignmentId);
+      expect(
+        (
+          await fixture.taskService.setRunStatus(fixture.root.id, "completed", {
+            finalMessage: "Goal achieved",
+          })
+        )?.status,
+      ).toBe("completed");
+    } finally {
+      fixture.execution.dispose();
+      await fixture.testDb.cleanup();
+    }
+  });
+
+  it("denies artifact access outside the worker's selected inputs", async () => {
+    const fixture = await createTeamFixture();
+    try {
+      const assignment = await fixture.execution.teams!.delegate(
+        fixture.root.id,
+        { specialistSlug: fixture.worker.slug, brief: "Report", expectedOutput: "Report" },
+        "one",
+      );
+      const child = (await fixture.taskService.listRuns(fixture.task.id)).find(
+        (run) => run.subtaskId === assignment.assignmentId,
+      )!;
+      await expectRunStatus(fixture.taskService, child.id, "running");
+      await expect(
+        fixture.execution.teams!.readArtifact(child.id, "private-artifact"),
+      ).rejects.toThrow("not shared");
+    } finally {
+      fixture.execution.dispose();
+      await fixture.testDb.cleanup();
+    }
+  });
+
   it("runs manual tasks through queued, running, and completed states", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
@@ -457,11 +1124,14 @@ describe("createTaskExecutionService", () => {
       });
 
       const followup = await executionService.sendRunReply(run.id, { body: "Ship option A." });
+      await expect
+        .poll(async () => (await taskService.listFollowups(run.id))[0]?.status)
+        .toBe("sending");
       const refreshed = await taskService.getRunById(run.id);
       const followups = await taskService.listFollowups(run.id);
       const taskAfter = await taskService.get(task.id);
 
-      expect(followup.status).toBe("sending");
+      expect(followup.status).toBe("queued");
       expect(followup.body).toBe("Ship option A.");
       expect(prompts.map((prompt) => prompt.text)).toEqual(["Ship option A."]);
       expect(refreshed?.status).toBe("running");
@@ -520,7 +1190,6 @@ describe("createTaskExecutionService", () => {
 
       const followup = await executionService.sendRunReply(run.id, { body: "Keep working." });
 
-      expect((await taskService.getRunById(run.id))?.status).toBe("running");
       await expectRunStatus(taskService, run.id, "error");
       const timedOut = await taskService.getRunById(run.id);
       const finalizedFollowup = (await taskService.listFollowups(run.id)).find(
@@ -579,6 +1248,9 @@ describe("createTaskExecutionService", () => {
       await taskService.updateRun(run.id, { opencodeSessionId: conversation.opencodeSessionId });
 
       const followup = await beforeRestart.sendRunReply(run.id, { body: "Finish after restart." });
+      await expect
+        .poll(async () => (await taskService.listFollowups(run.id))[0]?.status)
+        .toBe("sending");
       const reactivated = await taskService.getRunById(run.id);
       beforeRestart.dispose();
 
@@ -612,7 +1284,7 @@ describe("createTaskExecutionService", () => {
     }
   });
 
-  it("rejects sending a reply while the run is in progress", async () => {
+  it("queues a reply while the run is in progress", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
     const conversationService = createConversationService({
@@ -639,19 +1311,17 @@ describe("createTaskExecutionService", () => {
         renderedPrompt: "Initial run.",
       });
 
-      await expect(
-        executionService.sendRunReply(run.id, { body: "Are you still working?" }),
-      ).rejects.toMatchObject({
-        code: "conflict",
-        statusCode: 409,
+      const queued = await executionService.sendRunReply(run.id, {
+        body: "Are you still working?",
       });
-      expect(await taskService.listFollowups(run.id)).toEqual([]);
+      expect(queued.status).toBe("queued");
+      expect(await taskService.listFollowups(run.id)).toHaveLength(1);
     } finally {
       await testDb.cleanup();
     }
   });
 
-  it("rejects sending a reply when the agent already has a running run", async () => {
+  it("queues a reply when the agent already has a running run", async () => {
     const testDb = await createTestDatabase();
     const prompts: { model?: { providerID: string; modelID: string }; text: string }[] = [];
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
@@ -705,25 +1375,23 @@ describe("createTaskExecutionService", () => {
         renderedPrompt: "Active run.",
       });
 
-      await expect(
-        executionService.sendRunReply(reviewedRun.id, { body: "Please continue." }),
-      ).rejects.toMatchObject({
-        code: "conflict",
-        statusCode: 409,
-        details: { runId: activeRun.id },
+      const queuedReply = await executionService.sendRunReply(reviewedRun.id, {
+        body: "Please continue.",
       });
+      expect(queuedReply.status).toBe("queued");
+      expect((await taskService.getRunningRunForAgent(agent.id))?.id).toBe(activeRun.id);
       const refreshed = await taskService.getRunById(reviewedRun.id);
       const followups = await taskService.listFollowups(reviewedRun.id);
 
       expect(refreshed?.status).toBe("completed");
-      expect(followups).toEqual([]);
+      expect(followups.map((reply) => reply.status)).toEqual(["queued"]);
       expect(prompts).toEqual([]);
     } finally {
       await testDb.cleanup();
     }
   });
 
-  it("reports the blocking run when a reply hits the running-run constraint", async () => {
+  it("retains a queued reply when the running-run precheck races", async () => {
     const testDb = await createTestDatabase();
     const prompts: { model?: { providerID: string; modelID: string }; text: string }[] = [];
     let runningRunChecks = 0;
@@ -792,25 +1460,23 @@ describe("createTaskExecutionService", () => {
         renderedPrompt: "Active run.",
       });
 
-      await expect(
-        executionService.sendRunReply(reviewedRun.id, { body: "Please continue." }),
-      ).rejects.toMatchObject({
-        code: "conflict",
-        statusCode: 409,
-        details: { runId: activeRun.id },
+      const queuedReply = await executionService.sendRunReply(reviewedRun.id, {
+        body: "Please continue.",
       });
+      expect(queuedReply.status).toBe("queued");
+      expect((await taskService.getRunningRunForAgent(agent.id))?.id).toBe(activeRun.id);
       const refreshed = await taskService.getRunById(reviewedRun.id);
       const followups = await taskService.listFollowups(reviewedRun.id);
 
       expect(refreshed?.status).toBe("completed");
-      expect(followups).toEqual([]);
+      expect(followups.map((reply) => reply.status)).toEqual(["queued"]);
       expect(prompts).toEqual([]);
     } finally {
       await testDb.cleanup();
     }
   });
 
-  it("rejects sending a reply without an OpenCode session as a conflict", async () => {
+  it("blocks a queued reply when its completed run has no session", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
     const conversationService = createConversationService({
@@ -836,12 +1502,10 @@ describe("createTaskExecutionService", () => {
         renderedPrompt: "Initial run.",
       });
 
-      await expect(
-        executionService.sendRunReply(run.id, { body: "Please continue." }),
-      ).rejects.toMatchObject({
-        code: "conflict",
-        statusCode: 409,
-      });
+      await executionService.sendRunReply(run.id, { body: "Please continue." });
+      await expect
+        .poll(async () => (await taskService.listFollowups(run.id))[0]?.status)
+        .toBe("blocked");
     } finally {
       await testDb.cleanup();
     }
@@ -926,7 +1590,7 @@ describe("createTaskExecutionService", () => {
     }
   });
 
-  it("marks a reply failed when prompt delivery fails", async () => {
+  it("blocks a reply when prompt acceptance cannot be confirmed", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
     const conversationService = createConversationService({
@@ -965,21 +1629,24 @@ describe("createTaskExecutionService", () => {
       const followup = await executionService.sendRunReply(run.id, {
         body: "Please retry with logs.",
       });
+      await expect
+        .poll(async () => (await taskService.listFollowups(run.id))[0]?.status)
+        .toBe("blocked");
       const followups = await taskService.listFollowups(run.id);
       const refreshed = await taskService.getRunById(run.id);
       const taskAfter = await taskService.get(task.id);
 
-      expect(followup.status).toBe("failed");
-      expect(followup.errorMessage).toBe("fetch failed");
-      expect(followups.map((entry) => entry.status)).toEqual(["failed"]);
-      expect(refreshed?.status).toBe("error");
-      expect(taskAfter?.status).toBe("failed");
+      expect(followup.status).toBe("queued");
+      expect(followups[0]?.errorMessage).toContain("fetch failed");
+      expect(followups.map((entry) => entry.status)).toEqual(["blocked"]);
+      expect(refreshed?.status).toBe("running");
+      expect(taskAfter?.status).toBe("queued");
     } finally {
       await testDb.cleanup();
     }
   });
 
-  it("notifies terminal runs when reply delivery fails after the run already ended", async () => {
+  it("does not report ambiguous reply delivery as successful completion", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
     let runId = "";
@@ -1041,8 +1708,11 @@ describe("createTaskExecutionService", () => {
         body: "Please retry with logs.",
       });
 
-      expect(followup.status).toBe("failed");
-      expect(terminalRuns).toEqual([run.id]);
+      expect(followup.status).toBe("queued");
+      await expect
+        .poll(async () => (await taskService.listFollowups(run.id))[0]?.status)
+        .toBe("blocked");
+      expect(terminalRuns).toEqual([]);
     } finally {
       await testDb.cleanup();
     }
@@ -1087,6 +1757,9 @@ describe("createTaskExecutionService", () => {
       await taskService.updateRun(run.id, { opencodeSessionId: conversation.opencodeSessionId });
 
       const followup = await executionService.sendRunReply(run.id, { body: "Please retry." });
+      await expect
+        .poll(async () => (await taskService.listFollowups(run.id))[0]?.status)
+        .toBe("sending");
       await executionService.cancel(run.id, { reason: "Stopped by operator." });
 
       const finalized = await taskService.listFollowups(run.id);
@@ -1402,156 +2075,6 @@ describe("createTaskExecutionService", () => {
     }
   });
 
-  it("previews the next subtask run without creating a run", async () => {
-    const testDb = await createTestDatabase();
-    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
-    const executionService = createTaskExecutionService({ db: testDb.client.db, taskService });
-
-    try {
-      const agent = await insertAgent(testDb.client.db);
-      const subtaskAgent = await insertAgent(testDb.client.db);
-      const task = await taskService.create({ agentId: agent.id, title: "Preview subtasks" });
-      const feedback = await taskService.createFeedback(task.id, {
-        body: "Verify the preview context.",
-        mentionedAgentIds: [subtaskAgent.id],
-      });
-
-      const preview = await executionService.preview(task.id, { triggerSource: "manual" });
-      const runs = await taskService.listRuns(task.id);
-
-      expect(preview.taskId).toBe(task.id);
-      expect(preview.subtask?.id).toBe(feedback.subtasks[0]?.id);
-      expect(preview.feedback?.id).toBe(feedback.id);
-      expect(preview.runAgentId).toBe(subtaskAgent.id);
-      expect(preview.renderedPrompt).toContain("Verify the preview context.");
-      expect(preview.renderedContext["feedback"]).toEqual(
-        expect.objectContaining({ description: "Verify the preview context." }),
-      );
-      expect(runs).toEqual([]);
-    } finally {
-      await testDb.cleanup();
-    }
-  });
-
-  it("queues only the first unhandled feedback subtask with its assignee", async () => {
-    const testDb = await createTestDatabase();
-    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
-    const firstGate = createDeferred<void>();
-    const conversationService = createConversationService({
-      db: testDb.client.db,
-      config: testDb.config,
-      opencodeService: createMockOpenCodeService({ promptGates: [firstGate.promise] }),
-    });
-    const executionService = createTaskExecutionService({
-      db: testDb.client.db,
-      taskService,
-      conversationService,
-    });
-
-    try {
-      const parentAgent = await insertAgent(testDb.client.db);
-      const firstSubtaskAgent = await insertAgent(testDb.client.db);
-      const task = await taskService.create({ agentId: parentAgent.id, title: "Assign subtask" });
-      const feedback = await taskService.createFeedback(task.id, {
-        body: "Run as the specialist.",
-        mentionedAgentIds: [firstSubtaskAgent.id],
-      });
-
-      const run = await executionService.queue(task.id, { triggerSource: "manual" });
-      const runs = await taskService.listRuns(task.id);
-
-      expect(run.subtaskId).toBe(feedback.subtasks[0]?.id);
-      expect(run.agentId).toBe(firstSubtaskAgent.id);
-      expect(runs).toHaveLength(1);
-      expect(runs[0]?.renderedPrompt).toContain("Run as the specialist.");
-    } finally {
-      firstGate.resolve();
-      await testDb.cleanup();
-    }
-  });
-
-  it("keeps later feedback subtasks queued while the previous async run is running", async () => {
-    const testDb = await createTestDatabase();
-    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
-    const firstGate = createDeferred<void>();
-    const conversationService = createConversationService({
-      db: testDb.client.db,
-      config: testDb.config,
-      opencodeService: createMockOpenCodeService({
-        promptGates: [firstGate.promise],
-      }),
-    });
-    const executionService = createTaskExecutionService({
-      db: testDb.client.db,
-      taskService,
-      conversationService,
-    });
-
-    try {
-      const parentAgent = await insertAgent(testDb.client.db);
-      const firstSubtaskAgent = await insertAgent(testDb.client.db);
-      const secondSubtaskAgent = await insertAgent(testDb.client.db);
-      const task = await taskService.create({
-        agentId: parentAgent.id,
-        title: "Sequential feedback",
-      });
-      const firstFeedback = await taskService.createFeedback(task.id, {
-        body: "Run feedback one by one.",
-        mentionedAgentIds: [firstSubtaskAgent.id],
-      });
-      const secondFeedback = await taskService.createFeedback(task.id, {
-        body: "Run second feedback after the first.",
-        mentionedAgentIds: [secondSubtaskAgent.id],
-      });
-
-      const firstRun = await executionService.queue(task.id, { triggerSource: "manual" });
-
-      await expectRunStatus(taskService, firstRun.id, "running");
-      expect(await taskService.listRuns(task.id)).toHaveLength(1);
-
-      firstGate.resolve();
-
-      await expectRunStatus(taskService, firstRun.id, "running");
-      const runsAfterAcceptance = await taskService.listRuns(task.id);
-      const taskAfterFirst = await taskService.get(task.id);
-
-      expect(runsAfterAcceptance).toHaveLength(1);
-      expect(firstRun.subtaskId).toBe(firstFeedback.subtasks[0]?.id);
-      expect(taskAfterFirst?.status).toBe("queued");
-      expect(secondFeedback.subtasks[0]?.agentId).toBe(secondSubtaskAgent.id);
-    } finally {
-      firstGate.resolve();
-      await testDb.cleanup();
-    }
-  });
-
-  it("queues explicit subtask runs with the subtask assignee", async () => {
-    const testDb = await createTestDatabase();
-    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
-    const executionService = createTaskExecutionService({ db: testDb.client.db, taskService });
-
-    try {
-      const parentAgent = await insertAgent(testDb.client.db);
-      const subtaskAgent = await insertAgent(testDb.client.db);
-      const task = await taskService.create({ agentId: parentAgent.id, title: "Assign subtask" });
-      const feedback = await taskService.createFeedback(task.id, {
-        body: "Run as the specialist.",
-        mentionedAgentIds: [subtaskAgent.id],
-      });
-      const subtaskId = feedback.subtasks[0]?.id;
-
-      if (!subtaskId) throw new Error("Expected feedback subtask.");
-
-      const run = await executionService.queue(task.id, { triggerSource: "manual", subtaskId });
-
-      expect(run.subtaskId).toBe(subtaskId);
-      expect(run.agentId).toBe(subtaskAgent.id);
-      expect(run.renderedPrompt).toContain(`<SubtaskId>\n${subtaskId}\n</SubtaskId>`);
-    } finally {
-      await testDb.cleanup();
-    }
-  });
-
   it("triggers templates by creating a task occurrence execution", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
@@ -1660,7 +2183,7 @@ describe("createTaskExecutionService", () => {
 
       expect(opened.current.id).toBe(inspection.conversation?.id);
       expect(inspection.canOpenInChat).toBe(true);
-      expect(inspection.conversation?.source).toBe("chat");
+      expect(inspection.conversation?.source).toBe("task_run");
       expect(inspection.conversation?.messages).toHaveLength(1);
       expect(conversations).toHaveLength(1);
       expect(conversations[0]?.taskRunId).toBe(run.id);
@@ -2305,7 +2828,7 @@ describe("createTaskExecutionService", () => {
     }
   });
 
-  it("requeues a recovered engine interruption within the configured bound", async () => {
+  it("does not create another run after an engine interruption even with legacy retry enabled", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
     const conversationService = createConversationService({
@@ -2348,68 +2871,7 @@ describe("createTaskExecutionService", () => {
         .toBeDefined();
       orchestrator.setHealthy(false);
       await executionService.resumeRunningTaskRuns();
-      await expect.poll(async () => taskService.listRuns(task.id)).toHaveLength(2);
-      const runs = await taskService.listRuns(task.id);
-      const requeued = runs.find((entry) => entry.retryOfRunId === run.id);
-
-      expect(requeued?.status).toBe("queued");
-      expect(requeued?.triggerMetadata).toMatchObject({
-        requeueReason: "engine_interruption",
-        requeueCount: 1,
-      });
-    } finally {
-      executionService.dispose();
-      await testDb.cleanup();
-    }
-  });
-
-  it("stops requeueing recovered engine interruptions at the configured bound", async () => {
-    const testDb = await createTestDatabase();
-    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
-    const conversationService = createConversationService({
-      db: testDb.client.db,
-      config: testDb.config,
-      opencodeService: createMockOpenCodeService({
-        incompleteAsyncPrompt: true,
-        missingSessionStatus: true,
-      }),
-    });
-    const monitorSettingsService = {
-      get: vi.fn(() =>
-        Promise.resolve({
-          taskRunMonitorRequeueAfterStall: true,
-          taskRunMonitorRequeueLimit: 1,
-        }),
-      ),
-      update: vi.fn(),
-    } as unknown as TaskRunMonitorSettingsService;
-    const executionService = createTaskExecutionService({
-      taskService,
-      conversationService,
-      monitorSettingsService,
-      monitor: { autoStart: false },
-    });
-
-    try {
-      const agent = await insertAgent(testDb.client.db);
-      const task = await taskService.create({ agentId: agent.id, title: "Bound interruption" });
-      const run = await executionService.trigger(task.id, {
-        triggerSource: "manual",
-        metadata: { requeueCount: 1 },
-      });
-
-      await expectRunStatus(taskService, run.id, "running");
-      await expect
-        .poll(
-          async () => (await taskService.getRunById(run.id))?.triggerMetadata?.["opencodeMonitor"],
-        )
-        .toBeDefined();
-      await executionService.resumeRunningTaskRuns();
-
-      const runs = await taskService.listRuns(task.id);
-      expect(runs).toHaveLength(1);
-      expect(runs[0]?.status).toBe("cancelled");
-      expect(runs[0]?.cancellationReason).toContain("Requeue limit (1) reached");
+      expect(await taskService.listRuns(task.id)).toHaveLength(1);
     } finally {
       executionService.dispose();
       await testDb.cleanup();
@@ -2517,7 +2979,7 @@ describe("createTaskExecutionService", () => {
     }
   });
 
-  it("relinks the run to a fresh OpenCode session when the stored session is stale", async () => {
+  it("blocks execution when its existing session is unavailable", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
     const opencodeService = createMockOpenCodeService();
@@ -2543,18 +3005,14 @@ describe("createTaskExecutionService", () => {
         triggerSource: "manual",
         renderedPrompt: "Go.",
       });
-      // The run points at a session whose conversation/session no longer exists,
-      // so the executor must create a fresh session and relink the run to it.
       await taskService.updateRun(run.id, { opencodeSessionId: "stale-session" });
 
       const started = await executionService.runQueuedTask(run.id);
 
-      expect(started.status).toBe("running");
+      expect(started.status).toBe("error");
       const refreshed = await taskService.getRunById(run.id);
-      expect(refreshed?.opencodeSessionId).toBe("session-1");
-      expect(refreshed?.triggerMetadata?.["opencodeMonitor"]).toMatchObject({
-        opencodeSessionId: "session-1",
-      });
+      expect(refreshed?.opencodeSessionId).toBe("stale-session");
+      expect(refreshed?.errorMessage).toContain("replacement session will not be created");
     } finally {
       await testDb.cleanup();
     }
@@ -2659,7 +3117,7 @@ describe("createTaskExecutionService", () => {
     }
   });
 
-  it("queues fallback runs when the monitor observes a provider error", async () => {
+  it("queues a fallback continuation when the monitor observes a provider error", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
     const prompts: { model?: { providerID: string; modelID: string }; text: string }[] = [];
@@ -2685,6 +3143,7 @@ describe("createTaskExecutionService", () => {
       opencodeService,
     });
     const executionService = createTaskExecutionService({
+      db: testDb.client.db,
       taskService,
       conversationService,
       monitor: { initialPollMs: 1, maxPollMs: 1, idlePolls: 1 },
@@ -2701,20 +3160,12 @@ describe("createTaskExecutionService", () => {
 
       const run = await executionService.trigger(task.id, { triggerSource: "manual" });
 
-      await expectRunStatus(taskService, run.id, "error");
-      await expect.poll(async () => taskService.listRuns(task.id)).toHaveLength(2);
-      const runs = await taskService.listRuns(task.id);
-      const fallbackRun = runs.find((entry) => entry.retryOfRunId === run.id);
-
-      expect(fallbackRun).toBeDefined();
-      if (!fallbackRun) throw new Error("Expected fallback run.");
-
-      await expectRunStatus(taskService, fallbackRun.id, "completed");
-      expect((await taskService.getRunById(run.id))?.errorDetails).toMatchObject({
-        errorName: "APIError",
-        attemptedModel: "openai/gpt-4.1",
-        stage: "task_session_prompt",
-      });
+      await expectRunStatus(taskService, run.id, "completed");
+      expect(await taskService.listRuns(task.id)).toHaveLength(1);
+      expect((await taskService.getRunById(run.id))?.opencodeSessionId).toBe("session-1");
+      expect(
+        (await taskService.listFollowups(run.id)).some((reply) => reply.kind === "recovery"),
+      ).toBe(true);
       expect(prompts.map((prompt) => prompt.model)).toEqual([
         { providerID: "openai", modelID: "gpt-4.1" },
         { providerID: "anthropic", modelID: "claude-haiku" },
@@ -2783,7 +3234,7 @@ describe("createTaskExecutionService", () => {
     }
   });
 
-  it("queues a different-provider fallback run when a usage limit persists", async () => {
+  it("queues a different-provider fallback continuation when a usage limit persists", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
     const opencodeService = createMockOpenCodeService({
@@ -2811,6 +3262,7 @@ describe("createTaskExecutionService", () => {
       opencodeService,
     });
     const executionService = createTaskExecutionService({
+      db: testDb.client.db,
       taskService,
       conversationService,
       monitor: {
@@ -2833,23 +3285,12 @@ describe("createTaskExecutionService", () => {
 
       const run = await executionService.trigger(task.id, { triggerSource: "manual" });
 
-      await expectRunStatus(taskService, run.id, "error");
-      const errored = await taskService.getRunById(run.id);
-      expect(errored?.errorMessage).toContain("fallback model anthropic/claude-haiku");
-      expect(errored?.errorDetails).toMatchObject({
-        errorName: "UsageLimitReached",
-        fallbackQueued: true,
-        fallbackModel: "anthropic/claude-haiku",
-      });
-
-      await expect.poll(async () => taskService.listRuns(task.id)).toHaveLength(2);
-      const runs = await taskService.listRuns(task.id);
-      const fallbackRun = runs.find((entry) => entry.retryOfRunId === run.id);
-
-      expect(fallbackRun).toBeDefined();
-      if (!fallbackRun) throw new Error("Expected fallback run.");
-
-      await expectRunStatus(taskService, fallbackRun.id, "completed");
+      await expectRunStatus(taskService, run.id, "completed");
+      expect(await taskService.listRuns(task.id)).toHaveLength(1);
+      expect((await taskService.getRunById(run.id))?.opencodeSessionId).toBe("session-1");
+      expect(
+        (await taskService.listFollowups(run.id)).some((reply) => reply.kind === "recovery"),
+      ).toBe(true);
     } finally {
       await testDb.cleanup();
     }
@@ -2972,7 +3413,7 @@ describe("createTaskExecutionService", () => {
     }
   });
 
-  it("queues a same-provider fallback run when the model is not found", async () => {
+  it("queues a same-provider fallback continuation when the model is not found", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
     const opencodeService = createMockOpenCodeService({
@@ -2997,6 +3438,7 @@ describe("createTaskExecutionService", () => {
       opencodeService,
     });
     const executionService = createTaskExecutionService({
+      db: testDb.client.db,
       taskService,
       conversationService,
       monitor: {
@@ -3023,24 +3465,12 @@ describe("createTaskExecutionService", () => {
 
       const run = await executionService.trigger(task.id, { triggerSource: "manual" });
 
-      await expectRunStatus(taskService, run.id, "error");
-      const errored = await taskService.getRunById(run.id);
-      expect(errored?.errorDetails).toMatchObject({
-        errorName: "ProviderModelNotFoundError",
-        attemptedModel: "openai/gpt-5.6-luna",
-      });
-      // The terminal message names the fallback model it handed off to.
-      expect(errored?.errorMessage).toContain("fallback model openai/gpt-4o");
-
-      await expect.poll(async () => taskService.listRuns(task.id)).toHaveLength(2);
-      const runs = await taskService.listRuns(task.id);
-      const fallbackRun = runs.find((entry) => entry.retryOfRunId === run.id);
-
-      expect(fallbackRun).toBeDefined();
-      if (!fallbackRun) throw new Error("Expected fallback run.");
-      expect(fallbackRun.model).toBe("openai/gpt-4o");
-
-      await expectRunStatus(taskService, fallbackRun.id, "completed");
+      await expectRunStatus(taskService, run.id, "completed");
+      expect(await taskService.listRuns(task.id)).toHaveLength(1);
+      expect((await taskService.getRunById(run.id))?.opencodeSessionId).toBe("session-1");
+      expect(
+        (await taskService.listFollowups(run.id)).some((reply) => reply.kind === "recovery"),
+      ).toBe(true);
     } finally {
       await testDb.cleanup();
     }
@@ -3270,7 +3700,7 @@ describe("createTaskExecutionService", () => {
     }
   });
 
-  it("requeues a fresh run after a stall cancellation when enabled in settings", async () => {
+  it("does not create another run after a stall even with legacy retry enabled", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
     // First prompt never produces an assistant message (stalls); the requeued run
@@ -3308,194 +3738,7 @@ describe("createTaskExecutionService", () => {
       const run = await executionService.trigger(task.id, { triggerSource: "manual" });
 
       await expectRunStatus(taskService, run.id, "cancelled");
-      await expect.poll(async () => taskService.listRuns(task.id)).toHaveLength(2);
-
-      const runs = await taskService.listRuns(task.id);
-      const requeued = runs.find((entry) => entry.retryOfRunId === run.id);
-      expect(requeued).toBeDefined();
-      if (!requeued) throw new Error("Expected a requeued run.");
-
-      await expectRunStatus(taskService, requeued.id, "completed");
-      expect(requeued.triggerMetadata).toMatchObject({ requeueReason: "stall_timeout" });
-    } finally {
-      executionService.dispose();
-      await testDb.cleanup();
-    }
-  });
-
-  it("stops requeuing stalled runs once the requeue limit is reached", async () => {
-    const testDb = await createTestDatabase();
-    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
-    // Every run stalls (no assistant message ever), so requeues continue until the
-    // limit caps the chain.
-    const opencodeService = createMockOpenCodeService();
-    const conversationService = createConversationService({
-      db: testDb.client.db,
-      config: testDb.config,
-      opencodeService,
-    });
-    const monitorSettingsService = {
-      get: vi.fn(() =>
-        Promise.resolve({
-          taskRunMonitorMaxLifetimeMinutes: 5,
-          taskRunMonitorNoProgressTimeoutMinutes: 15 / 60_000,
-          taskRunMonitorRequeueAfterStall: true,
-          taskRunMonitorRequeueLimit: 2,
-        }),
-      ),
-      update: vi.fn(),
-    } as unknown as TaskRunMonitorSettingsService;
-    const executionService = createTaskExecutionService({
-      taskService,
-      conversationService,
-      monitorSettingsService,
-      monitor: { initialPollMs: 1, maxPollMs: 1, idlePolls: 1 },
-    });
-
-    try {
-      const agent = await insertAgent(testDb.client.db);
-      const task = await taskService.create({ agentId: agent.id, title: "Requeue limit" });
-
-      await executionService.trigger(task.id, { triggerSource: "manual" });
-
-      // 1 original + 2 requeues = 3 runs, all cancelled, then the chain stops.
-      await expect
-        .poll(
-          async () => {
-            const runs = await taskService.listRuns(task.id);
-            return runs.length === 3 && runs.every((entry) => entry.status === "cancelled");
-          },
-          { timeout: 5_000 },
-        )
-        .toBe(true);
-
-      executionService.dispose();
-      const runs = await taskService.listRuns(task.id);
-      expect(runs).toHaveLength(3);
-      const lastReason = runs
-        .map((entry) => entry.cancellationReason ?? "")
-        .find((reason) => reason.includes("Requeue limit"));
-      expect(lastReason).toContain("Requeue limit (2) reached");
-    } finally {
-      executionService.dispose();
-      await testDb.cleanup();
-    }
-  });
-
-  it("does not auto-requeue a feedback subtask left for human review", async () => {
-    const testDb = await createTestDatabase();
-    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
-    const gate = createDeferred<void>();
-    const conversationService = createConversationService({
-      db: testDb.client.db,
-      config: testDb.config,
-      opencodeService: createMockOpenCodeService({
-        promptGate: gate.promise,
-        completeAsyncPrompt: true,
-        statusSequence: [{ type: "idle" }],
-      }),
-    });
-    const executionService = createTaskExecutionService({
-      db: testDb.client.db,
-      taskService,
-      conversationService,
-      monitor: { initialPollMs: 1, maxPollMs: 1, idlePolls: 1 },
-    });
-
-    try {
-      const parentAgent = await insertAgent(testDb.client.db);
-      const specialist = await insertAgent(testDb.client.db);
-      const task = await taskService.create({ agentId: parentAgent.id, title: "Review hand-off" });
-      const feedback = await taskService.createFeedback(task.id, {
-        body: "Address the PR comments.",
-        mentionedAgentIds: [specialist.id],
-      });
-      const subtaskId = feedback.subtasks[0]?.id;
-      if (!subtaskId) throw new Error("Expected feedback subtask.");
-
-      const run = await executionService.queue(task.id, { triggerSource: "manual" });
-      await expectRunStatus(taskService, run.id, "running");
-      expect(run.subtaskId).toBe(subtaskId);
-
-      // The specialist intentionally hands the task off for human review.
-      await taskService.markRunNeedsHumanReview(run.id, specialist.id, "Please review the PR.");
-      gate.resolve();
-
-      await expectRunStatus(taskService, run.id, "completed");
-
-      // The review hand-off is terminal: the task settles in review and no further
-      // run is queued. This is exactly the runaway loop the separation prevents.
-      await expect.poll(async () => (await taskService.get(task.id))?.status).toBe("review");
       expect(await taskService.listRuns(task.id)).toHaveLength(1);
-    } finally {
-      gate.resolve();
-      executionService.dispose();
-      await testDb.cleanup();
-    }
-  });
-
-  it("auto-retries a failed feedback subtask up to the cap, then leaves it failed", async () => {
-    const testDb = await createTestDatabase();
-    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
-    // Every run errors (terminal provider error, no fallback models configured),
-    // so the feedback subtask is auto-retried until the cap stops the chain.
-    const opencodeService = createMockOpenCodeService({
-      completeAsyncPrompt: true,
-      statusSequence: [{ type: "idle" }],
-      promptError: () => ({ name: "APIError", message: "Provider is overloaded." }),
-    });
-    const conversationService = createConversationService({
-      db: testDb.client.db,
-      config: testDb.config,
-      opencodeService,
-    });
-    const monitorSettingsService = {
-      get: vi.fn(() =>
-        Promise.resolve({
-          taskRunMonitorMaxLifetimeMinutes: 5,
-          taskRunMonitorNoProgressTimeoutMinutes: 0,
-          taskRunMonitorRequeueAfterStall: false,
-          taskRunMonitorRequeueLimit: 10,
-          taskRunMaxAutoRetries: 2,
-        }),
-      ),
-      update: vi.fn(),
-    } as unknown as TaskRunMonitorSettingsService;
-    const executionService = createTaskExecutionService({
-      db: testDb.client.db,
-      taskService,
-      conversationService,
-      monitorSettingsService,
-      monitor: { initialPollMs: 1, maxPollMs: 1, idlePolls: 1 },
-    });
-
-    try {
-      const parentAgent = await insertAgent(testDb.client.db);
-      const specialist = await insertAgent(testDb.client.db);
-      const task = await taskService.create({ agentId: parentAgent.id, title: "Retry then fail" });
-      await taskService.createFeedback(task.id, {
-        body: "Fix the failing build.",
-        mentionedAgentIds: [specialist.id],
-      });
-
-      await executionService.queue(task.id, { triggerSource: "manual" });
-
-      // 1 original + 2 auto-retries = 3 runs, all errored, then the chain stops.
-      await expect
-        .poll(async () => {
-          const runs = await taskService.listRuns(task.id);
-          return runs.length === 3 && runs.every((entry) => entry.status === "error");
-        })
-        .toBe(true);
-
-      executionService.dispose();
-      const runs = await taskService.listRuns(task.id);
-      expect(runs).toHaveLength(3);
-      const retried = runs.filter(
-        (entry) => entry.triggerMetadata?.["requeueReason"] === "system_failure",
-      );
-      expect(retried).toHaveLength(2);
-      expect((await taskService.get(task.id))?.status).toBe("failed");
     } finally {
       executionService.dispose();
       await testDb.cleanup();
@@ -4268,6 +4511,8 @@ function createMockOpenCodeService(
         (options.completeAsyncPromptAfter !== undefined &&
           promptIndex >= options.completeAsyncPromptAfter);
       if (shouldComplete) {
+        if (promptIndex > 0 && options.completeAsyncPromptAfter !== undefined)
+          statusSequenceBySession.delete(sessionID);
         const assistantMessageId = nextMessageId();
         const error = options.promptError?.({ model, text });
         sessionMessages.push(
@@ -4335,4 +4580,57 @@ function createMockOpenCodeService(
             ],
     };
   }
+}
+
+async function createTeamFixture() {
+  const testDb = await createTestDatabase();
+  const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+  const worker = await insertAgent(
+    testDb.client.db,
+    { appToolPermissions: [{ pattern: "cc_default_set_task_result", action: "allow" }] },
+    "openai/worker-model",
+  );
+  const owner = await insertAgent(testDb.client.db, { allowedTeammates: [worker.slug] });
+  const opencodeService = createMockOpenCodeService();
+  const conversationService = createConversationService({
+    db: testDb.client.db,
+    config: testDb.config,
+    opencodeService,
+  });
+  const execution = createTaskExecutionService({
+    db: testDb.client.db,
+    config: testDb.config,
+    taskService,
+    conversationService,
+    taskPermissionService: createTaskPermissionService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    }),
+    monitor: { autoStart: false },
+  });
+  const task = await taskService.create({
+    agentId: owner.id,
+    title: "Team goal",
+    model: "openai/owner-model",
+    context: { text: "private parent context" },
+    permissionProfile: {
+      appToolPermissions: [{ pattern: "cc_default_set_task_result", action: "deny" }],
+    },
+  });
+  const root = await taskService.createRun({
+    taskId: task.id,
+    agentId: owner.id,
+    status: "running",
+    triggerSource: "manual",
+    renderedPrompt: "Main goal",
+  });
+  const session = await conversationService.createTaskRunConversation({
+    agentId: owner.id,
+    taskId: task.id,
+    taskRunId: root.id,
+    title: task.title,
+  });
+  await taskService.updateRun(root.id, { opencodeSessionId: session.opencodeSessionId });
+  return { testDb, taskService, execution, conversationService, owner, worker, task, root };
 }

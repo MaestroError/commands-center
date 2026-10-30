@@ -1,3 +1,4 @@
+import { TaskRunReplyQueue } from "@/components/tasks/TaskRunReplyQueue";
 import { useNavigate, useParams } from "react-router";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ConversationMessage, ConversationPart, LiveRequest } from "@cc/shared/schemas";
@@ -434,9 +435,29 @@ export function WorkspaceChatPage() {
                   ) : (
                     <>
                       {conv.todos.length > 0 && <TodoDock todos={conv.todos} />}
+                      {conv.conversation.taskId && conv.conversation.taskRunId && (
+                        <TaskRunReplyQueue
+                          taskId={conv.conversation.taskId}
+                          runId={conv.conversation.taskRunId}
+                        />
+                      )}
                       <ChatComposer
+                        queueMode={Boolean(conv.conversation.taskRunId)}
                         onSend={(input) =>
-                          conv.sendUserPrompt(input.text, input.attachments, input.model)
+                          conv.conversation?.taskId && conv.conversation.taskRunId
+                            ? taskMutations.createRunFollowup
+                                .mutateAsync({
+                                  taskId: conv.conversation.taskId,
+                                  runId: conv.conversation.taskRunId,
+                                  input: {
+                                    body: input.text,
+                                    attachments: input.attachments,
+                                    model: input.model,
+                                    requestId: input.requestId,
+                                  },
+                                })
+                                .then(() => undefined)
+                            : conv.sendUserPrompt(input.text, input.attachments, input.model)
                         }
                         onShell={conv.sendShell}
                         onCommand={conv.sendCommand}

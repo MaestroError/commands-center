@@ -18,8 +18,8 @@ import { createConversationService } from "../../src/services/conversation-servi
 import { createTaskExecutionService } from "../../src/services/task-execution-service";
 import { createTaskSchedulerService } from "../../src/services/task-scheduler-service";
 import { createTaskService } from "../../src/services/task-service";
-import { createMockOpenCodeService } from "../helpers/fake-opencode";
 import { createTestDatabase } from "../helpers/db";
+import { createMockOpenCodeService } from "../helpers/fake-opencode";
 
 type TestDb = Awaited<ReturnType<typeof createTestDatabase>>;
 
@@ -130,7 +130,7 @@ describe("task run lifecycle e2e", () => {
     expect(opencode.abortSession).toHaveBeenCalledWith(expect.any(String), "session-1");
   });
 
-  it("queues a fallback run on the fallback model chain after a terminal model error", async () => {
+  it("continues the same session with a fallback model after a provider failure", async () => {
     const testDb = await makeTestDb();
     const opencode = createMockOpenCodeService({
       completeAsyncPrompt: true,
@@ -160,15 +160,11 @@ describe("task run lifecycle e2e", () => {
 
     const run = await executionService.trigger(task.id, { triggerSource: "manual" });
 
-    // The primary attempt lands in error and a linked fallback run is queued.
-    await expect.poll(async () => (await taskService.getRunById(run.id))?.status).toBe("error");
-    await expect.poll(async () => (await taskService.listRuns(task.id)).length).toBe(2);
-    const runs = await taskService.listRuns(task.id);
-    const fallback = runs.find((r) => r.retryOfRunId === run.id);
-    expect(fallback).toBeDefined();
-    await expect
-      .poll(async () => (await taskService.getRunById(fallback!.id))?.status)
-      .toBe("completed");
+    await expect.poll(async () => (await taskService.getRunById(run.id))?.status).toBe("completed");
+    expect(await taskService.listRuns(task.id)).toHaveLength(1);
+    expect(
+      (await taskService.listFollowups(run.id)).some((reply) => reply.kind === "recovery"),
+    ).toBe(true);
   });
 
   it("cancels a queued run and rejects cancelling a terminal or unknown run", async () => {

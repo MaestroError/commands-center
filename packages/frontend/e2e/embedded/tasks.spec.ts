@@ -1,12 +1,12 @@
-import { expect, test, type Page, type BrowserContext } from "@playwright/test";
 import {
   specialistSchema,
-  taskTemplateSchema,
-  taskSchema,
-  taskRunSchema,
   taskRunListSchema,
+  taskRunSchema,
+  taskSchema,
+  taskTemplateSchema,
   type TaskRun,
 } from "@cc/shared/schemas";
+import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 
 let cookies: Awaited<ReturnType<BrowserContext["cookies"]>>;
 test.beforeAll(async ({ browser }) => {
@@ -429,3 +429,185 @@ for (const template of [false, true]) {
     });
   });
 }
+
+test("queues a reply from task chat while the specialist is busy", async ({ page }) => {
+  const task = await createTask(page, "Queued chat reply");
+  const first = await completed(page, await queue(page, task.id));
+  await post(page, "/api/e2e/provider/hold");
+  const secondTask = taskSchema.parse(
+    await post(page, "/api/tasks", { agentId: task.agentId, title: "Busy elsewhere" }),
+  );
+  const second = await queue(page, secondTask.id);
+  await expect.poll(async () => (await runState(page, second)).status).toBe("running");
+  const opened = (await post(page, `/api/tasks/${task.id}/runs/${first.id}/open-in-chat`)) as {
+    current: { id: string };
+  };
+  const agent = specialistSchema.parse(
+    await (await page.request.get(`/api/specialists/${task.agentId}`)).json(),
+  );
+  await page.goto(`/chat/${agent.slug}/${opened.current.id}`);
+  await page.getByTestId("chat-message-input").fill("QUEUED_BROWSER_REPLY");
+  await page.getByRole("button", { name: "Queue reply", exact: true }).click();
+  await expect(page.getByTestId("task-run-reply-queue")).toContainText("QUEUED_BROWSER_REPLY");
+  await page.reload();
+  await expect(page.getByTestId("task-run-reply-queue")).toContainText("QUEUED_BROWSER_REPLY");
+  await page.goto(`/tasks/${task.id}`);
+  await expect(page.getByTestId("task-timeline")).toContainText("QUEUED_BROWSER_REPLY");
+  await post(page, "/api/e2e/provider/release");
+  await completed(page, second);
+  await expect
+    .poll(
+      async () => {
+        const replies = (await (
+          await page.request.get(`/api/tasks/${task.id}/runs/${first.id}/followups`)
+        ).json()) as { status: string }[];
+        return replies[0]?.status;
+      },
+      { timeout: 40000 },
+    )
+    .toBe("answered");
+  expect((await runState(page, first)).opencodeSessionId).toBe(first.opencodeSessionId);
+});
+
+test("delegates through native tools and resumes the owner to accept the result", async ({
+  page,
+}) => {
+  test.setTimeout(90000);
+  const worker = specialistSchema.parse(
+    await post(page, "/api/specialists", {
+      name: "Team browser worker",
+      role: "Prepare a bounded report",
+      instructions: "Produce the requested report.",
+      defaultModel: "local-e2e/test",
+      capabilities: {},
+    }),
+  );
+  const owner = specialistSchema.parse(
+    await post(page, "/api/specialists", {
+      name: "Team browser owner",
+      role: "Coordinate the goal",
+      instructions: "Delegate and review the worker result.",
+      defaultModel: "local-e2e/test",
+      capabilities: { allowedTeammates: [worker.slug] },
+    }),
+  );
+  await page.goto(`/specialists/${owner.slug}/edit`);
+  await expect(page.getByRole("checkbox", { name: new RegExp(worker.name) })).toBeChecked();
+  const args = Buffer.from(
+    JSON.stringify({
+      specialistSlug: worker.slug,
+      brief: "Write a short report",
+      expectedOutput: "A report",
+    }),
+  ).toString("base64");
+  const task = taskSchema.parse(
+    await post(page, "/api/tasks", {
+      agentId: owner.id,
+      title: "Complete team goal",
+      description: `CALL:cc_default_delegate_assignment ARGS:${args}`,
+    }),
+  );
+  const root = await queue(page, task.id);
+  await completed(page, root);
+  const assignments = (await (await page.request.get(`/api/tasks/${task.id}/subtasks`)).json()) as {
+    ownerRunId: string;
+    acceptedAt?: string;
+  }[];
+  expect(assignments).toHaveLength(1);
+  expect(assignments[0]?.ownerRunId).toBe(root.id);
+  expect(assignments[0]?.acceptedAt).toBeTruthy();
+  const runs = taskRunListSchema.parse(
+    await (await page.request.get(`/api/tasks/${task.id}/runs`)).json(),
+  );
+  expect(runs.find((run) => run.agentId === worker.id)?.status).toBe("completed");
+  await page.goto(`/tasks/${task.id}`);
+  await expect(page.getByRole("region", { name: "Task timeline" })).toContainText(
+    "Owner accepted assignment",
+  );
+  await expect(page.getByRole("region", { name: "Task timeline" })).toContainText(worker.name);
+});
+
+test("keeps pre-run feedback and later replies in one task execution", async ({ page }) => {
+  const task = await createTask(page, "Single execution browser check");
+  await page.goto(`/tasks/${task.id}`);
+  await page.getByTestId("task-reply-input").fill("PRE_RUN_FEEDBACK");
+  await page.getByTestId("task-reply-send").click();
+  await expect(page.getByTestId("task-timeline")).toContainText(
+    "Waiting for the task’s first execution",
+  );
+  await page.reload();
+  await expect(page.getByTestId("task-timeline")).toContainText("PRE_RUN_FEEDBACK");
+  const root = await queue(page, task.id);
+  await expect
+    .poll(
+      async () => {
+        const replies = (await (
+          await page.request.get(`/api/tasks/${task.id}/replies`)
+        ).json()) as { body: string; status: string }[];
+        return replies.find((reply) => reply.body === "PRE_RUN_FEEDBACK")?.status;
+      },
+      { timeout: 40000 },
+    )
+    .toBe("answered");
+  const initialSession = (await runState(page, root)).opencodeSessionId;
+  const csrf = (await page.context().cookies()).find((cookie) => cookie.name === "cc_csrf_token");
+  const rerun = await page.request.post(`/api/tasks/${task.id}/queue`, {
+    headers: { "x-csrf-token": csrf?.value ?? "", origin: "http://127.0.0.1:4176" },
+    data: { triggerSource: "manual" },
+  });
+  expect(rerun.status()).toBe(409);
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Run now", exact: true })).toHaveCount(0);
+  await page.getByTestId("task-reply-input").fill("FOLLOWUP_IN_SAME_SESSION");
+  await page.getByTestId("task-reply-send").click();
+  await expect
+    .poll(
+      async () => {
+        const replies = (await (
+          await page.request.get(`/api/tasks/${task.id}/replies`)
+        ).json()) as { body: string; status: string }[];
+        return replies.find((reply) => reply.body === "FOLLOWUP_IN_SAME_SESSION")?.status;
+      },
+      { timeout: 40000 },
+    )
+    .toBe("answered");
+  expect((await runState(page, root)).opencodeSessionId).toBe(initialSession);
+  const runs = (await (await page.request.get(`/api/tasks/${task.id}/runs`)).json()) as {
+    subtaskId?: string;
+  }[];
+  expect(runs.filter((run) => !run.subtaskId)).toHaveLength(1);
+  expect(await (await page.request.get(`/api/tasks/${task.id}/subtasks`)).json()).toEqual([]);
+});
+
+test("continues a stopped task in its original session after explicit confirmation", async ({
+  page,
+}) => {
+  const task = await createTask(page, "Stop and continue browser check");
+  const root = await completed(page, await queue(page, task.id));
+  await post(page, "/api/e2e/provider/hold");
+  await post(page, `/api/tasks/${task.id}/replies`, {
+    body: "Hold this continuation",
+    requestId: "held-reply",
+  });
+  await expect.poll(async () => (await runState(page, root)).status).toBe("running");
+  await post(page, `/api/tasks/${task.id}/runs/${root.id}/cancel`);
+  await post(page, "/api/e2e/provider/release");
+  await page.goto(`/tasks/${task.id}`);
+  await expect(page.getByTestId("task-reply-input")).toHaveCount(0);
+  await page.getByRole("button", { name: "Continue execution", exact: true }).click();
+  await page.getByTestId("task-reply-input").fill("CONTINUE_SAME_SESSION");
+  await page.getByTestId("task-reply-send").click();
+  await expect
+    .poll(
+      async () => {
+        const replies = (await (
+          await page.request.get(`/api/tasks/${task.id}/replies`)
+        ).json()) as { body: string; status: string }[];
+        return replies.find((reply) => reply.body === "CONTINUE_SAME_SESSION")?.status;
+      },
+      { timeout: 40000 },
+    )
+    .toBe("answered");
+  expect((await runState(page, root)).opencodeSessionId).toBe(root.opencodeSessionId);
+  await expect(page.getByTestId("task-timeline")).toContainText("Execution resumed");
+});

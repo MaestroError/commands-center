@@ -264,6 +264,32 @@ describe("createArtifactService", () => {
     }
   });
 
+  it("serializes concurrent snapshot publication across service instances", async () => {
+    const { testDb, service } = await setup();
+    try {
+      const agentId = await insertAgent(testDb.client.db);
+      const conversationId = await insertConversation(testDb.client.db, agentId);
+      await writeFile(join(testDb.config.paths.workspaceDir, "shared.md"), "Shared result");
+      const artifact = await service.create({
+        conversationId,
+        title: "Shared",
+        type: "file",
+        link: "shared.md",
+      });
+      const other = createArtifactService({ db: testDb.client.db, config: testDb.config });
+      const [first, second] = await Promise.all([
+        service.publishArtifact(artifact.id),
+        other.publishArtifact(artifact.id),
+      ]);
+      expect(second.id).toBe(first.id);
+      expect(await readFile(service.resolveArtifactPath(first.storageKey!), "utf8")).toBe(
+        "Shared result",
+      );
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("publishes a file artifact, is idempotent, and resolves the registered file", async () => {
     const { testDb, service } = await setup();
     try {

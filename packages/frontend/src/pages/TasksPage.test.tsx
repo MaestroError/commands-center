@@ -1,13 +1,13 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes, useParams } from "react-router";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import type {
+  ConversationDetail,
   Specialist,
   SpecialistCatalog,
-  ConversationDetail,
   Task,
   TaskFeedbackThread,
   TaskRun,
@@ -41,13 +41,6 @@ const agent: Specialist = {
   },
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
-};
-
-const reviewerAgent: Specialist = {
-  ...agent,
-  id: "agent-2",
-  slug: "reviewer",
-  name: "Reviewer",
 };
 
 const task: Task = {
@@ -402,7 +395,7 @@ describe("TasksPage", () => {
     ]);
   });
 
-  it("offers Accept and Rerun actions on a review task card", async () => {
+  it("offers Accept and Duplicate actions on a review task card", async () => {
     mockFetch({ taskPayload: { ...task, status: "review" } });
 
     renderWithRouter(<TasksPage />, "/tasks");
@@ -412,10 +405,10 @@ describe("TasksPage", () => {
     if (!card) throw new Error("Expected task card.");
 
     expect(within(card).getByRole("button", { name: "Accept" })).toBeInTheDocument();
-    expect(within(card).getByRole("button", { name: "Rerun" })).toBeInTheDocument();
+    expect(within(card).getByRole("button", { name: "Duplicate" })).toBeInTheDocument();
   });
 
-  it("offers a Rerun action without Accept on a failed task card", async () => {
+  it("offers a Duplicate action without Accept on a failed task card", async () => {
     mockFetch({ taskPayload: { ...task, status: "failed" } });
 
     renderWithRouter(<TasksPage />, "/tasks");
@@ -425,7 +418,7 @@ describe("TasksPage", () => {
     if (!card) throw new Error("Expected task card.");
 
     expect(screen.getByRole("heading", { name: "Failed" })).toBeInTheDocument();
-    expect(within(card).getByRole("button", { name: "Rerun" })).toBeInTheDocument();
+    expect(within(card).getByRole("button", { name: "Duplicate" })).toBeInTheDocument();
     expect(within(card).queryByRole("button", { name: "Accept" })).not.toBeInTheDocument();
   });
 
@@ -513,7 +506,7 @@ describe("TasksPage", () => {
 
     renderWithRouter(<TasksPage />, "/tasks");
 
-    expect(await screen.findByLabelText("Subtasks")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Team assignments")).toBeInTheDocument();
     const user = userEvent.setup();
     const subtasks = screen.getAllByLabelText(/^Subtask:/);
     expect(subtasks).toHaveLength(2);
@@ -982,51 +975,6 @@ describe("TasksPage", () => {
     );
   });
 
-  it("renders feedback as standalone comments after the detail tabs", async () => {
-    const newerFeedbackThread: TaskFeedbackThread = {
-      ...feedbackThread,
-      id: "feedback-2",
-      body: "Newest feedback comment.",
-      subtasks: [],
-      createdAt: "2026-01-01T00:20:00.000Z",
-    };
-    mockFetch({
-      feedbackPayload: [feedbackThread, newerFeedbackThread],
-      runsPayload: [{ ...run, resultText: undefined }],
-    });
-
-    renderWithRouter(<TasksPage />, "/tasks");
-
-    const user = userEvent.setup();
-    await user.click(await screen.findByRole("link", { name: "Ship release" }));
-
-    expect(screen.queryByRole("tab", { name: "Feedback" })).not.toBeInTheDocument();
-    expect(await screen.findByRole("region", { name: "Feedback comments" })).toBeInTheDocument();
-    expect(screen.getByText("Please retest the release flow.")).toBeInTheDocument();
-    expect(screen.getByText("Tests failed.")).toBeInTheDocument();
-    expect(screen.getByText("Planner replied")).toBeInTheDocument();
-    expect(screen.getByText("Planner commented")).toBeInTheDocument();
-    expect((await screen.findAllByText("Done.")).length).toBeGreaterThan(0);
-    expect(screen.queryByRole("button", { name: "Retry subtask" })).not.toBeInTheDocument();
-
-    const comments = screen.getByRole("region", { name: "Feedback comments" });
-    const openRunLinks = within(comments).getAllByRole("link", { name: "Open run" });
-    expect(openRunLinks.length).toBeGreaterThanOrEqual(2);
-    expect(
-      openRunLinks.some((link) => link.getAttribute("href") === "/tasks/task-1/runs/run-subtask-1"),
-    ).toBe(true);
-    expect(within(comments).queryByText("Latest update:")).not.toBeInTheDocument();
-    expect(within(comments).getAllByRole("list", { name: "Run artifacts" })).toHaveLength(2);
-    expect(within(comments).getAllByRole("link", { name: "Tool list" })).toHaveLength(2);
-    expect(within(comments).getAllByText("tools-23.md").length).toBeGreaterThanOrEqual(2);
-    expect(within(comments).getAllByText("Generated tool inventory.")).toHaveLength(2);
-    expect(
-      within(comments)
-        .getByText("Newest feedback comment.")
-        .compareDocumentPosition(within(comments).getByText("Done.")),
-    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-  });
-
   it("shows the frozen outcome comment for a run, not its live final message", async () => {
     // Regression coverage: once a reply reactivates a run, its finalMessage/
     // resultText columns keep changing with each answer, but the top-level
@@ -1051,36 +999,11 @@ describe("TasksPage", () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole("link", { name: "Ship release" }));
 
-    const comments = await screen.findByRole("region", { name: "Feedback comments" });
+    const comments = await screen.findByRole("region", { name: "Task timeline" });
     expect(
       within(comments).getByText("Saved all 24 available tools to tools-23.md."),
     ).toBeInTheDocument();
     expect(within(comments).queryByText("Second answer, after a reply.")).not.toBeInTheDocument();
-  });
-
-  it("opens subtask runs from the subtask tab", async () => {
-    mockFetch({
-      feedbackPayload: [feedbackThread],
-      runsPayload: feedbackThread.subtasks[0]?.latestRun
-        ? [feedbackThread.subtasks[0].latestRun]
-        : [],
-    });
-
-    renderWithRouter(<TasksPage />, "/tasks");
-
-    const user = userEvent.setup();
-    await user.click(await screen.findByRole("link", { name: "Ship release" }));
-    await user.click(await screen.findByRole("tab", { name: "Subtasks" }));
-
-    expect((await screen.findAllByText("Please retest the release flow.")).length).toBeGreaterThan(
-      0,
-    );
-    const subtasksSection = screen.getByRole("region", { name: "Task subtasks" });
-    expect(within(subtasksSection).getByRole("link", { name: "Open run" })).toHaveAttribute(
-      "href",
-      "/tasks/task-1/runs/run-subtask-1",
-    );
-    expect(screen.queryByRole("button", { name: "Retry subtask" })).not.toBeInTheDocument();
   });
 
   it("sends a run reply from the board's quick-view panel", async () => {
@@ -1094,145 +1017,23 @@ describe("TasksPage", () => {
 
     const user = userEvent.setup();
     await user.click(await screen.findByRole("link", { name: "Ship release" }));
-    const comments = await screen.findByRole("region", { name: "Feedback comments" });
+    const comments = await screen.findByRole("region", { name: "Task timeline" });
 
-    await user.click(within(comments).getByRole("button", { name: "Reply" }));
     await user.type(
-      within(comments).getByLabelText("Reply to run run-1"),
+      within(comments).getByLabelText("Reply to task owner"),
       "Please double-check the changelog.",
     );
-    await user.click(within(comments).getByTestId("task-run-reply-send-run-1"));
+    await user.click(within(comments).getByTestId("task-reply-send"));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        "/api/tasks/task-1/runs/run-1/followups",
+        "/api/tasks/task-1/replies",
         expect.objectContaining({
           method: "POST",
-          body: JSON.stringify({
-            body: "Please double-check the changelog.",
-            kind: "operator_reply",
-          }),
+          body: expect.stringContaining('"body":"Please double-check the changelog."'),
         }),
       );
     });
-  });
-
-  it("submits feedback with file, skill, and specialist mentions from the board panel", async () => {
-    const fetchMock = mockFetch({
-      agentsPayload: [
-        {
-          ...agent,
-          capabilities: { ...agent.capabilities, builtInSkills: ["code-reviewer"] },
-        },
-        reviewerAgent,
-      ],
-    });
-
-    renderWithRouter(<TasksPage />, "/tasks");
-
-    const user = userEvent.setup();
-    await user.click(await screen.findByRole("link", { name: "Ship release" }));
-    await user.click(await screen.findByRole("button", { name: "Leave comment" }));
-
-    const feedbackInput = await screen.findByLabelText("Feedback");
-    await user.type(feedbackInput, "/code");
-    await user.click(await screen.findByRole("button", { name: /\/code-reviewer/i }));
-    await user.type(feedbackInput, "#GOAL");
-    await user.click(await screen.findByRole("button", { name: /GOAL\.md/i }));
-    await user.type(feedbackInput, "Please coordinate with @review");
-    await user.click(await screen.findByRole("button", { name: "@Reviewer" }));
-    await user.click(screen.getByTestId("task-feedback-submit"));
-
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith("/api/search/files?query=GOAL", { method: "GET" });
-      expect(fetchMock).not.toHaveBeenCalledWith(
-        "/api/specialists/agent-1/workspace/find/file?query=GOAL",
-        { method: "GET" },
-      );
-      expect(fetchMock).toHaveBeenCalledWith(
-        "/api/tasks/task-1/feedback",
-        expect.objectContaining({
-          method: "POST",
-          body: JSON.stringify({
-            body: 'Use skill "code-reviewer". #GOAL.md Please coordinate with',
-            mentionedAgentIds: ["agent-2"],
-          }),
-        }),
-      );
-    });
-  });
-
-  it("renders newly submitted feedback immediately as a comment", async () => {
-    mockFetch({ agentsPayload: [agent, reviewerAgent] });
-
-    renderWithRouter(<TasksPage />, "/tasks");
-
-    const user = userEvent.setup();
-    await user.click(await screen.findByRole("link", { name: "Ship release" }));
-    await user.click(await screen.findByRole("button", { name: "Leave comment" }));
-
-    const feedbackInput = await screen.findByLabelText("Feedback");
-    await user.type(feedbackInput, "Please coordinate with @review");
-    await user.click(await screen.findByRole("button", { name: "@Reviewer" }));
-    await user.click(screen.getByTestId("task-feedback-submit"));
-
-    const comments = await screen.findByRole("region", { name: "Feedback comments" });
-    expect(within(comments).getByText("Please retest the release flow.")).toBeInTheDocument();
-    expect(within(comments).getByText("@Planner")).toBeInTheDocument();
-  });
-
-  it("opens and focuses the feedback editor from leave comment", async () => {
-    mockFetch();
-
-    renderWithRouter(<TasksPage />, "/tasks");
-
-    const user = userEvent.setup();
-    await user.click(await screen.findByRole("link", { name: "Ship release" }));
-
-    expect(screen.queryByLabelText("Feedback")).not.toBeInTheDocument();
-    await user.click(await screen.findByRole("button", { name: "Leave comment" }));
-
-    expect(await screen.findByLabelText("Feedback")).toHaveFocus();
-  });
-
-  it("hides the feedback editor after feedback is added", async () => {
-    mockFetch();
-
-    renderWithRouter(<TasksPage />, "/tasks");
-
-    const user = userEvent.setup();
-    await user.click(await screen.findByRole("link", { name: "Ship release" }));
-    await user.click(await screen.findByRole("button", { name: "Leave comment" }));
-    await user.type(await screen.findByLabelText("Feedback"), "Follow up please");
-    await user.click(screen.getByTestId("task-feedback-submit"));
-
-    await waitFor(() => {
-      expect(screen.queryByLabelText("Feedback")).not.toBeInTheDocument();
-    });
-    expect(screen.getByRole("button", { name: "Leave comment" })).toBeInTheDocument();
-  });
-
-  it("searches mentioned agent files after feedback is delegated", async () => {
-    const fetchMock = mockFetch({ agentsPayload: [agent, reviewerAgent] });
-
-    renderWithRouter(<TasksPage />, "/tasks");
-
-    const user = userEvent.setup();
-    await user.click(await screen.findByRole("link", { name: "Ship release" }));
-    await user.click(await screen.findByRole("button", { name: "Leave comment" }));
-
-    const feedbackInput = await screen.findByLabelText("Feedback");
-    await user.type(feedbackInput, "Delegate to @review");
-    await user.click(await screen.findByRole("button", { name: "@Reviewer" }));
-    await user.type(feedbackInput, " #REVIEW");
-
-    expect(await screen.findByRole("button", { name: /REVIEW\.md/i })).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledWith(
-      "/api/specialists/agent-2/workspace/find/file?query=REVIEW",
-      {
-        method: "GET",
-      },
-    );
   });
 
   it("updates persistent task context from the collapsible context section", async () => {
@@ -2301,29 +2102,6 @@ describe("TasksPage", () => {
     });
   });
 
-  it("reruns review cards", async () => {
-    const fetchMock = mockFetch({
-      taskPayload: {
-        ...task,
-        status: "review",
-        latestRunId: "run-1",
-        latestFinalMessage: "Confirm the generated tool list is complete.",
-      },
-    });
-
-    renderWithRouter(<TasksPage />, "/tasks");
-
-    const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "Rerun" }));
-
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(
-        "/api/tasks/task-1/queue",
-        expect.objectContaining({ method: "POST" }),
-      );
-    });
-  });
-
   it("shows generated recurring task context on cards", async () => {
     mockFetch({
       taskPayload: {
@@ -2466,7 +2244,7 @@ describe("TasksPage", () => {
     expect(await screen.findByRole("link", { name: "View active run" })).toBeInTheDocument();
   });
 
-  it("offers Rerun for a review task in the board panel", async () => {
+  it("does not offer Rerun in the task panel", async () => {
     mockFetch({ taskPayload: { ...task, status: "review" } });
     renderWithRouter(<TasksPage />, "/tasks");
 
@@ -2474,24 +2252,7 @@ describe("TasksPage", () => {
     await user.click(await screen.findByRole("link", { name: "Ship release" }));
 
     const panel = await screen.findByRole("complementary", { name: "Task detail panel" });
-    expect(within(panel).getByRole("button", { name: "Rerun" })).toBeInTheDocument();
-  });
-
-  it("reruns a failed task from the board panel", async () => {
-    const fetchMock = mockFetch({ taskPayload: { ...task, status: "failed" } });
-    renderWithRouter(<TasksPage />, "/tasks");
-
-    const user = userEvent.setup();
-    await user.click(await screen.findByRole("link", { name: "Ship release" }));
-    const panel = await screen.findByRole("complementary", { name: "Task detail panel" });
-    await user.click(within(panel).getByRole("button", { name: "Rerun" }));
-
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(
-        "/api/tasks/task-1/queue",
-        expect.objectContaining({ method: "POST" }),
-      );
-    });
+    expect(within(panel).queryByRole("button", { name: "Rerun" })).not.toBeInTheDocument();
   });
 
   it("adds and removes a fallback model row in the create form", async () => {
@@ -2734,29 +2495,6 @@ describe("TaskDetailPage", () => {
     expect(screen.queryByText("Stale cached result.")).not.toBeInTheDocument();
   });
 
-  it("renders task detail feedback as standalone comments", async () => {
-    mockFetch({ feedbackPayload: [feedbackThread], runsPayload: [run] });
-
-    renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
-
-    expect(screen.queryByRole("tab", { name: "Feedback" })).not.toBeInTheDocument();
-    expect(await screen.findByRole("region", { name: "Feedback comments" })).toBeInTheDocument();
-    expect(await screen.findByText("Please retest the release flow.")).toBeInTheDocument();
-    expect(screen.getByText("Planner replied")).toBeInTheDocument();
-    expect(screen.getByText("Tests failed.")).toBeInTheDocument();
-    expect(screen.getByText("Planner commented")).toBeInTheDocument();
-    expect(screen.getAllByText("Done.").length).toBeGreaterThan(0);
-    const comments = screen.getByRole("region", { name: "Feedback comments" });
-    const openRunLinks = within(comments).getAllByRole("link", { name: "Open run" });
-    expect(openRunLinks.length).toBeGreaterThanOrEqual(2);
-    expect(
-      openRunLinks.some((link) => link.getAttribute("href") === "/tasks/task-1/runs/run-subtask-1"),
-    ).toBe(true);
-    expect(within(comments).queryByText("Latest update:")).not.toBeInTheDocument();
-    expect(within(comments).getAllByRole("list", { name: "Run artifacts" })).toHaveLength(2);
-    expect(within(comments).getAllByRole("link", { name: "Tool list" })).toHaveLength(2);
-  });
-
   it("eagerly loads and shows existing replies without requiring the Reply toggle", async () => {
     // Regression coverage: replies used to only load once the operator clicked
     // "Reply" to open the composer, so a page refresh showed only the toggle
@@ -2770,7 +2508,7 @@ describe("TaskDetailPage", () => {
 
     renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
 
-    const comments = await screen.findByRole("region", { name: "Feedback comments" });
+    const comments = await screen.findByRole("region", { name: "Task timeline" });
 
     expect(await within(comments).findByText("Already delivered.")).toBeInTheDocument();
     expect(within(comments).getByText("Verified, all good.")).toBeInTheDocument();
@@ -2779,12 +2517,12 @@ describe("TaskDetailPage", () => {
         const url = input instanceof Request ? input.url : String(input);
         const method = input instanceof Request ? input.method : (init?.method ?? "GET");
 
-        return url.includes("/followups") && method === "GET";
+        return url.includes("/replies") && method === "GET";
       }),
     ).toBe(true);
   });
 
-  it("disables feedback run replies when the run has no recorded session", async () => {
+  it("allows queued feedback replies before a session exists", async () => {
     const noSessionFeedback: TaskFeedbackThread = {
       ...feedbackThread,
       subtasks: feedbackThread.subtasks.map((subtask) => ({
@@ -2805,13 +2543,12 @@ describe("TaskDetailPage", () => {
 
     renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
 
-    const comments = await screen.findByRole("region", { name: "Feedback comments" });
-    const replyButtons = await within(comments).findAllByRole("button", { name: "Reply" });
+    const comments = await screen.findByRole("region", { name: "Task timeline" });
+    const input = within(comments).getByTestId("task-reply-input");
+    fireEvent.change(input, { target: { value: "Feedback before a session" } });
+    const replyButtons = await within(comments).findAllByRole("button", { name: "Queue reply" });
 
-    expect(
-      within(comments).getAllByText("Replies require a recorded OpenCode session.").length,
-    ).toBeGreaterThan(0);
-    expect(replyButtons.every((button) => button.hasAttribute("disabled"))).toBe(true);
+    expect(replyButtons.every((button) => !button.hasAttribute("disabled"))).toBe(true);
   });
 
   it("updates the task detail page title from inline edit mode", async () => {
@@ -2993,16 +2730,13 @@ describe("TaskDetailPage", () => {
         "/api/tasks/task-1/runs/run-1/followups",
         expect.objectContaining({
           method: "POST",
-          body: JSON.stringify({
-            body: "Please double-check the changelog.",
-            kind: "operator_reply",
-          }),
+          body: expect.stringContaining('"body":"Please double-check the changelog."'),
         }),
       );
     });
   });
 
-  it("disables run replies when the run has no recorded session", async () => {
+  it("allows queued run replies before a session exists", async () => {
     mockFetch({ runsPayload: [{ ...run, opencodeSessionId: undefined }] });
 
     renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
@@ -3013,10 +2747,10 @@ describe("TaskDetailPage", () => {
     expect(runHistory).not.toBeNull();
 
     expect(within(runHistory as HTMLElement).getByText("Unavailable")).toBeInTheDocument();
-    expect(within(runHistory as HTMLElement).getByTestId("task-run-reply-run-1")).toBeDisabled();
+    expect(within(runHistory as HTMLElement).getByTestId("task-run-reply-run-1")).toBeEnabled();
   });
 
-  it("disables run replies while the run is in progress", async () => {
+  it("allows queued replies while the run is in progress", async () => {
     mockFetch({ runsPayload: [{ ...run, status: "running" }] });
 
     renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
@@ -3026,8 +2760,6 @@ describe("TaskDetailPage", () => {
     const runHistory = screen.getByRole("heading", { name: "Run history" }).closest("section");
     expect(runHistory).not.toBeNull();
 
-    // The row-level toggle stays enabled (viewing the reply thread is always
-    // allowed); only the panel's own Reply control is disabled while running.
     await user.click(within(runHistory as HTMLElement).getByTestId("task-run-reply-run-1"));
     const replyButtons = within(runHistory as HTMLElement).getAllByRole("button", {
       name: "Reply",
@@ -3035,10 +2767,10 @@ describe("TaskDetailPage", () => {
     const panelReplyButton = replyButtons[1];
     if (!panelReplyButton) throw new Error("Expected run reply panel button.");
 
-    expect(panelReplyButton).toBeDisabled();
+    expect(panelReplyButton).toBeEnabled();
     expect(
       within(runHistory as HTMLElement).getByText(
-        "Replies are disabled while the run is in progress.",
+        "Replies are queued for this run and delivered when the specialist is available.",
       ),
     ).toBeInTheDocument();
   });
@@ -3062,81 +2794,10 @@ describe("TaskDetailPage", () => {
       await within(runHistory as HTMLElement).findByText("Please verify the release notes."),
     ).toBeInTheDocument();
     expect(
-      within(runHistory as HTMLElement).getByText("Waiting for a response…"),
+      within(runHistory as HTMLElement).getByText(/Delivered — awaiting answer/),
     ).toBeInTheDocument();
     expect(within(runHistory as HTMLElement).getByText("Already delivered.")).toBeInTheDocument();
     expect(within(runHistory as HTMLElement).getByText("Verified, all good.")).toBeInTheDocument();
-  });
-
-  it("creates feedback and queues the task from Send and requeue", async () => {
-    const fetchMock = mockFetch();
-
-    renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
-
-    const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "Leave comment" }));
-    await user.type(await screen.findByLabelText("Feedback"), "Retest the release flow.");
-    await user.click(screen.getByRole("button", { name: "Send & requeue" }));
-
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(
-        "/api/tasks/task-1/feedback",
-        expect.objectContaining({
-          method: "POST",
-          body: JSON.stringify({
-            body: "Retest the release flow.",
-            mentionedAgentIds: [],
-          }),
-        }),
-      );
-      expect(fetchMock).toHaveBeenCalledWith(
-        "/api/tasks/task-1/queue",
-        expect.objectContaining({ method: "POST" }),
-      );
-    });
-  });
-
-  it("edits feedback before its subtask has run", async () => {
-    const editableFeedbackThread: TaskFeedbackThread = {
-      ...feedbackThread,
-      body: "Draft feedback.",
-      subtasks: feedbackThread.subtasks.map((subtask) => ({
-        ...subtask,
-        status: "backlog",
-        latestRun: undefined,
-        replies: [],
-      })),
-    };
-    const fetchMock = mockFetch({ feedbackPayload: [editableFeedbackThread], runsPayload: [] });
-
-    renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
-
-    const user = userEvent.setup();
-    const comment = await screen.findByTestId("task-feedback-comment-feedback-1");
-    await user.click(within(comment).getByRole("button", { name: "Edit" }));
-    const editor = within(comment).getByLabelText("Edit feedback");
-    await user.clear(editor);
-    await user.type(editor, "Updated draft feedback.");
-    await user.click(within(comment).getByRole("button", { name: "Save" }));
-
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(
-        "/api/tasks/task-1/feedback/feedback-1",
-        expect.objectContaining({
-          method: "PATCH",
-          body: JSON.stringify({ body: "Updated draft feedback." }),
-        }),
-      );
-    });
-  });
-
-  it("hides feedback edit once its subtask has run", async () => {
-    mockFetch({ feedbackPayload: [feedbackThread], runsPayload: [] });
-
-    renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
-
-    const comment = await screen.findByTestId("task-feedback-comment-feedback-1");
-    expect(within(comment).queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
   });
 
   it("preserves tasks view context from full-page detail", async () => {
@@ -3753,6 +3414,28 @@ function mockFetch(options: MockFetchOptions = {}) {
     }
     if (url === "/api/tasks/template-1") return Promise.resolve(jsonResponse(204, null));
     if (url === "/api/tasks/task-1/runs") return Promise.resolve(jsonResponse(200, runsPayload));
+    if (url === "/api/tasks/task-1/replies") {
+      const method = init?.method ?? "GET";
+      if (method === "POST") {
+        const payload = JSON.parse(typeof init?.body === "string" ? init.body : "{}") as {
+          body: string;
+          requestId: string;
+        };
+        const reply: TaskRunFollowup = {
+          id: "new-reply",
+          taskId: task.id,
+          runId: runsPayload[0]?.id,
+          kind: "operator_reply",
+          status: "queued",
+          body: payload.body,
+          requestId: payload.requestId,
+          createdAt: "2026-01-01T00:30:00.000Z",
+        };
+        followupsPayload.push(reply);
+        return Promise.resolve(jsonResponse(201, reply));
+      }
+      return Promise.resolve(jsonResponse(200, followupsPayload));
+    }
     const followupsMatch = url.match(/^\/api\/tasks\/task-1\/runs\/([^/]+)\/followups$/);
     if (followupsMatch) {
       const method = input instanceof Request ? input.method : init?.method;

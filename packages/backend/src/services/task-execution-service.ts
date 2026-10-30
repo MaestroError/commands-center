@@ -9,19 +9,29 @@ import {
   type CancelTaskRunInput,
   type ConversationDetail,
   type QueueTaskInput,
-  type TaskContext,
   type Task,
+  type TaskContext,
   type TaskQueuePreview,
   type TaskRun,
   type TaskRunFollowup,
   type TaskSubtask,
 } from "@cc/shared/schemas";
 import { z } from "zod";
+import { createTeamService } from "./team-service.js";
 
 import { createId } from "../db/ids.js";
 import { BadRequestError, NotFoundError } from "../lib/api-error.js";
 import type { ConversationService, TaskRunPromptStart } from "./conversation-service.js";
 import { buildTerminalActivity } from "./task-activity.js";
+import { createAgentDrainQueue } from "./task-execution-service/agent-drain.js";
+import type {
+  AcceptedPromptEvidence,
+  TaskExecutionServiceOptions,
+} from "./task-execution-service/context.js";
+import { readScheduledAtFromTrigger } from "./task-execution-service/helpers.js";
+import { createTaskReplyFlow } from "./task-execution-service/reply-flow.js";
+import { createTaskRetryPolicy } from "./task-execution-service/retry-policy.js";
+import { buildOpenCodeSessionPermissions } from "./task-permission-service.js";
 import { createTaskRunContextService } from "./task-run-context-service.js";
 import {
   createTaskRunMonitorService,
@@ -29,6 +39,7 @@ import {
   type TaskRunMonitorConfig,
   type TaskRunMonitorRuntimeConfig,
 } from "./task-run-monitor-service.js";
+import { createTaskRunOperationGuard } from "./task-run-operation-guard.js";
 import {
   buildTaskRunErrorDetails,
   createTaskRunTransport,
@@ -40,21 +51,6 @@ import {
   readOptionalOpencodeMonitorMetadata,
   type TaskRunTransportRetryConfig,
 } from "./task-run-support.js";
-import { buildOpenCodeSessionPermissions } from "./task-permission-service.js";
-import { createTaskRunOperationGuard } from "./task-run-operation-guard.js";
-import type {
-  AcceptedPromptEvidence,
-  TaskExecutionServiceOptions,
-} from "./task-execution-service/context.js";
-import { createTaskRetryPolicy } from "./task-execution-service/retry-policy.js";
-import { createTaskReplyFlow } from "./task-execution-service/reply-flow.js";
-import { createAgentDrainQueue } from "./task-execution-service/agent-drain.js";
-import {
-  hasTerminalSubtaskRun,
-  latestSubtaskRunErrored,
-  latestSubtaskRunNeedsReview,
-  readScheduledAtFromTrigger,
-} from "./task-execution-service/helpers.js";
 
 export type TaskExecutionService = ReturnType<typeof createTaskExecutionService>;
 export type QueueTaskExecutionInput = Partial<Omit<QueueTaskInput, "taskId">> & {
@@ -83,13 +79,6 @@ type QueueSingleRunInput = Pick<
   | "subtaskId"
   | "triggerSource"
 >;
-
-type RunnableSubtasks = {
-  unattempted: TaskSubtask[];
-  retryableErrored: TaskSubtask[];
-  retryableReview: TaskSubtask[];
-  hasActive: boolean;
-};
 
 export type TaskRunDeferOptions = {
   initialDelayMs?: number;
@@ -135,12 +124,14 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
     logger: options.logger,
     config: transportRetryConfig,
   });
-  const { scheduleAgentDrain, deferQueuedRunIfOpenCodeIsUnhealthy } = createAgentDrainQueue({
+  const agentDrainQueue = createAgentDrainQueue({
     options,
     agentDrainDeferrals,
     deferConfig,
     runQueuedTask,
+    dispatchNextReply: (agentId, before) => replyFlow.dispatchNextReply(agentId, before),
   });
+  const { scheduleAgentDrain, deferQueuedRunIfOpenCodeIsUnhealthy } = agentDrainQueue;
   const {
     queueFallbackRun,
     finalizeStalledRun,
@@ -148,14 +139,12 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
     finalizeBlockedInteraction,
     finalizeUsageLimitRun,
     finalizeModelNotFoundRun,
-    resolveAutoRetryLimit,
-    readRequeueCount,
   } = createTaskRetryPolicy({
     options,
-    queueTask,
     notifyRunTerminal,
     scheduleAgentDrain,
     abortOpenCodeTaskRun,
+    cancelRun,
   });
 
   const monitorService = createTaskRunMonitorService({
@@ -166,7 +155,7 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
     resolveRuntimeConfig: options.monitorSettingsService ? resolveMonitorRuntimeConfig : undefined,
     logger: options.logger,
     hooks: {
-      handleTerminalRun: (run) => handleTerminalRun(run, { triggerContext: readRunContext(run) }),
+      handleTerminalRun: (run) => handleTerminalRun(run),
       queueFallbackRun,
       finalizeBlockedInteraction,
       finalizeStalledRun,
@@ -176,18 +165,37 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
     },
   });
 
-  const { sendRunReply } = createTaskReplyFlow({
+  const replyFlow = createTaskReplyFlow({
     options,
     findRun,
-    startTaskRunPromptWithRetry,
-    resumeAcceptedPromptRun,
-    handleTerminalRun,
-    readRunContext,
-    monitorConfig,
-    monitorService,
+    scheduleAgentDrain,
+    startMonitor: (runId) => {
+      if (monitorConfig.autoStart) monitorService.start(runId);
+    },
   });
+  const teams =
+    options.db && options.config
+      ? createTeamService({
+          db: options.db,
+          config: options.config,
+          taskService: options.taskService,
+          queue: queueTask,
+          wake: scheduleAgentDrain,
+        })
+      : undefined;
+  let teamRecoveryTimer = teams
+    ? setInterval(() => {
+        void teams
+          .recover()
+          .catch((error: unknown) =>
+            options.logger?.error({ err: error }, "team handoff recovery failed"),
+          );
+      }, 5_000)
+    : undefined;
+  teamRecoveryTimer?.unref();
 
   return {
+    teams,
     async trigger(taskId: string, input: QueueTaskExecutionInput = {}): Promise<TaskRun> {
       return queueTask(taskId, input);
     },
@@ -205,14 +213,36 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
     },
 
     async sendRunReply(runId: string, input: unknown): Promise<TaskRunFollowup> {
-      return sendRunReply(runId, input);
+      return replyFlow.sendRunReply(runId, input);
     },
+
+    cancelRunReply: replyFlow.cancelRunReply,
+    sendTaskReply: replyFlow.sendTaskReply,
+    continueRun: replyFlow.continueRun,
+    cancelTaskReply: replyFlow.cancelTaskReply,
 
     startTaskRunMonitor(runId: string): void {
       monitorService.start(runId);
     },
 
     async resumeRunningTaskRuns(): Promise<void> {
+      agentDrainQueue.resume();
+      if (teams && !teamRecoveryTimer) {
+        teamRecoveryTimer = setInterval(() => {
+          void teams
+            .recover()
+            .catch((error: unknown) =>
+              options.logger?.error({ err: error }, "team handoff recovery failed"),
+            );
+        }, 5_000);
+        teamRecoveryTimer.unref();
+      }
+      await teams
+        ?.recover()
+        .catch((error: unknown) =>
+          options.logger?.error({ err: error }, "team handoff recovery needs attention"),
+        );
+      await replyFlow.recoverPending();
       const runs = await options.taskService.listActiveRuns();
 
       for (const run of runs) {
@@ -255,47 +285,17 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
       }
     },
 
-    async cancel(runId: string, input: CancelTaskRunInput = {}): Promise<TaskRun> {
-      const parsed = cancelTaskRunInputSchema.parse(input);
-      taskRunOperationGuard.requestCancellation(runId);
-      let guarded: { run: TaskRun; cancelled: TaskRun };
-      try {
-        guarded = await taskRunOperationGuard.runExclusive(runId, async () => {
-          const run = await findRun(runId);
-
-          if (!["queued", "running"].includes(run.status)) {
-            throw new BadRequestError("Only queued or running task runs can be cancelled.");
-          }
-
-          const cancelled = await options.taskService.setRunStatus(run.id, "cancelled", {
-            cancelledAt: new Date().toISOString(),
-            cancellationReason: parsed.reason ?? "Cancelled by user.",
-          });
-
-          if (!cancelled) {
-            throw new NotFoundError("Task run not found.");
-          }
-
-          return { run, cancelled };
-        });
-      } finally {
-        taskRunOperationGuard.clearCancellationRequest(runId);
-      }
-
-      const { run, cancelled } = guarded;
-
-      await abortOpenCodeTaskRun(run);
-      notifyRunTerminal(cancelled);
-      scheduleAgentDrain(cancelled.agentId);
-      return cancelled;
-    },
+    cancel: cancelRun,
 
     async listActiveRuns(): Promise<TaskRun[]> {
       return options.taskService.listActiveRuns();
     },
 
     dispose(): void {
+      agentDrainQueue.stop();
       monitorService.dispose();
+      clearInterval(teamRecoveryTimer);
+      teamRecoveryTimer = undefined;
 
       for (const deferral of agentDrainDeferrals.values()) {
         if (deferral.timer) {
@@ -342,24 +342,66 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
     }
   }
 
+  async function cancelRun(runId: string, input: CancelTaskRunInput = {}): Promise<TaskRun> {
+    const parsed = cancelTaskRunInputSchema.parse(input);
+    taskRunOperationGuard.requestCancellation(runId);
+    let guarded: { run: TaskRun; cancelled: TaskRun };
+    try {
+      guarded = await taskRunOperationGuard.runExclusive(runId, async () => {
+        const run = await findRun(runId);
+
+        if (!["queued", "running", "waiting"].includes(run.status)) {
+          throw new BadRequestError("Only queued or running task runs can be cancelled.");
+        }
+
+        const cancelled = await options.taskService.setRunStatus(run.id, "cancelled", {
+          cancelledAt: new Date().toISOString(),
+          cancellationReason: parsed.reason ?? "Cancelled by user.",
+        });
+
+        if (!cancelled) {
+          throw new NotFoundError("Task run not found.");
+        }
+
+        return { run, cancelled };
+      });
+    } finally {
+      taskRunOperationGuard.clearCancellationRequest(runId);
+    }
+
+    const { run, cancelled } = guarded;
+
+    replyFlow.cancelPending(run.id);
+    const children = (await options.taskService.listSubtasks(run.taskId)).filter(
+      (child) => child.ownerRunId === run.id,
+    );
+    const childRuns = (await options.taskService.listRuns(run.taskId)).filter((childRun) =>
+      children.some((child) => child.id === childRun.subtaskId),
+    );
+    for (const childRun of childRuns) {
+      replyFlow.cancelPending(childRun.id);
+      if (["running", "queued", "waiting"].includes(childRun.status)) {
+        const stopped = await options.taskService.setRunStatus(childRun.id, "cancelled", {
+          cancelledAt: new Date().toISOString(),
+          cancellationReason: "Owner goal cancelled.",
+        });
+        if (stopped) await replyFlow.finalizeReply(stopped);
+        await abortOpenCodeTaskRun(childRun);
+        scheduleAgentDrain(childRun.agentId);
+      }
+    }
+    await abortOpenCodeTaskRun(run);
+    await replyFlow.finalizeReply(cancelled);
+    notifyRunTerminal(cancelled);
+    scheduleAgentDrain(cancelled.agentId);
+    return cancelled;
+  }
+
   async function queueTask(taskId: string, input: QueueTaskExecutionInput = {}): Promise<TaskRun> {
     const parsed = queueTaskExecutionInputSchema.parse({ taskId, ...input });
     const triggerContext = parsed.context ? taskContextSchema.parse(parsed.context) : undefined;
     const target = await requireRunnableTask(taskId, parsed.triggerSource);
     const task = await resolveExecutableTask(target, { ...parsed, context: triggerContext });
-
-    if (!parsed.subtaskId) {
-      const pending = await listRunnableSubtasks(task.id);
-      const runnable = manualRunnableSubtasks(pending);
-
-      if (runnable.length > 0) {
-        return queueNextSubtaskRun(task, parsed, triggerContext, runnable);
-      }
-
-      if (pending.hasActive) {
-        throw new BadRequestError("Task already has active feedback runs.");
-      }
-    }
 
     const targetSubtask = parsed.subtaskId
       ? await findSubtask(task.id, parsed.subtaskId)
@@ -408,7 +450,7 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
     const task = await resolveExecutableTask(target, { ...parsed, context: triggerContext });
     const targetSubtask = parsed.subtaskId
       ? await findSubtask(task.id, parsed.subtaskId)
-      : manualRunnableSubtasks(await listRunnableSubtasks(task.id))[0];
+      : undefined;
     const subtaskId = parsed.subtaskId ?? targetSubtask?.id;
     const runAgentId =
       targetSubtask?.agentId ?? parsed.agentId ?? task.defaultAgentId ?? task.agentId;
@@ -506,9 +548,12 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
           running = sessionLinked;
         }
 
-        const attachments = options.taskContextAttachmentService
-          ? await options.taskContextAttachmentService.readConversationAttachments(task.context)
-          : [];
+        const teamInputs = await teams?.prepareRun(running);
+        const attachments = teamInputs
+          ? teamInputs.attachments
+          : options.taskContextAttachmentService
+            ? await options.taskContextAttachmentService.readConversationAttachments(task.context)
+            : [];
         const promptStart = await startTaskRunPromptWithRetry(running, conversation, {
           text: running.renderedPrompt,
           attachments,
@@ -534,7 +579,7 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
         }
 
         if (accepted.status !== "running") {
-          await handleTerminalRun(accepted, { triggerContext: readRunContext(accepted) });
+          await handleTerminalRun(accepted);
           return accepted;
         }
 
@@ -554,13 +599,13 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
         throw new NotFoundError("Task run not found.");
       }
 
-      await handleTerminalRun(completed, { triggerContext: readRunContext(running) });
+      await handleTerminalRun(completed);
       return completed;
     } catch (error) {
       const latest = await findRun(running.id);
 
       if (latest.status !== "running") {
-        await handleTerminalRun(latest, { triggerContext: readRunContext(latest) });
+        await handleTerminalRun(latest);
         return latest;
       }
 
@@ -581,7 +626,7 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
         return fallbackRun;
       }
 
-      await handleTerminalRun(errored, { triggerContext: readRunContext(running) });
+      await handleTerminalRun(errored);
       return errored;
     }
   }
@@ -600,14 +645,8 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
         return inspection.conversation;
       }
 
-      options.logger?.warn(
-        {
-          taskId: run.taskId,
-          taskRunId: run.id,
-          opencodeSessionId: run.opencodeSessionId,
-          diagnostics: inspection.diagnostics,
-        },
-        "task run had an OpenCode session id but no task-owned conversation; creating a new session",
+      throw new BadRequestError(
+        "The existing task session is unavailable. Restore it or duplicate the task; a replacement session will not be created.",
       );
     }
 
@@ -758,6 +797,10 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
   }
 
   async function resumeRunningTaskRun(run: TaskRun): Promise<void> {
+    if (typeof run.triggerMetadata?.["replyId"] === "string") {
+      if (replyFlow.readReply(run.triggerMetadata["replyId"])?.status === "blocked") return;
+      if (await replyFlow.recoverReply(run)) return;
+    }
     const evidence = await readAcceptedPromptEvidence(run);
 
     if (evidence) {
@@ -853,24 +896,6 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
     }
   }
 
-  // Finalize a run the monitor detected as stalled: abort the wedged session,
-  // cancel the run with a clear reason, and — when enabled in settings — queue a
-  // fresh run of the same task/subtask.
-  async function queueNextSubtaskRun(
-    task: Task,
-    parsed: QueueSingleRunInput,
-    triggerContext: TaskContext | undefined,
-    subtasks: TaskSubtask[],
-  ): Promise<TaskRun> {
-    const subtask = subtasks[0];
-
-    if (!subtask) {
-      throw new BadRequestError("No feedback runs were queued.");
-    }
-
-    return queueSingleRun(task, parsed, triggerContext, createId(), subtask);
-  }
-
   async function queueSingleRun(
     task: Task,
     parsed: QueueSingleRunInput,
@@ -881,16 +906,33 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
     const subtaskId = parsed.subtaskId ?? targetSubtask?.id;
     const runAgentId =
       targetSubtask?.agentId ?? parsed.agentId ?? task.defaultAgentId ?? task.agentId;
-    const { renderedContext, renderedPrompt } = await taskRunContextService.build({
-      task,
-      runId: taskRunId,
-      runAgentId,
-      subtaskId,
-      trigger: { ...parsed, context: triggerContext },
-    });
+    const delegated = Boolean(targetSubtask?.ownerRunId);
+    const worker =
+      delegated && options.db
+        ? await options.db.query.agents.findFirst({
+            where: (table, { eq }) => eq(table.id, runAgentId),
+          })
+        : undefined;
+    const context = delegated
+      ? {
+          renderedPrompt: `<TaskRunId>\n${taskRunId}\n</TaskRunId>\nYou are executing a bounded team assignment. Follow your own specialist instructions and permissions. You cannot delegate further.\nAssignment: ${targetSubtask!.id}\nBrief:\n${targetSubtask!.description}\nExpected output:\n${targetSubtask!.expectedOutput ?? ""}\nShared artifact IDs: ${JSON.stringify(targetSubtask!.inputArtifactIds ?? [])}\nReturn a concise outcome with validation and unresolved problems; register deliverables using add_task_artifact. Use read_team_artifact for shared files.`,
+          renderedContext: {
+            assignmentId: targetSubtask!.id,
+            ownerRunId: targetSubtask!.ownerRunId,
+          },
+        }
+      : await taskRunContextService.build({
+          task,
+          runId: taskRunId,
+          runAgentId,
+          subtaskId,
+          trigger: { ...parsed, context: triggerContext },
+        });
+    const { renderedContext, renderedPrompt } = context;
     const effectivePermissions = await options.taskPermissionService?.compute({
       ...task,
       agentId: runAgentId,
+      ...(delegated ? { permissionProfile: undefined } : {}),
     });
     const run = await options.taskService.queueTask({
       id: taskRunId,
@@ -898,8 +940,8 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
       subtaskId,
       agentId: runAgentId,
       triggerSource: parsed.triggerSource,
-      model: parsed.model,
-      fallbackModels: parsed.fallbackModels,
+      model: delegated ? worker?.default_model : parsed.model,
+      fallbackModels: delegated ? [] : parsed.fallbackModels,
       retryOfRunId: parsed.retryOfRunId,
       context: triggerContext,
       metadata: parsed.metadata,
@@ -912,135 +954,10 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
     return run;
   }
 
-  // Classify a task's feedback subtasks into the buckets the queue paths care
-  // about. `unattempted` is fresh work; `retryableErrored` is a subtask whose
-  // latest run was a system error/failure; `retryableReview` is one whose latest
-  // run is an intentional human-review hand-off. The buckets are kept separate so
-  // the automatic path can auto-retry failures (bounded by a cap) while never
-  // re-queuing a review hand-off, which is terminal.
-  async function listRunnableSubtasks(taskId: string): Promise<RunnableSubtasks> {
-    const subtasks = await options.taskService.listSubtasks(taskId);
-
-    if (subtasks.length === 0) {
-      return { unattempted: [], retryableErrored: [], retryableReview: [], hasActive: false };
-    }
-
-    const runs = await options.taskService.listRuns(taskId);
-    const activeSubtaskIds = new Set(
-      runs
-        .filter((run) => run.subtaskId && (run.status === "queued" || run.status === "running"))
-        .map((run) => run.subtaskId),
-    );
-
-    const inactive = subtasks.filter((subtask) => !activeSubtaskIds.has(subtask.id));
-
-    return {
-      unattempted: inactive.filter((subtask) => !hasTerminalSubtaskRun(subtask.id, runs)),
-      retryableErrored: inactive.filter((subtask) => latestSubtaskRunErrored(subtask.id, runs)),
-      retryableReview: inactive.filter((subtask) => latestSubtaskRunNeedsReview(subtask.id, runs)),
-      hasActive: activeSubtaskIds.size > 0,
-    };
-  }
-
-  // Subtasks a manual/explicit queue may run: fresh work first, otherwise any
-  // attempted-but-not-successful subtask (failed or awaiting review). A deliberate
-  // user retry is not subject to the auto-retry cap.
-  function manualRunnableSubtasks(pending: RunnableSubtasks): TaskSubtask[] {
-    if (pending.unattempted.length > 0) {
-      return pending.unattempted;
-    }
-
-    return [...pending.retryableErrored, ...pending.retryableReview];
-  }
-
-  async function handleTerminalRun(
-    run: TaskRun,
-    input: { triggerContext?: TaskContext },
-  ): Promise<void> {
+  function handleTerminalRun(run: TaskRun): Promise<void> {
     notifyRunTerminal(run);
-    const queued = await queueNextFeedbackSubtaskAfter(run, input.triggerContext);
-    scheduleAgentDrain(queued?.agentId ?? run.agentId);
-  }
-
-  // Automatic chaining after a terminal feedback run. Fresh subtasks are always
-  // queued next; a failed subtask is auto-retried only while under the configured
-  // cap; a human-review hand-off is terminal and is never re-queued (this is what
-  // prevents the runaway loop).
-  async function queueNextFeedbackSubtaskAfter(
-    run: TaskRun,
-    triggerContext: TaskContext | undefined,
-  ): Promise<TaskRun | undefined> {
-    if (!run.subtaskId) {
-      return undefined;
-    }
-
-    const task = await options.taskService.get(run.taskId);
-
-    if (!task) {
-      return undefined;
-    }
-
-    const pending = await listRunnableSubtasks(task.id);
-
-    if (pending.hasActive) {
-      return undefined;
-    }
-
-    // Fresh subtasks are new work: queue the next one with a clean retry chain.
-    if (pending.unattempted.length > 0) {
-      return queueNextSubtaskRun(
-        task,
-        {
-          triggerSource: run.triggerSource,
-          fallbackModels: run.fallbackModels,
-          metadata: { ...run.triggerMetadata, requeueCount: 0 },
-        },
-        triggerContext,
-        pending.unattempted,
-      );
-    }
-
-    // No fresh work left. Auto-retry a failed subtask only while under the cap.
-    if (pending.retryableErrored.length === 0) {
-      return undefined;
-    }
-
-    const limit = await resolveAutoRetryLimit();
-    const nextRequeueCount = readRequeueCount(run) + 1;
-
-    if (nextRequeueCount > limit) {
-      options.logger?.warn(
-        {
-          taskId: task.id,
-          taskRunId: run.id,
-          subtaskId: run.subtaskId,
-          requeueAttempt: nextRequeueCount,
-          autoRetryLimit: limit,
-        },
-        "feedback subtask auto-retry limit reached; leaving task in failed status",
-      );
-      return undefined;
-    }
-
-    return queueNextSubtaskRun(
-      task,
-      {
-        triggerSource: run.triggerSource,
-        fallbackModels: run.fallbackModels,
-        metadata: {
-          ...run.triggerMetadata,
-          requeuedFromRunId: run.id,
-          requeueReason: "system_failure",
-          requeueCount: nextRequeueCount,
-        },
-      },
-      triggerContext,
-      pending.retryableErrored,
-    );
-  }
-
-  function readRunContext(run: TaskRun): TaskContext | undefined {
-    return run.context ? taskContextSchema.parse(run.context) : undefined;
+    scheduleAgentDrain(run.agentId);
+    return Promise.resolve();
   }
 
   async function findSubtask(taskId: string, subtaskId: string): Promise<TaskSubtask> {
@@ -1048,8 +965,8 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
       (entry) => entry.id === subtaskId,
     );
 
-    if (!subtask) {
-      throw new NotFoundError("Task subtask not found.");
+    if (!subtask?.ownerRunId) {
+      throw new NotFoundError("Team assignment not found.");
     }
 
     return subtask;
@@ -1143,45 +1060,30 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
   }
 
   function notifyRunTerminal(run: TaskRun): void {
-    void finalizeInFlightRunFollowup(run);
-    void finalizeRunArchive(run);
-    void emitTerminalActivity(run);
-    void options.onRunTerminal?.(run);
-  }
-
-  // Every terminal transition (completion, error, cancellation, skip) funnels
-  // through here, so this is the one place that can reliably close out a reply
-  // that reactivated this run — regardless of which path put it back into
-  // "running". Best-effort: never throw into the terminal path.
-  async function finalizeInFlightRunFollowup(run: TaskRun): Promise<void> {
-    try {
-      const inFlight = await options.taskService.findInFlightFollowup(run.id);
-
-      if (!inFlight) {
-        return;
-      }
-
-      if (run.status === "completed") {
-        await options.taskService.markFollowupAnswered(inFlight.id, {
-          answerBody: run.resultText ?? run.finalMessage ?? "No response text.",
-          // Prefer the run's own completion time so the answer's timestamp
-          // reflects when the run finished, not when this terminal hook happened
-          // to run.
-          answeredAt: run.completedAt ?? new Date().toISOString(),
-        });
-        return;
-      }
-
-      await options.taskService.markFollowupFailed(
-        inFlight.id,
-        run.errorMessage ?? `Run ended (${run.status}) before answering.`,
+    void replyFlow
+      .finalizeReply(run)
+      .then(async () => {
+        const current = await findRun(run.id);
+        if (
+          current.startedAt === run.startedAt &&
+          current.status === run.status &&
+          current.status !== "waiting" &&
+          !current.hasActiveReply
+        ) {
+          void finalizeRunArchive(current);
+          void emitTerminalActivity(current);
+          void options.onRunTerminal?.(current);
+        }
+        scheduleAgentDrain(run.agentId);
+      })
+      .catch((error: unknown) => {
+        options.logger?.error({ err: error, runId: run.id }, "failed to finalize queued reply");
+      });
+    void teams
+      ?.notify(run)
+      .catch((error: unknown) =>
+        options.logger?.error({ err: error, runId: run.id }, "team result delivery will retry"),
       );
-    } catch (error) {
-      options.logger?.warn(
-        { err: error, taskId: run.taskId, taskRunId: run.id },
-        "failed to finalize in-flight run reply",
-      );
-    }
   }
 
   // Drop an activity for the just-finished run. Best-effort: never throw into the

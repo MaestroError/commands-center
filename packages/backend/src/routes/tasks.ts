@@ -1,5 +1,5 @@
-import { z } from "zod";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
+import { z } from "zod";
 
 import {
   activeTaskRunListSchema,
@@ -9,56 +9,50 @@ import {
   cancelTaskRunInputSchema,
   createArtifactShareLinkInputSchema,
   createArtifactShareLinkResponseSchema,
+  createTaskInputSchema,
   createTaskRunFollowupInputSchema,
   createTaskTemplateInputSchema,
-  createTaskInputSchema,
-  createTaskFeedbackInputSchema,
   listTaskRunsQuerySchema,
   listTasksQuerySchema,
   queueTaskInputSchema,
   revokeArtifactShareLinkResponseSchema,
+  taskFeedbackThreadListSchema,
+  taskListSchema,
   taskQueuePreviewInputSchema,
   taskQueuePreviewSchema,
-  taskFeedbackThreadListSchema,
-  taskFeedbackThreadSchema,
-  taskListSchema,
   taskRunFollowupSchema,
   taskRunListSchema,
   taskRunSchema,
   taskRunSessionInspectionSchema,
   taskSchedulerStateListSchema,
   taskSchema,
-  taskSubtaskInputSchema,
   taskSubtaskListSchema,
   taskSubtaskProgressListSchema,
-  taskSubtaskSchema,
   taskTemplateListSchema,
   taskTemplateRunNowInputSchema,
   taskTemplateSchema,
   updateArtifactSharingPreferencesInputSchema,
   updateTaskContextInputSchema,
-  updateTaskFeedbackInputSchema,
   updateTaskInputSchema,
   updateTaskTemplateInputSchema,
-  updateTaskSubtaskInputSchema,
   uploadTaskContextAttachmentInputSchema,
   uploadTaskContextAttachmentResponseSchema,
 } from "@cc/shared/schemas";
 
+import { NotFoundError } from "../lib/api-error.js";
 import type { AppServer } from "../lib/fastify-zod.js";
 import type { RuntimeContext } from "../lib/start-server-runtime.js";
-import { NotFoundError } from "../lib/api-error.js";
-import { createConversationService } from "../services/conversation-service.js";
-import { createTaskExecutionService } from "../services/task-execution-service.js";
-import { createTaskContextAttachmentService } from "../services/task-context-attachment-service.js";
-import { createTaskSchedulerService } from "../services/task-scheduler-service.js";
-import { createArtifactService } from "../services/artifact-service.js";
-import { createArtifactDeliveryService } from "../services/artifact-delivery-service.js";
-import { createArtifactShareLinkService } from "../services/artifact-share-link-service.js";
-import { buildArtifactDeliveryContext } from "./public-artifacts.js";
 import { createActivityService } from "../services/activity-service.js";
+import { createArtifactDeliveryService } from "../services/artifact-delivery-service.js";
+import { createArtifactService } from "../services/artifact-service.js";
+import { createArtifactShareLinkService } from "../services/artifact-share-link-service.js";
+import { createConversationService } from "../services/conversation-service.js";
+import { createTaskContextAttachmentService } from "../services/task-context-attachment-service.js";
+import { createTaskExecutionService } from "../services/task-execution-service.js";
+import { createTaskSchedulerService } from "../services/task-scheduler-service.js";
 import { createTaskService } from "../services/task-service.js";
 import { triggerTemplateRun } from "../services/trigger-template-run.js";
+import { buildArtifactDeliveryContext } from "./public-artifacts.js";
 
 const taskIdParamsSchema = z.object({
   id: z.string().min(1),
@@ -74,14 +68,6 @@ const artifactParamsSchema = z.object({
 
 const artifactShareLinkParamsSchema = artifactParamsSchema.extend({
   shareId: z.string().min(1),
-});
-
-const taskSubtaskParamsSchema = taskIdParamsSchema.extend({
-  subtaskId: z.string().min(1),
-});
-
-const taskFeedbackParamsSchema = taskIdParamsSchema.extend({
-  feedbackId: z.string().min(1),
 });
 
 export function registerTaskRoutes(server: AppServer, context: RuntimeContext): void {
@@ -647,49 +633,6 @@ export function registerTaskServiceRoutes(
     async (request) => service.listFeedback(request.params.id),
   );
 
-  app.post(
-    "/api/tasks/:id/feedback",
-    {
-      schema: {
-        params: taskIdParamsSchema,
-        body: createTaskFeedbackInputSchema,
-        response: {
-          201: taskFeedbackThreadSchema,
-        },
-      },
-    },
-    async (request, reply) => {
-      reply.code(201);
-      return service.createFeedback(request.params.id, request.body);
-    },
-  );
-
-  app.patch(
-    "/api/tasks/:id/feedback/:feedbackId",
-    {
-      schema: {
-        params: taskFeedbackParamsSchema,
-        body: updateTaskFeedbackInputSchema,
-        response: {
-          200: taskFeedbackThreadSchema,
-        },
-      },
-    },
-    async (request) => {
-      const feedback = await service.updateFeedback(
-        request.params.id,
-        request.params.feedbackId,
-        request.body,
-      );
-
-      if (!feedback) {
-        throw new NotFoundError("Task feedback not found.");
-      }
-
-      return feedback;
-    },
-  );
-
   app.get(
     "/api/tasks/:id/subtasks",
     {
@@ -701,49 +644,6 @@ export function registerTaskServiceRoutes(
       },
     },
     async (request) => service.listSubtasks(request.params.id),
-  );
-
-  app.post(
-    "/api/tasks/:id/subtasks",
-    {
-      schema: {
-        params: taskIdParamsSchema,
-        body: taskSubtaskInputSchema,
-        response: {
-          201: taskSubtaskSchema,
-        },
-      },
-    },
-    async (request, reply) => {
-      reply.code(201);
-      return service.createSubtask(request.params.id, request.body);
-    },
-  );
-
-  app.patch(
-    "/api/tasks/:id/subtasks/:subtaskId",
-    {
-      schema: {
-        params: taskSubtaskParamsSchema,
-        body: updateTaskSubtaskInputSchema,
-        response: {
-          200: taskSubtaskSchema,
-        },
-      },
-    },
-    async (request) => {
-      const subtask = await service.updateSubtask(
-        request.params.id,
-        request.params.subtaskId,
-        request.body,
-      );
-
-      if (!subtask) {
-        throw new NotFoundError("Task subtask not found.");
-      }
-
-      return subtask;
-    },
   );
 
   app.post(
@@ -894,6 +794,45 @@ export function registerTaskServiceRoutes(
   );
 
   app.get(
+    "/api/tasks/:id/replies",
+    { schema: { params: taskIdParamsSchema, response: { 200: z.array(taskRunFollowupSchema) } } },
+    async (request) => service.listTaskReplies(request.params.id),
+  );
+  app.post(
+    "/api/tasks/:id/replies",
+    {
+      schema: {
+        params: taskIdParamsSchema,
+        body: createTaskRunFollowupInputSchema,
+        response: { 201: taskRunFollowupSchema },
+      },
+    },
+    async (request, reply) => {
+      reply.code(201);
+      return executionService.sendTaskReply(request.params.id, request.body);
+    },
+  );
+  app.delete(
+    "/api/tasks/:id/replies/:followupId",
+    {
+      schema: {
+        params: taskIdParamsSchema.extend({ followupId: z.string().min(1) }),
+        response: { 200: taskRunFollowupSchema },
+      },
+    },
+    (request) => executionService.cancelTaskReply(request.params.id, request.params.followupId),
+  );
+  app.post(
+    "/api/tasks/:id/runs/:runId/continue",
+    { schema: { params: taskRunParamsSchema, response: { 200: taskRunSchema } } },
+    async (request) => {
+      if (!(await service.getRun(request.params.id, request.params.runId)))
+        throw new NotFoundError("Task run not found.");
+      return executionService.continueRun(request.params.runId);
+    },
+  );
+
+  app.get(
     "/api/tasks/:id/runs/:runId/followups",
     {
       schema: {
@@ -936,6 +875,21 @@ export function registerTaskServiceRoutes(
 
       reply.code(201);
       return followup;
+    },
+  );
+
+  app.delete(
+    "/api/tasks/:id/runs/:runId/followups/:followupId",
+    {
+      schema: {
+        params: taskRunParamsSchema.extend({ followupId: z.string().min(1) }),
+        response: { 200: taskRunFollowupSchema },
+      },
+    },
+    async (request) => {
+      if (!(await service.getRun(request.params.id, request.params.runId)))
+        throw new NotFoundError("Task run not found.");
+      return executionService.cancelRunReply(request.params.runId, request.params.followupId);
     },
   );
 

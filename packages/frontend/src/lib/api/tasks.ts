@@ -1,22 +1,20 @@
 import { apiFetch, readApiError, requestJson } from "./client";
 
 import {
-  cancelTaskRunInputSchema,
   addArtifactInputSchema,
   artifactDeliveryUrlsResponseSchema,
+  artifactListResponseSchema,
   artifactSchema,
+  cancelTaskRunInputSchema,
+  conversationSnapshotSchema,
   createArtifactShareLinkInputSchema,
   createArtifactShareLinkResponseSchema,
-  conversationSnapshotSchema,
-  createTaskFeedbackInputSchema,
   createTaskInputSchema,
   createTaskRunFollowupInputSchema,
   createTaskTemplateInputSchema,
   listTasksQuerySchema,
-  artifactListResponseSchema,
-  taskListSchema,
   taskFeedbackThreadListSchema,
-  taskFeedbackThreadSchema,
+  taskListSchema,
   taskQueuePreviewInputSchema,
   taskQueuePreviewSchema,
   taskRunFollowupSchema,
@@ -31,42 +29,39 @@ import {
   taskTemplateRunNowInputSchema,
   taskTemplateSchema,
   updateTaskContextInputSchema,
-  updateTaskFeedbackInputSchema,
+  updateTaskInputSchema,
   updateTaskTemplateInputSchema,
   uploadTaskContextAttachmentInputSchema,
   uploadTaskContextAttachmentResponseSchema,
-  type CancelTaskRunInput,
   type AddArtifactInput,
   type Artifact,
   type ArtifactDeliveryUrlsResponse,
-  type CreateTaskFeedbackInput,
+  type ArtifactListResponse,
+  type CancelTaskRunInput,
+  type ConversationSnapshot,
   type CreateArtifactShareLinkInput,
   type CreateArtifactShareLinkResponse,
   type CreateTaskInput,
   type CreateTaskRunFollowupInput,
   type CreateTaskTemplateInput,
-  type ConversationSnapshot,
   type ListTasksQuery,
   type QueueTaskInput,
   type Task,
-  type ArtifactListResponse,
   type TaskFeedbackThread,
   type TaskQueuePreview,
-  type TaskTemplate,
-  type TaskTemplateRunNowInput,
   type TaskRun,
   type TaskRunFollowup,
   type TaskRunSessionInspection,
   type TaskSchedulerState,
   type TaskSubtask,
   type TaskSubtaskProgress,
-  type UpdateTaskInput,
+  type TaskTemplate,
+  type TaskTemplateRunNowInput,
   type UpdateTaskContextInput,
-  type UpdateTaskFeedbackInput,
+  type UpdateTaskInput,
   type UpdateTaskTemplateInput,
   type UploadTaskContextAttachmentInput,
   type UploadTaskContextAttachmentResponse,
-  updateTaskInputSchema,
 } from "@cc/shared/schemas";
 
 export async function listTasks(query: Partial<ListTasksQuery> = {}): Promise<Task[]> {
@@ -206,35 +201,6 @@ export async function listTaskFeedback(taskId: string): Promise<TaskFeedbackThre
   );
 }
 
-export async function createTaskFeedback(
-  taskId: string,
-  input: CreateTaskFeedbackInput,
-): Promise<TaskFeedbackThread> {
-  return requestJson<TaskFeedbackThread>(
-    `/api/tasks/${encodeURIComponent(taskId)}/feedback`,
-    taskFeedbackThreadSchema,
-    {
-      method: "POST",
-      body: createTaskFeedbackInputSchema.parse(input),
-    },
-  );
-}
-
-export async function updateTaskFeedback(
-  taskId: string,
-  feedbackId: string,
-  input: UpdateTaskFeedbackInput,
-): Promise<TaskFeedbackThread> {
-  return requestJson<TaskFeedbackThread>(
-    `/api/tasks/${encodeURIComponent(taskId)}/feedback/${encodeURIComponent(feedbackId)}`,
-    taskFeedbackThreadSchema,
-    {
-      method: "PATCH",
-      body: updateTaskFeedbackInputSchema.parse(input),
-    },
-  );
-}
-
 export async function listTaskSubtasks(taskId: string): Promise<TaskSubtask[]> {
   return requestJson<TaskSubtask[]>(
     `/api/tasks/${encodeURIComponent(taskId)}/subtasks`,
@@ -325,6 +291,18 @@ export async function listRunFollowups(taskId: string, runId: string): Promise<T
   return requestJson<TaskRunFollowup[]>(
     `/api/tasks/${encodeURIComponent(taskId)}/runs/${encodeURIComponent(runId)}/followups`,
     taskRunFollowupSchema.array(),
+  );
+}
+
+export async function cancelRunFollowup(
+  taskId: string,
+  runId: string,
+  id: string,
+): Promise<TaskRunFollowup> {
+  return requestJson(
+    `/api/tasks/${encodeURIComponent(taskId)}/runs/${encodeURIComponent(runId)}/followups/${encodeURIComponent(id)}`,
+    taskRunFollowupSchema,
+    { method: "DELETE" },
   );
 }
 
@@ -460,5 +438,35 @@ export async function listTaskSchedulerState(): Promise<TaskSchedulerState[]> {
   return requestJson<TaskSchedulerState[]>(
     "/api/tasks/scheduler/state",
     taskSchedulerStateListSchema,
+  );
+}
+
+export async function listTaskReplies(taskId: string): Promise<TaskRunFollowup[]> {
+  return requestJson(
+    `/api/tasks/${encodeURIComponent(taskId)}/replies`,
+    taskRunFollowupSchema.array(),
+  );
+}
+export async function sendTaskReply(
+  taskId: string,
+  input: CreateTaskRunFollowupInput,
+): Promise<TaskRunFollowup> {
+  return requestJson(`/api/tasks/${encodeURIComponent(taskId)}/replies`, taskRunFollowupSchema, {
+    method: "POST",
+    body: createTaskRunFollowupInputSchema.parse(input),
+  });
+}
+export async function cancelTaskReply(taskId: string, id: string): Promise<TaskRunFollowup> {
+  return requestJson(
+    `/api/tasks/${encodeURIComponent(taskId)}/replies/${encodeURIComponent(id)}`,
+    taskRunFollowupSchema,
+    { method: "DELETE" },
+  );
+}
+export async function continueTaskRun(taskId: string, runId: string): Promise<TaskRun> {
+  return requestJson(
+    `/api/tasks/${encodeURIComponent(taskId)}/runs/${encodeURIComponent(runId)}/continue`,
+    taskRunSchema,
+    { method: "POST" },
   );
 }

@@ -173,6 +173,7 @@ describe("specialistReconciler", () => {
         capabilities: {
           ...baseCreate.capabilities,
           toolPermissions: [{ pattern: "task_*", action: "allow" }],
+          allowedTeammates: ["designer", "reviewer-helper"],
         },
       });
 
@@ -185,6 +186,7 @@ describe("specialistReconciler", () => {
       expect(restored?.id).toBe(agent.id);
       expect(restored?.slug).toBe("reviewer");
       expect(restored?.defaultModel).toBe("openai/gpt-4.1");
+      expect(restored?.capabilities.allowedTeammates).toEqual(["designer", "reviewer-helper"]);
       expect(restored?.capabilities.toolPermissions).toEqual([
         { pattern: "task_*", action: "allow" },
       ]);

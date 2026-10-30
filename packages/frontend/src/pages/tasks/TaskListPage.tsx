@@ -3,6 +3,9 @@
 import { PageHeader } from "@/components/common/PageHeader";
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
 import { RunTaskContextDialog } from "@/components/tasks/RunTaskContextDialog";
+import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button-variants";
+import { Input } from "@/components/ui/input";
 import { useSpecialistsQuery } from "@/hooks/use-specialists-query";
 import {
   useActiveTaskRunsQuery,
@@ -39,9 +42,6 @@ import {
   setSelectedTemplate,
   setTaskView,
 } from "./task-helpers";
-import { buttonVariants } from "@/components/ui/button-variants";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 
 export function TaskListPage() {
   const navigate = useNavigate();
@@ -370,6 +370,7 @@ export function TaskListPage() {
     if (activeRun || currentStatus === "queued") return;
 
     if (status === "queued") {
+      if (task.latestRunId) return;
       mutations.trigger.mutate({ id: task.id });
       return;
     }

@@ -1,9 +1,9 @@
+import type { Specialist, Task, TaskRun, TaskSubtask } from "@cc/shared/schemas";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router";
 import type * as ReactRouter from "react-router";
+import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Specialist, Task, TaskRun, TaskSubtask } from "@cc/shared/schemas";
 
 import { TaskDetailPage } from "./TaskDetailPage";
 
@@ -184,8 +184,7 @@ describe("TaskDetailPage overview", () => {
     const user = userEvent.setup();
     renderPage();
 
-    await user.click(screen.getByTestId("task-detail-tab-subtasks"));
-    expect(screen.getByText("Investigate")).toBeInTheDocument();
+    expect(screen.queryByTestId("task-detail-tab-subtasks")).not.toBeInTheDocument();
 
     await user.click(screen.getByTestId("task-detail-tab-runs"));
     expect(screen.getByTestId("task-run-row-run-1")).toBeInTheDocument();

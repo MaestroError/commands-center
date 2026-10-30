@@ -54,6 +54,7 @@ export function createSpecialistFormFromSpecialist(
     iconPath: specialist?.iconPath ?? "",
     defaultModel: resolveInitialModelId(catalog, specialist?.defaultModel),
     capabilities: {
+      allowedTeammates: existingCapabilities.allowedTeammates,
       builtInSkills: existingCapabilities.builtInSkills,
       workspaceSkills: existingCapabilities.workspaceSkills ?? [],
       customTools: existingCapabilities.customTools,

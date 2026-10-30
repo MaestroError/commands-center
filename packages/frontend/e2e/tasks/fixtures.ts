@@ -4,6 +4,7 @@ import type {
   Task,
   TaskFeedbackThread,
   TaskRun,
+  TaskRunFollowup,
   TaskRunSessionInspection,
   TaskSubtaskProgress,
   TaskTemplate,
@@ -28,6 +29,7 @@ export type TaskState = {
   templateTasks: Task[];
   runsByTaskId: Record<string, TaskRun[]>;
   feedbackByTaskId: Record<string, TaskFeedbackThread[]>;
+  repliesByTaskId: Record<string, TaskRunFollowup[]>;
   session: TaskRunSessionInspection;
   subtaskProgress: TaskSubtaskProgress[];
   activeRuns: TaskRun[];
@@ -263,6 +265,7 @@ export function createTaskState(): TaskState {
     ],
     runsByTaskId: { "task-ready": [structuredClone(completedRun)] },
     feedbackByTaskId: {},
+    repliesByTaskId: {},
     session: structuredClone(session),
     subtaskProgress: [],
     activeRuns: [],
@@ -464,20 +467,26 @@ function handleTaskRoute(route: Route, state: TaskState) {
     }
     return route.fulfill(run ? json(run) : notFound());
   }
-  if (sub === "feedback") {
+  if (sub === "replies") {
     if (method === "POST") {
-      const thread: TaskFeedbackThread = {
-        id: `feedback-${(state.feedbackByTaskId[id]?.length ?? 0) + 1}`,
+      const reply: TaskRunFollowup = {
+        id: `reply-${(state.repliesByTaskId[id]?.length ?? 0) + 1}`,
         taskId: id,
-        body: (body()["body"] as string) ?? "",
-        targetAgentIds: (body()["mentionedAgentIds"] as string[]) ?? [],
-        subtasks: [],
+        body: String(body()["body"]),
+        kind: "operator_reply",
+        status: "queued",
         createdAt: NOW,
       };
-      state.feedbackByTaskId[id] = [...(state.feedbackByTaskId[id] ?? []), thread];
-      return route.fulfill(json(thread, 201));
+      state.repliesByTaskId[id] = [...(state.repliesByTaskId[id] ?? []), reply];
+      return route.fulfill(json(reply, 201));
     }
-    return route.fulfill(json(state.feedbackByTaskId[id] ?? []));
+    return route.fulfill(json(state.repliesByTaskId[id] ?? []));
+  }
+  if (sub?.startsWith("replies/") && method === "DELETE") {
+    const reply = state.repliesByTaskId[id]?.find((entry) => entry.id === sub.split("/")[1]);
+    if (!reply) return route.fulfill(notFound());
+    reply.status = "cancelled";
+    return route.fulfill(json(reply));
   }
   if (sub === "subtasks") return route.fulfill(json([]));
   if (sub === "queue/preview" && method === "POST") {

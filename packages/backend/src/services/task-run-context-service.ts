@@ -253,7 +253,7 @@ function renderTaskRunPrompt(
   const taskContent = [
     tag("Title", task.title),
     isFeedbackRun
-      ? tag("Goal", "please address the feedback on this task")
+      ? tag("Goal", "Complete only the bounded team assignment below.")
       : tag("Goal", task.description || "Complete the task according to its configured details."),
     isFeedbackRun && task.description ? tag("taskDescription", task.description) : undefined,
     task.todos.length > 0
@@ -269,7 +269,7 @@ function renderTaskRunPrompt(
   return [
     tag("TaskRun", runContent.filter(Boolean).join("\n"), { escape: false }),
     tag("Task", taskContent.filter(Boolean).join("\n"), { escape: false }),
-    isFeedbackRun ? tag("feedback", targetSubtask.description) : undefined,
+    isFeedbackRun ? tag("Assignment", targetSubtask.description) : undefined,
     tag(
       "Instructions",
       [

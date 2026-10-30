@@ -30,6 +30,7 @@ vi.mock("@/hooks/use-media-query", () => ({
 }));
 
 vi.mock("@/hooks/use-tasks-query", () => ({
+  useTaskRunFollowupsQuery: () => ({ data: [] }),
   useTaskMutations: () => ({
     addConversationArtifact: { mutateAsync: addConversationArtifactMock },
   }),

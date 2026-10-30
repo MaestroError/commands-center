@@ -8,7 +8,6 @@ import {
   taskPermissionProfileSchema,
   addTaskRunArtifactInputSchema,
   boardTaskStatusSchema,
-  createTaskFeedbackInputSchema,
   createTaskRunFollowupInputSchema,
   createTaskRunInputSchema,
   markTaskRunNeedsReviewInputSchema,
@@ -26,7 +25,6 @@ import {
   taskSubtaskSchema,
   taskTemplateSchema,
   updateTaskTemplateInputSchema,
-  updateTaskFeedbackInputSchema,
 } from "../../src/schemas/tasks.js";
 
 describe("task schemas", () => {
@@ -136,19 +134,6 @@ describe("task schemas", () => {
       });
     });
 
-    it("rejects empty task feedback", () => {
-      expect(() => createTaskFeedbackInputSchema.parse({ body: "" })).toThrow();
-    });
-
-    it("rejects feedback delegated to more than one mentioned agent", () => {
-      expect(() =>
-        createTaskFeedbackInputSchema.parse({
-          body: "Please inspect this section.",
-          mentionedAgentIds: ["agent-1", "agent-2"],
-        }),
-      ).toThrow();
-    });
-
     it("accepts simple agent-assigned subtasks", () => {
       expect(
         taskSubtaskSchema.parse({
@@ -163,14 +148,6 @@ describe("task schemas", () => {
       ).toMatchObject({
         id: "subtask-1",
         agentId: "agent-1",
-      });
-    });
-
-    it("accepts feedback edits with trimmed bodies", () => {
-      expect(
-        updateTaskFeedbackInputSchema.parse({ body: "  Please revise the summary.  " }),
-      ).toEqual({
-        body: "Please revise the summary.",
       });
     });
   });
@@ -470,6 +447,7 @@ describe("task schemas", () => {
       ).toEqual({
         body: "Please retry with logs.",
         kind: "operator_reply",
+        attachments: [],
       });
     });
 
