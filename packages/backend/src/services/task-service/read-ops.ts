@@ -1,7 +1,5 @@
 // createTaskReadOps: task-service methods split out of the god-file (issue #99).
 
-import type { TaskServiceRef } from "../task-service.js";
-import type { TaskServiceContext } from "./context.js";
 import {
   listTaskRunsQuerySchema,
   listTasksQuerySchema,
@@ -23,6 +21,8 @@ import {
   type TaskTemplate,
 } from "@cc/shared/schemas";
 import { NotFoundError } from "../../lib/api-error.js";
+import type { TaskServiceRef } from "../task-service.js";
+import type { TaskServiceContext } from "./context.js";
 import {
   mapSubtaskDetail,
   mapTask,
@@ -33,8 +33,8 @@ import {
   mapTaskSubtask,
   mapTaskTemplate,
   mapTaskTemplateMetadata,
-  type TaskTemplateMetadata,
   mapTemplateAsTask,
+  type TaskTemplateMetadata,
 } from "./mappers.js";
 import { deriveSubtaskStatus } from "./status.js";
 
@@ -156,10 +156,20 @@ export function createTaskReadOps(ctx: TaskServiceContext, service: TaskServiceR
       );
     },
 
+    async listTaskReplies(taskId: string): Promise<TaskRunFollowup[]> {
+      await requireTask(taskId, { includeArchived: true });
+      const rows = await options.db.query.task_run_followups.findMany({
+        where: (table, { eq }) => eq(table.task_id, taskId),
+        orderBy: (table, { asc }) => [asc(table.created_at), asc(table.id)],
+      });
+      return rows.map(mapTaskRunFollowup);
+    },
+
     async listFollowups(runId: string): Promise<TaskRunFollowup[]> {
       const run = await requireTaskRun(runId);
       const rows = await options.db.query.task_run_followups.findMany({
-        where: (table, operators) => operators.eq(table.run_id, runId),
+        where: (table, operators) =>
+          operators.and(operators.eq(table.run_id, runId), operators.ne(table.kind, "lifecycle")),
         orderBy: (table, operators) => [operators.asc(table.created_at), operators.asc(table.id)],
       });
       const busy = await service.getRunningRunForAgent(run.agent_id);
@@ -223,12 +233,18 @@ export function createTaskReadOps(ctx: TaskServiceContext, service: TaskServiceR
       return taskSubtaskProgressListSchema.parse(
         uniqueTaskIds.map((taskId) => {
           const taskSubtasks = subtaskRows
-            .filter((subtask) => subtask.task_id === taskId)
+            .filter((subtask) => subtask.task_id === taskId && subtask.owner_run_id)
             .map(mapTaskSubtask);
           const subtasks = taskSubtasks.map((subtask) => ({
             id: subtask.id,
             description: subtask.description,
-            status: deriveSubtaskStatus(subtask, runs),
+            status: subtask.acceptedAt
+              ? "done"
+              : runs.find((run) => run.subtaskId === subtask.id)?.status === "cancelled"
+                ? "backlog"
+                : deriveSubtaskStatus(subtask, runs) === "done"
+                  ? "review"
+                  : deriveSubtaskStatus(subtask, runs),
           }));
           const statuses = subtasks.map((subtask) => subtask.status);
 

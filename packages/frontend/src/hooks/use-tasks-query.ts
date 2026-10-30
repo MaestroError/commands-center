@@ -1,21 +1,19 @@
+import { cancelTaskReply, continueTaskRun, listTaskReplies, sendTaskReply } from "@/lib/api/tasks";
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 
 import type {
-  CancelTaskRunInput,
   AddArtifactInput,
-  CreateTaskFeedbackInput,
+  CancelTaskRunInput,
+  CreateArtifactShareLinkInput,
   CreateTaskInput,
   CreateTaskRunFollowupInput,
   CreateTaskTemplateInput,
   ListTasksQuery,
   QueueTaskInput,
   Task,
-  TaskFeedbackThread,
   TaskRunFollowup,
   TaskTemplateRunNowInput,
-  CreateArtifactShareLinkInput,
   UpdateTaskContextInput,
-  UpdateTaskFeedbackInput,
   UpdateTaskInput,
   UpdateTaskTemplateInput,
   UploadTaskContextAttachmentInput,
@@ -25,36 +23,35 @@ import {
   acceptTask,
   addConversationArtifact,
   archiveTask,
+  cancelRunFollowup,
   cancelTaskRun,
   createArtifactShareLink,
-  getArtifactDeliveryUrls,
   createRunFollowup,
-  cancelRunFollowup,
   createTask,
-  createTaskFeedback,
   createTaskFromTemplate,
   createTaskTemplate,
-  disableTaskTemplate,
-  enableTaskTemplate,
   deleteTask,
   disableTask,
+  disableTaskTemplate,
   duplicateTask,
   enableTask,
+  enableTaskTemplate,
+  getArtifactDeliveryUrls,
   getTask,
-  getTaskTemplate,
   getTaskRun,
+  getTaskTemplate,
   inspectTaskRunSession,
-  listRunFollowups,
-  listConversationArtifacts,
-  listArchivedTasks,
   listActiveTaskRuns,
-  listTaskTemplateTasks,
-  listTaskSchedulerState,
-  listTaskTemplates,
-  listTaskRuns,
+  listArchivedTasks,
+  listConversationArtifacts,
+  listRunFollowups,
   listTaskFeedback,
+  listTaskRuns,
+  listTaskSchedulerState,
   listTaskSubtaskProgress,
   listTaskSubtasks,
+  listTaskTemplateTasks,
+  listTaskTemplates,
   listTasks,
   openTaskRunInChat,
   previewTaskQueue,
@@ -64,11 +61,18 @@ import {
   runTaskTemplateNow,
   updateTask,
   updateTaskContext,
-  updateTaskFeedback,
   updateTaskTemplate,
   uploadTaskContextAttachment,
 } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
+
+export function useTaskRepliesQuery(taskId: string) {
+  return useQuery({
+    queryKey: ["task-replies", taskId],
+    queryFn: () => listTaskReplies(taskId),
+    refetchInterval: 3000,
+  });
+}
 
 export function useTasksQuery(
   query: Partial<ListTasksQuery> = {},
@@ -333,48 +337,6 @@ export function useTaskMutations() {
         ]);
       },
     }),
-    createFeedback: useMutation({
-      mutationFn: ({ id, input }: { id: string; input: CreateTaskFeedbackInput }) =>
-        createTaskFeedback(id, input),
-      onSuccess: async (feedback, variables) => {
-        queryClient.setQueryData<TaskFeedbackThread[]>(
-          queryKeys.taskFeedback(variables.id),
-          (current = []) => {
-            const withoutDuplicate = current.filter((entry) => entry.id !== feedback.id);
-            return [...withoutDuplicate, feedback];
-          },
-        );
-
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: queryKeys.taskSubtasks(variables.id) }),
-          queryClient.invalidateQueries({ queryKey: queryKeys.taskRuns(feedback.taskId) }),
-          queryClient.invalidateQueries({ queryKey: ["task-subtask-progress"] }),
-        ]);
-      },
-    }),
-    updateFeedback: useMutation({
-      mutationFn: ({
-        taskId,
-        feedbackId,
-        input,
-      }: {
-        taskId: string;
-        feedbackId: string;
-        input: UpdateTaskFeedbackInput;
-      }) => updateTaskFeedback(taskId, feedbackId, input),
-      onSuccess: async (feedback, variables) => {
-        queryClient.setQueryData<TaskFeedbackThread[]>(
-          queryKeys.taskFeedback(variables.taskId),
-          (current = []) => current.map((entry) => (entry.id === feedback.id ? feedback : entry)),
-        );
-
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: queryKeys.taskSubtasks(variables.taskId) }),
-          queryClient.invalidateQueries({ queryKey: queryKeys.taskRuns(feedback.taskId) }),
-          queryClient.invalidateQueries({ queryKey: ["task-subtask-progress"] }),
-        ]);
-      },
-    }),
     duplicate: useMutation({
       mutationFn: duplicateTask,
       onSuccess: async (task) => {
@@ -419,6 +381,26 @@ export function useTaskMutations() {
           queryClient.invalidateQueries({ queryKey: ["tasks"] }),
         ]);
       },
+    }),
+    sendTaskReply: useMutation({
+      mutationFn: ({ taskId, input }: { taskId: string; input: CreateTaskRunFollowupInput }) =>
+        sendTaskReply(taskId, input),
+      onSuccess: async (reply) => {
+        await queryClient.invalidateQueries({ queryKey: ["task-replies", reply.taskId] });
+        if (reply.runId) await invalidateRunFollowups(reply.taskId, reply.runId);
+      },
+    }),
+    cancelTaskReply: useMutation({
+      mutationFn: ({ taskId, id }: { taskId: string; id: string }) => cancelTaskReply(taskId, id),
+      onSuccess: async (reply) => {
+        await queryClient.invalidateQueries({ queryKey: ["task-replies", reply.taskId] });
+        if (reply.runId) await invalidateRunFollowups(reply.taskId, reply.runId);
+      },
+    }),
+    continueRun: useMutation({
+      mutationFn: ({ taskId, runId }: { taskId: string; runId: string }) =>
+        continueTaskRun(taskId, runId),
+      onSuccess: async (run) => invalidateRunFollowups(run.taskId, run.id),
     }),
     cancelRunFollowup: useMutation({
       mutationFn: ({ taskId, runId, id }: { taskId: string; runId: string; id: string }) =>

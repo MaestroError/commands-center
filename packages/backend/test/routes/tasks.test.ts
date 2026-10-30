@@ -3,25 +3,25 @@ import { join } from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 
-import { agents } from "../../src/db/schema/index";
-import { createConversationService } from "../../src/services/conversation-service";
-import { createSchedulerService } from "../../src/services/scheduler-service";
-import { createSecretService } from "../../src/services/secret-service";
-import { createApiTokenService } from "../../src/services/api-token-service";
-import { createTaskContextAttachmentService } from "../../src/services/task-context-attachment-service";
-import { createTaskExecutionService } from "../../src/services/task-execution-service";
-import { createTaskSchedulerService } from "../../src/services/task-scheduler-service";
-import { createTaskService } from "../../src/services/task-service";
-import { createActivityService } from "../../src/services/activity-service";
-import { createLogger } from "../../src/lib/logger";
-import { createServer } from "../../src/server";
 import type { AppDb } from "../../src/db/client";
+import { agents } from "../../src/db/schema/index";
+import { createLogger } from "../../src/lib/logger";
 import type { OpenCodeOrchestrator } from "../../src/orchestrator/opencode-orchestrator";
+import { createServer } from "../../src/server";
+import { createActivityService } from "../../src/services/activity-service";
+import { createApiTokenService } from "../../src/services/api-token-service";
+import { createConversationService } from "../../src/services/conversation-service";
 import type {
   OpenCodeService,
   OpenCodeSession,
   OpenCodeSessionMessage,
 } from "../../src/services/opencode-service";
+import { createSchedulerService } from "../../src/services/scheduler-service";
+import { createSecretService } from "../../src/services/secret-service";
+import { createTaskContextAttachmentService } from "../../src/services/task-context-attachment-service";
+import { createTaskExecutionService } from "../../src/services/task-execution-service";
+import { createTaskSchedulerService } from "../../src/services/task-scheduler-service";
+import { createTaskService } from "../../src/services/task-service";
 import { createTestDatabase } from "../helpers/db";
 
 describe("task routes", () => {
@@ -304,7 +304,7 @@ describe("task routes", () => {
     }
   });
 
-  it("supports feedback, subtasks, and recurring template endpoints", async () => {
+  it("supports queued feedback and recurring template endpoints", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
     const taskContextAttachmentService = createTaskContextAttachmentService({
@@ -338,7 +338,7 @@ describe("task routes", () => {
 
     try {
       const agent = await insertAgent(testDb.client.db);
-      const mentionedAgent = await insertAgent(testDb.client.db);
+
       const created = await server.inject({
         method: "POST",
         url: "/api/tasks",
@@ -347,12 +347,12 @@ describe("task routes", () => {
       const task = created.json<{ id: string }>();
       const feedback = await server.inject({
         method: "POST",
-        url: `/api/tasks/${task.id}/feedback`,
-        payload: { body: "Please verify docs.", mentionedAgentIds: [mentionedAgent.id] },
+        url: `/api/tasks/${task.id}/replies`,
+        payload: { body: "Please verify docs.", requestId: "feedback-1" },
       });
       const feedbackList = await server.inject({
         method: "GET",
-        url: `/api/tasks/${task.id}/feedback`,
+        url: `/api/tasks/${task.id}/replies`,
       });
       const progress = await server.inject({
         method: "GET",
@@ -430,57 +430,13 @@ describe("task routes", () => {
       });
 
       expect(feedback.statusCode).toBe(201);
-      expect(feedback.json()).toMatchObject({
-        body: "Please verify docs.",
-        targetAgentIds: [mentionedAgent.id],
-      });
-      expect(
-        feedback.json<{ subtasks: Array<{ agentId: string; description: string }> }>().subtasks,
-      ).toEqual([
-        expect.objectContaining({ agentId: mentionedAgent.id, description: "Please verify docs." }),
-      ]);
-      expect(feedbackList.statusCode).toBe(200);
+      expect(feedback.json()).toMatchObject({ body: "Please verify docs.", status: "queued" });
       expect(feedbackList.json()).toHaveLength(1);
-      expect(feedbackList.json()[0].subtasks[0]).toMatchObject({
-        agentId: mentionedAgent.id,
-        status: "backlog",
-        replies: [],
-      });
-      expect(progress.statusCode).toBe(200);
-      expect(progress.json()).toEqual([
-        {
-          taskId: task.id,
-          total: 1,
-          completed: 0,
-          active: 0,
-          review: 0,
-          failed: 0,
-          subtasks: [
-            expect.objectContaining({
-              description: "Please verify docs.",
-              status: "backlog",
-            }),
-          ],
-        },
-      ]);
-      expect(preview.statusCode).toBe(200);
-      expect(preview.json()).toMatchObject({
-        taskId: task.id,
-        runAgentId: mentionedAgent.id,
-        subtask: { agentId: mentionedAgent.id, description: "Please verify docs." },
-        feedback: { id: feedback.json<{ id: string }>().id },
-      });
-      // Agent assignment is verified via the JSON above; the run prompt no
-      // longer embeds internal IDs like AssignedAgentId.
-      expect(preview.json<{ renderedPrompt: string }>().renderedPrompt).toContain("<Task>");
-      expect(subtask.statusCode).toBe(201);
-      expect(updatedSubtask.statusCode).toBe(200);
-      expect(updatedSubtask.json()).toMatchObject({
-        agentId: agent.id,
-        description: "Docs check updated",
-      });
-      expect(subtasks.statusCode).toBe(200);
-      expect(subtasks.json()).toHaveLength(2);
+      expect(progress.json()).toMatchObject([{ total: 0 }]);
+      expect(preview.json()).toMatchObject({ runAgentId: agent.id });
+      expect(subtask.statusCode).toBe(404);
+      expect(updatedSubtask.statusCode).toBe(404);
+      expect(subtasks.json()).toEqual([]);
       expect(template.statusCode).toBe(201);
       expect(template.json().defaultAgentId).toBe(agent.id);
       expect(template.json()).not.toHaveProperty("archived");
@@ -664,56 +620,6 @@ describe("task routes", () => {
 
       expect(response.statusCode).toBe(404);
       expect(response.json().error.message).toBe("Task run not found.");
-    } finally {
-      await harness.close();
-    }
-  });
-
-  it("updates feedback through the route before a derived subtask run starts", async () => {
-    const harness = await createTaskRouteHarness();
-
-    try {
-      const agent = await insertAgent(harness.testDb.client.db);
-      const task = await harness.taskService.create({ agentId: agent.id, title: "Feedback edit" });
-      const feedback = await harness.taskService.createFeedback(task.id, { body: "Old feedback." });
-      const response = await harness.server.inject({
-        method: "PATCH",
-        url: `/api/tasks/${task.id}/feedback/${feedback.id}`,
-        payload: { body: "Updated feedback." },
-      });
-
-      expect(response.statusCode).toBe(200);
-      expect(response.json()).toMatchObject({
-        id: feedback.id,
-        body: "Updated feedback.",
-        subtasks: [expect.objectContaining({ description: "Updated feedback." })],
-      });
-    } finally {
-      await harness.close();
-    }
-  });
-
-  it("rejects feedback edits after a derived subtask run has started", async () => {
-    const harness = await createTaskRouteHarness();
-
-    try {
-      const agent = await insertAgent(harness.testDb.client.db);
-      const task = await harness.taskService.create({
-        agentId: agent.id,
-        title: "Locked feedback",
-      });
-      const feedback = await harness.taskService.createFeedback(task.id, { body: "Old feedback." });
-      await harness.taskExecutionService.queue(task.id, { triggerSource: "manual" });
-      const response = await harness.server.inject({
-        method: "PATCH",
-        url: `/api/tasks/${task.id}/feedback/${feedback.id}`,
-        payload: { body: "Updated feedback." },
-      });
-
-      expect(response.statusCode).toBe(409);
-      expect(response.json().error.message).toBe(
-        "Feedback cannot be edited after a subtask run has started.",
-      );
     } finally {
       await harness.close();
     }

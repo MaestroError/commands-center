@@ -1,17 +1,17 @@
-import { and, eq, like } from "drizzle-orm";
-import { z } from "zod";
 import {
   specialistCapabilitySelectionSchema,
-  type TaskRun,
   type SendConversationAttachmentInput,
+  type TaskRun,
 } from "@cc/shared/schemas";
+import { and, eq, like } from "drizzle-orm";
+import { z } from "zod";
 import type { AppDb } from "../db/client.js";
 import { createId } from "../db/ids.js";
-import { task_subtasks, task_runs, task_run_followups } from "../db/schema/index.js";
+import { task_run_followups, task_runs, task_subtasks } from "../db/schema/index.js";
 import { BadRequestError, NotFoundError } from "../lib/api-error.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
-import type { TaskService } from "./task-service.js";
 import type { QueueTaskExecutionInput } from "./task-execution-service.js";
+import type { TaskService } from "./task-service.js";
 import { createTeamArtifactService } from "./team-artifact-service.js";
 
 export const teamAssignmentInputSchema = z.object({
@@ -245,6 +245,7 @@ export function createTeamService(options: {
       const child = await assignment(id);
       if (child.owner_run_id !== runId)
         throw new BadRequestError("Assignment belongs to a different execution.");
+      if (child.accepted_at) return { accepted: true, assignmentId: id };
       const runs = await taskService.listRuns(child.task_id);
       const latest = runs.find((run) => run.subtaskId === id);
       if (
@@ -254,12 +255,25 @@ export function createTeamService(options: {
       )
         throw new BadRequestError("Assignment still has pending work.");
       db.transaction((tx) => {
+        const timestamp = new Date();
+        tx.insert(task_run_followups)
+          .values({
+            id: createId(),
+            task_id: child.task_id,
+            run_id: runId,
+            kind: "lifecycle",
+            status: "answered",
+            body: `Owner accepted assignment ${id}: ${child.description}`,
+            created_at: timestamp,
+            updated_at: timestamp,
+          })
+          .run();
         tx.update(task_subtasks)
           .set({ accepted_at: new Date(), updated_at: new Date() })
           .where(eq(task_subtasks.id, id))
           .run();
         tx.update(task_run_followups)
-          .set({ status: "cancelled", updated_at: new Date() })
+          .set({ status: "handled", updated_at: timestamp })
           .where(
             and(
               eq(task_run_followups.run_id, runId),
@@ -391,8 +405,10 @@ export function createTeamService(options: {
       const results = await Promise.allSettled(
         children.map(async (child) => {
           const root = await taskService.getRunById(child.owner_run_id!);
-          if (!root || ["cancelled", "completed", "failed", "error"].includes(root.status)) return;
-          await prepare(child.id);
+          if (!root || child.accepted_at || ["cancelled", "skipped"].includes(root.status)) return;
+          const task = await taskService.get(root.taskId);
+          if (!task || task.archived) return;
+          if (["queued", "running", "waiting"].includes(root.status)) await prepare(child.id);
           const runs = await taskService.listRuns(child.task_id);
           const latest = runs.find((run) => run.subtaskId === child.id);
           if (latest) await service.notify(latest);

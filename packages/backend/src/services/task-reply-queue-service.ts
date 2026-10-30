@@ -1,13 +1,13 @@
-import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { createTaskRunFollowupInputSchema, type TaskRun } from "@cc/shared/schemas";
+import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import type { AppDb } from "../db/client.js";
 import { agents, task_run_followups, task_runs, tasks } from "../db/schema/index.js";
 import { BadRequestError, ConflictError, NotFoundError } from "../lib/api-error.js";
-import { getTaskStatusAfterTerminalRun } from "./task-service/status.js";
 import { mapTaskRun, mapTaskRunFollowup } from "./task-service/mappers.js";
+import { getTaskStatusAfterTerminalRun } from "./task-service/status.js";
 
 export function createTaskReplyQueueService(db: AppDb) {
-  return {
+  const service = {
     next(agentId: string) {
       return db
         .select({ reply: task_run_followups, run: task_runs })
@@ -144,7 +144,12 @@ export function createTaskReplyQueueService(db: AppDb) {
         )
         .run();
     },
-    cancel(id: string, runId: string) {
+    cancel(id: string, runId: string): ReturnType<typeof mapTaskRunFollowup> {
+      const reply = service.get(id);
+      if (!reply || reply.run_id !== runId) throw new NotFoundError("Reply not found.");
+      return service.cancelForTask(id, reply.task_id);
+    },
+    cancelForTask(id: string, taskId: string): ReturnType<typeof mapTaskRunFollowup> {
       return db.transaction((tx) => {
         const reply = tx
           .update(task_run_followups)
@@ -152,7 +157,7 @@ export function createTaskReplyQueueService(db: AppDb) {
           .where(
             and(
               eq(task_run_followups.id, id),
-              eq(task_run_followups.run_id, runId),
+              eq(task_run_followups.task_id, taskId),
               or(
                 eq(task_run_followups.status, "queued"),
                 and(
@@ -223,4 +228,5 @@ export function createTaskReplyQueueService(db: AppDb) {
       });
     },
   };
+  return service;
 }

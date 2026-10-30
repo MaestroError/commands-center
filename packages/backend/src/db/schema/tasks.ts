@@ -216,9 +216,7 @@ export const task_run_followups = sqliteTable(
     task_id: text("task_id")
       .notNull()
       .references(() => tasks.id),
-    run_id: text("run_id")
-      .notNull()
-      .references(() => task_runs.id),
+    run_id: text("run_id").references(() => task_runs.id),
     kind: text("kind").notNull(),
     status: text("status").notNull(),
     body: text("body").notNull(),
@@ -235,6 +233,9 @@ export const task_run_followups = sqliteTable(
   },
   (table) => [
     uniqueIndex("task_run_followups_request_unique_idx").on(table.run_id, table.request_id),
+    uniqueIndex("task_pending_replies_request_unique_idx")
+      .on(table.task_id, table.request_id)
+      .where(sql`${table.run_id} is null`),
     index("task_run_followups_task_id_idx").on(table.task_id),
     index("task_run_followups_run_id_idx").on(table.run_id),
     index("task_run_followups_run_status_idx").on(table.run_id, table.status),

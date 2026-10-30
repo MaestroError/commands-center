@@ -1,6 +1,6 @@
-import { Link } from "react-router";
-import { useTaskMutations, useTaskRunFollowupsQuery } from "@/hooks/use-tasks-query";
 import { Button } from "@/components/ui/button";
+import { useTaskMutations, useTaskRunFollowupsQuery } from "@/hooks/use-tasks-query";
+import { Link } from "react-router";
 
 export function TaskRunReplyQueue({ taskId, runId }: { taskId: string; runId: string }) {
   const query = useTaskRunFollowupsQuery(taskId, runId);
@@ -28,7 +28,9 @@ export function TaskRunReplyQueue({ taskId, runId }: { taskId: string; runId: st
                   ? "Owner revision request"
                   : reply.kind === "review_answer"
                     ? "Review answer"
-                    : "Operator reply"}{" "}
+                    : reply.kind === "recovery"
+                      ? "Model fallback"
+                      : "Operator reply"}{" "}
               · {reply.status === "sending" ? "Delivered — awaiting answer" : reply.status}
             </p>
             {reply.waitingReason && (
@@ -36,7 +38,7 @@ export function TaskRunReplyQueue({ taskId, runId }: { taskId: string; runId: st
             )}
             {(reply.status === "queued" ||
               (reply.status === "blocked" && !reply.deliveryStartedAt)) &&
-              !reply.kind.startsWith("team_") && (
+              ["operator_reply", "review_answer"].includes(reply.kind) && (
                 <Button
                   variant="secondary"
                   disabled={mutations.cancelRunFollowup.isPending}

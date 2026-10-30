@@ -1,7 +1,10 @@
 # Teams and durable task-run replies
 
 Date: 2026-10-30
-Status: Implemented and verified on `codex/teams`. No commits made.
+Status: Implemented and committed as `695d9dcf` on `codex/teams`.
+
+The task lifecycle and UI contracts below are superseded by
+[single-task-execution.md](single-task-execution.md).
 
 This replaces the previous Teams plan. Implement a small, complete delegation flow
 and a reply queue shared by ordinary task runs and team assignments. Named agents

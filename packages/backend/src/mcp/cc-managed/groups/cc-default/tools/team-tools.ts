@@ -13,7 +13,7 @@ export const teamToolMetadata = [
   {
     name: "delegate_assignment",
     description:
-      "Delegate a bounded assignment to a permitted specialist. Returns promptly. Workers retain their own instructions and permissions. Register input artifacts first; share only selected IDs. After delegating, continue useful work or end your turn to wait.",
+      "Delegate a bounded assignment to a permitted specialist. Returns promptly. Workers retain their own instructions and permissions. Register input artifacts first; share only selected IDs. After delegating, continue useful work or end your turn. CC automatically delivers worker results into this same session when your specialist is available.",
   },
   {
     name: "list_team_assignments",

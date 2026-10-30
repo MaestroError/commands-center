@@ -19,7 +19,7 @@ export function readBoardStatus(task: Task): string {
 export function readLatestRunResult(
   runs: TaskRun[],
 ): { content: string; run: TaskRun } | undefined {
-  const [latestRun] = runs;
+  const latestRun = runs.find((run) => !run.subtaskId);
   const content = latestRun
     ? (latestRun.finalMessage ?? latestRun.resultText ?? latestRun.errorMessage)
     : undefined;

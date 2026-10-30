@@ -57,7 +57,10 @@ test.describe("sidebar route smoke coverage", { tag: "@smoke" }, () => {
     await page.goto("/settings?tab=tasks");
 
     await expect(page.getByRole("heading", { name: "Task execution" })).toBeVisible();
-    await expect(page.getByLabel("Requeue task after stall timeout")).not.toBeChecked();
+    await expect(
+      page.getByText("Stalled executions stop for inspection.", { exact: false }),
+    ).toBeVisible();
+    await expect(page.getByLabel("Requeue task after stall timeout")).toHaveCount(0);
   });
 });
 

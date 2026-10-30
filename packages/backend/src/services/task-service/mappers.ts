@@ -38,10 +38,10 @@ import {
   artifacts as artifactsTable,
   conversations as conversationsTable,
   task_run_followups,
+  tasks,
   type task_runs,
   type task_subtasks,
   type task_templates,
-  tasks,
 } from "../../db/schema/index.js";
 import type { RuntimeConfig } from "../../lib/runtime-config.js";
 import { resolveArtifactFileManagerPath } from "../artifact-service.js";
@@ -281,7 +281,7 @@ export function mapTaskRunFollowup(row: typeof task_run_followups.$inferSelect):
   return taskRunFollowupSchema.parse({
     id: row.id,
     taskId: row.task_id,
-    runId: row.run_id,
+    runId: row.run_id ?? undefined,
     kind: row.kind,
     status: row.status,
     body: row.body,
@@ -479,7 +479,7 @@ export async function getActiveReplyRunIds(db: AppDb, runIds: string[]): Promise
     )
     .groupBy(task_run_followups.run_id);
 
-  return new Set(rows.map((row) => row.runId));
+  return new Set(rows.flatMap((row) => (row.runId ? [row.runId] : [])));
 }
 
 /**

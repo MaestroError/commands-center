@@ -2,8 +2,8 @@ import { randomUUID } from "node:crypto";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { AppDb } from "../../src/db/client";
 import { eq } from "drizzle-orm";
+import type { AppDb } from "../../src/db/client";
 import { agents, task_run_followups } from "../../src/db/schema/index";
 import { BadRequestError, ConflictError, NotFoundError } from "../../src/lib/api-error";
 import { createTaskService } from "../../src/services/task-service";
@@ -97,44 +97,6 @@ describe("task-service edge cases", () => {
     await expect(
       taskService.queueTask({ taskId: withSubtask.id, subtaskId: "missing" }),
     ).rejects.toBeInstanceOf(NotFoundError);
-  });
-
-  it("manages subtasks", async () => {
-    const { taskService, agentId } = await setup();
-    const task = await taskService.create({ agentId, title: "With subtasks" });
-
-    const subtask = await taskService.createSubtask(task.id, {
-      description: "Step one",
-      agentId,
-    });
-    expect(subtask.description).toBe("Step one");
-
-    const updated = await taskService.updateSubtask(task.id, subtask.id, {
-      description: "Step 1b",
-    });
-    expect(updated?.description).toBe("Step 1b");
-
-    const subtasks = await taskService.listSubtasks(task.id);
-    expect(subtasks).toHaveLength(1);
-
-    const progress = await taskService.listSubtaskProgress([task.id]);
-    expect(progress[0]?.total).toBe(1);
-  });
-
-  it("manages feedback threads", async () => {
-    const { taskService, agentId } = await setup();
-    const task = await taskService.create({ agentId, title: "Feedback task" });
-
-    const feedback = await taskService.createFeedback(task.id, { body: "Please refine this." });
-    expect(feedback.body).toBe("Please refine this.");
-
-    const threads = await taskService.listFeedback(task.id);
-    expect(threads).toHaveLength(1);
-
-    const updated = await taskService.updateFeedback(task.id, feedback.id, {
-      body: "Refine differently.",
-    });
-    expect(updated?.body).toBe("Refine differently.");
   });
 
   it("exposes per-agent run queries and starts a queued run", async () => {

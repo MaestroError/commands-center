@@ -384,12 +384,14 @@ describe("createSpecialistService", () => {
             },
             {
               name: "queue_task",
-              description: "Queue an existing CommandsCenter task.",
+              description:
+                "Start an unstarted CommandsCenter task. Each task has one owner execution; replies continue its session. Duplicate a task for a fresh attempt.",
               context: "both",
             },
             {
               name: "schedule_task",
-              description: "Schedule an existing CommandsCenter task for later execution.",
+              description:
+                "Schedule an unstarted CommandsCenter task for its first execution. Already-run tasks cannot be rerun; duplicate them for a fresh attempt.",
               context: "both",
             },
             {

@@ -1,9 +1,9 @@
 import type { ConversationDetail, TaskRun, TaskRunFollowup } from "@cc/shared/schemas";
 import { BadRequestError, NotFoundError } from "../../lib/api-error.js";
-import type { TaskExecutionServiceOptions } from "./context.js";
 import { createTaskReplyQueueService } from "../task-reply-queue-service.js";
 import { mergeOpencodeMonitorMetadata } from "../task-run-support.js";
 import { mapTaskRunFollowup } from "../task-service/mappers.js";
+import type { TaskExecutionServiceOptions } from "./context.js";
 
 export function createTaskReplyFlow(ctx: {
   options: TaskExecutionServiceOptions;
@@ -24,6 +24,49 @@ export function createTaskReplyFlow(ctx: {
     return followup;
   }
 
+  async function sendTaskReply(taskId: string, input: unknown): Promise<TaskRunFollowup> {
+    const reply = await options.taskService.insertFollowup({ taskId }, input);
+    if (reply.runId) scheduleAgentDrain((await findRun(reply.runId)).agentId);
+    return reply;
+  }
+
+  async function continueRun(runId: string): Promise<TaskRun> {
+    if (!queue || !options.conversationService)
+      throw new Error("Task reply services are unavailable.");
+    const run = await findRun(runId);
+    if (run.status !== "cancelled")
+      throw new BadRequestError("Only stopped executions need explicit continuation.");
+    if (!run.opencodeSessionId)
+      throw new BadRequestError(
+        "This execution has no session. Duplicate the task to start again.",
+      );
+    const inspection = await options.conversationService.inspectTaskRunConversation(
+      run.taskId,
+      run.id,
+    );
+    if (!inspection.conversation)
+      throw new BadRequestError("The session is unavailable. Restore it or duplicate the task.");
+    if (run.subtaskId) {
+      const child = (await options.taskService.listSubtasks(run.taskId)).find(
+        (child) => child.id === run.subtaskId,
+      );
+      const owner = child?.ownerRunId ? await findRun(child.ownerRunId) : undefined;
+      if (!owner || ["cancelled", "skipped"].includes(owner.status))
+        throw new BadRequestError("Continue the owner execution before continuing an assignment.");
+    }
+    queue.assertTarget({ ...run, status: "error" });
+    const resumed = await options.taskService.setRunStatus(run.id, "error", {
+      errorMessage: "Execution resumed. Queue a reply to continue.",
+    });
+    if (!resumed) throw new NotFoundError("Task run not found.");
+    return resumed;
+  }
+
+  function cancelTaskReply(taskId: string, id: string): TaskRunFollowup {
+    if (!queue) throw new Error("Task reply services are unavailable.");
+    return queue.cancelForTask(id, taskId);
+  }
+
   async function dispatchNextReply(agentId: string, before?: string): Promise<boolean> {
     if (!queue || !options.conversationService) return false;
     const candidate = queue.next(agentId);
@@ -38,14 +81,16 @@ export function createTaskReplyFlow(ctx: {
     try {
       queue.assertTarget(run);
       if (!run.opencodeSessionId)
-        throw new BadRequestError("The run has no recoverable session. Retry the task explicitly.");
+        throw new BadRequestError(
+          "The run has no recoverable session. Duplicate the task to start again.",
+        );
       const inspection = await options.conversationService.inspectTaskRunConversation(
         run.taskId,
         run.id,
       );
       if (!inspection.conversation)
         throw new NotFoundError(
-          "Task run session is unavailable. Restore the session or retry the task explicitly.",
+          "Task run session is unavailable. Restore the session or duplicate the task.",
         );
       if (!queue.claim(reply.id, run, inspection.conversation.messageCount)) return false;
       run = await findRun(run.id);
@@ -138,6 +183,7 @@ export function createTaskReplyFlow(ctx: {
       where: (table, { eq }) => eq(table.status, "sending"),
     });
     for (const reply of accepted) {
+      if (!reply.run_id) continue;
       const run = await findRun(reply.run_id);
       if (!["running", "queued"].includes(run.status)) await finalizeReply(run);
     }
@@ -145,6 +191,7 @@ export function createTaskReplyFlow(ctx: {
       where: (table, { eq }) => eq(table.status, "delivering"),
     });
     for (const reply of delivering) {
+      if (!reply.run_id) continue;
       const run = await findRun(reply.run_id);
       if (run.status === "cancelled") {
         await finalizeReply(run);
@@ -198,6 +245,9 @@ export function createTaskReplyFlow(ctx: {
 
   return {
     sendRunReply,
+    sendTaskReply,
+    continueRun,
+    cancelTaskReply,
     dispatchNextReply,
     recoverPending,
     recoverReply,

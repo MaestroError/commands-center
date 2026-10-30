@@ -1,4 +1,3 @@
-import type { McpToolPermissionService } from "./mcp-tool-permission-service.js";
 import type {
   CreateTaskRunInput,
   ListTaskRunsQuery,
@@ -12,16 +11,17 @@ import type {
   UpdateTaskRunInput,
   UpdateTaskTemplateInput,
 } from "@cc/shared/schemas";
+import type { McpToolPermissionService } from "./mcp-tool-permission-service.js";
 
 import type { AppDb } from "../db/client.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
 import { createArtifactService } from "./artifact-service.js";
 import { createTaskServiceContext } from "./task-service/context.js";
-import { createTaskReadOps } from "./task-service/read-ops.js";
 import { createTaskCrudOps } from "./task-service/crud-ops.js";
-import { createTaskTemplateOps } from "./task-service/template-ops.js";
-import { createTaskFeedbackSubtaskOps } from "./task-service/feedback-subtask-ops.js";
+import { createTaskReadOps } from "./task-service/read-ops.js";
+import { createTaskReplyOps } from "./task-service/reply-ops.js";
 import { createTaskRunOps } from "./task-service/run-ops.js";
+import { createTaskTemplateOps } from "./task-service/template-ops.js";
 
 export { taskTemplateReconciler } from "./task-service/template-files.js";
 
@@ -51,7 +51,7 @@ export interface TaskServiceRef {
 export type TaskService = ReturnType<typeof createTaskReadOps> &
   ReturnType<typeof createTaskCrudOps> &
   ReturnType<typeof createTaskTemplateOps> &
-  ReturnType<typeof createTaskFeedbackSubtaskOps> &
+  ReturnType<typeof createTaskReplyOps> &
   ReturnType<typeof createTaskRunOps>;
 
 export function createTaskService(options: {
@@ -67,7 +67,7 @@ export function createTaskService(options: {
     createTaskReadOps(ctx, service),
     createTaskCrudOps(ctx, service),
     createTaskTemplateOps(ctx, service),
-    createTaskFeedbackSubtaskOps(ctx, service),
+    createTaskReplyOps(ctx),
     createTaskRunOps(ctx, service),
   );
   return service;

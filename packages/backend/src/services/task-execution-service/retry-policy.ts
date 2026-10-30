@@ -1,8 +1,6 @@
 // Fallback-model + stall/requeue retry policy, split out of
 // task-execution-service.ts (issue #99). The core run loop injects it via ctx.
 
-import type { QueueTaskExecutionInput } from "../task-execution-service.js";
-import type { TaskExecutionServiceOptions } from "./context.js";
 import type { TaskRun } from "@cc/shared/schemas";
 import { NotFoundError } from "../../lib/api-error.js";
 import {
@@ -16,6 +14,7 @@ import type {
   TaskRunStallDetails,
   TaskRunUsageLimitDetails,
 } from "../task-run-monitor-service.js";
+import type { TaskExecutionServiceOptions } from "./context.js";
 
 export function formatStallDuration(ms: number): string {
   if (ms < 60_000) {
@@ -167,97 +166,77 @@ export function buildModelNotFoundErrorDetails(
   };
 }
 
-export interface TaskRetryPolicyContext {
+export function createTaskRetryPolicy(ctx: {
   options: TaskExecutionServiceOptions;
-  queueTask: (taskId: string, input?: QueueTaskExecutionInput) => Promise<TaskRun>;
   notifyRunTerminal: (run: TaskRun) => void;
   scheduleAgentDrain: (agentId: string) => void;
   abortOpenCodeTaskRun: (run: TaskRun) => Promise<void>;
-}
+  cancelRun: (id: string, input: { reason: string }) => Promise<TaskRun>;
+}) {
+  const { options, notifyRunTerminal, scheduleAgentDrain, abortOpenCodeTaskRun } = ctx;
 
-export function createTaskRetryPolicy(ctx: TaskRetryPolicyContext) {
-  const { options, queueTask, notifyRunTerminal, scheduleAgentDrain, abortOpenCodeTaskRun } = ctx;
+  async function stopRun(
+    run: TaskRun,
+    message: string,
+    details: Record<string, unknown>,
+    review = false,
+  ): Promise<TaskRun | undefined> {
+    const latest = await options.taskService.getRunById(run.id);
+    if (!latest || latest.status !== "running") return undefined;
+    await abortOpenCodeTaskRun(latest);
+    const stopped = await options.taskService.setRunStatus(run.id, "error", {
+      completedAt: new Date().toISOString(),
+      errorMessage: message,
+      errorDetails: details,
+      needsHumanReview: review,
+      ...(review ? { humanReviewReason: message } : {}),
+    });
+    if (!stopped) throw new NotFoundError("Task run not found.");
+    return stopped;
+  }
+
+  function finish(run: TaskRun): void {
+    notifyRunTerminal(run);
+    scheduleAgentDrain(run.agentId);
+  }
+
+  async function queueModelContinuation(
+    run: TaskRun,
+    selected: { model: string; remaining: string[] } | undefined,
+  ): Promise<TaskRun | undefined> {
+    if (!selected || !run.opencodeSessionId) return undefined;
+    await options.taskService.updateRun(run.id, { fallbackModels: selected.remaining });
+    await options.taskService.insertFollowup(
+      run,
+      {
+        body: "Continue the current task after the model/provider failure. Inspect the existing conversation and workspace; do not repeat completed actions.",
+        model: selected.model,
+        requestId: `recovery:${run.id}:${run.startedAt}:${selected.model}`,
+      },
+      "recovery",
+    );
+    finish(run);
+    return run;
+  }
+
+  async function queueFallbackRun(
+    run: TaskRun,
+    error: unknown,
+    _log?: { logMessage?: string },
+  ): Promise<TaskRun | undefined> {
+    if (!(error instanceof TaskRunPromptError) || !isFallbackEligible(error)) return undefined;
+    return queueModelContinuation(run, selectNextFallbackModel(error, run.fallbackModels));
+  }
 
   async function finalizeStalledRun(run: TaskRun, details: TaskRunStallDetails): Promise<void> {
     const latest = await options.taskService.getRunById(run.id);
-
-    if (!latest || latest.status !== "running") {
-      return;
-    }
-
-    await abortOpenCodeTaskRun(latest);
-
-    const requeue = await resolveRequeueSettings();
-    const nextRequeueCount = readRequeueCount(latest) + 1;
-    const willRequeue = requeue.enabled && nextRequeueCount <= requeue.limit;
-    const limitReached = requeue.enabled && !willRequeue;
-
-    const cancellationReason =
-      `Automatically cancelled: OpenCode produced no new output for ` +
-      `${formatStallDuration(details.noProgressMs)} (stall timeout)` +
-      `${latest.opencodeSessionId ? `; session ${latest.opencodeSessionId}` : ""}.` +
-      `${limitReached ? ` Requeue limit (${String(requeue.limit)}) reached; not requeued.` : ""}`;
-
-    // errorDetails distinguishes this system-initiated cancellation (surfaced as
-    // a task_run_failed activity, same as any other failure) from a manual
-    // cancel via the `cancel` API, which carries no errorDetails and stays
-    // silent since the user already knows they cancelled it. errorMessage is
-    // also set (mirroring cancellationReason) so that activity's notification
-    // body isn't left empty.
-    const cancelled = await options.taskService.setRunStatus(latest.id, "cancelled", {
-      cancelledAt: new Date().toISOString(),
-      cancellationReason,
-      errorMessage: cancellationReason,
-      errorDetails: buildStallErrorDetails(latest, details),
+    if (latest?.status !== "running") return;
+    const reason = `Automatically cancelled: OpenCode produced no new output for ${formatStallDuration(details.noProgressMs)} (stall timeout); session ${run.opencodeSessionId ?? "unavailable"}. Inspect and Continue this execution, or duplicate the task.`;
+    const stopped = await ctx.cancelRun(run.id, { reason });
+    await options.taskService.updateRun(stopped.id, {
+      errorMessage: reason,
+      errorDetails: buildStallErrorDetails(run, details),
     });
-
-    if (!cancelled) {
-      throw new NotFoundError("Task run not found.");
-    }
-
-    notifyRunTerminal(cancelled);
-
-    if (willRequeue) {
-      try {
-        const requeued = await requeueStalledRun(cancelled, nextRequeueCount);
-        options.logger?.warn(
-          {
-            taskId: cancelled.taskId,
-            cancelledRunId: cancelled.id,
-            requeuedRunId: requeued.id,
-            requeueAttempt: nextRequeueCount,
-            requeueLimit: requeue.limit,
-            opencodeSessionId: cancelled.opencodeSessionId,
-            noProgressMs: details.noProgressMs,
-            lastStatus: details.lastStatus,
-          },
-          "stalled task run cancelled and requeued",
-        );
-        return;
-      } catch (error) {
-        options.logger?.error(
-          { err: error, taskId: cancelled.taskId, cancelledRunId: cancelled.id },
-          "failed to requeue stalled task run; leaving it cancelled",
-        );
-      }
-    } else {
-      options.logger?.warn(
-        {
-          taskId: cancelled.taskId,
-          taskRunId: cancelled.id,
-          opencodeSessionId: cancelled.opencodeSessionId,
-          noProgressMs: details.noProgressMs,
-          lastStatus: details.lastStatus,
-          requeueLimitReached: limitReached,
-          requeueLimit: limitReached ? requeue.limit : undefined,
-        },
-        limitReached
-          ? "stalled task run cancelled; requeue limit reached"
-          : "stalled task run cancelled",
-      );
-    }
-
-    scheduleAgentDrain(cancelled.agentId);
   }
 
   async function finalizeInterruptedRun(
@@ -265,488 +244,68 @@ export function createTaskRetryPolicy(ctx: TaskRetryPolicyContext) {
     details: { lastAssistantMessageId?: string },
   ): Promise<void> {
     const latest = await options.taskService.getRunById(run.id);
-
-    if (!latest || latest.status !== "running") {
-      return;
-    }
-
-    await abortOpenCodeTaskRun(latest);
-
-    const requeue = await resolveRequeueSettings();
-    const nextRequeueCount = readRequeueCount(latest) + 1;
-    const willRequeue = requeue.enabled && nextRequeueCount <= requeue.limit;
-    const limitReached = requeue.enabled && !willRequeue;
-    const cancellationReason =
-      "Automatically cancelled: OpenCode no longer reported the session while the latest " +
-      "assistant turn was incomplete (engine interruption)." +
-      `${latest.opencodeSessionId ? ` Session ${latest.opencodeSessionId}.` : ""}` +
-      `${limitReached ? ` Requeue limit (${String(requeue.limit)}) reached; not requeued.` : ""}`;
-    const cancelled = await options.taskService.setRunStatus(latest.id, "cancelled", {
-      cancelledAt: new Date().toISOString(),
-      cancellationReason,
-      errorMessage: cancellationReason,
+    if (latest?.status !== "running") return;
+    const reason =
+      "Automatically cancelled: engine interruption during an incomplete assistant turn. Inspect and Continue this execution, or duplicate the task if the session is unavailable.";
+    const stopped = await ctx.cancelRun(run.id, { reason });
+    await options.taskService.updateRun(stopped.id, {
+      errorMessage: reason,
       errorDetails: {
         errorName: "TaskRunEngineInterrupted",
         stage: "task_session_interrupted",
-        opencodeSessionId: latest.opencodeSessionId,
-        lastAssistantMessageId: details.lastAssistantMessageId,
+        opencodeSessionId: run.opencodeSessionId,
+        ...details,
       },
     });
-
-    if (!cancelled) {
-      throw new NotFoundError("Task run not found.");
-    }
-
-    notifyRunTerminal(cancelled);
-
-    if (willRequeue) {
-      try {
-        const requeued = await requeueInterruptedRun(cancelled, nextRequeueCount);
-        options.logger?.warn(
-          {
-            taskId: cancelled.taskId,
-            cancelledRunId: cancelled.id,
-            requeuedRunId: requeued.id,
-            requeueAttempt: nextRequeueCount,
-            requeueLimit: requeue.limit,
-            opencodeSessionId: cancelled.opencodeSessionId,
-          },
-          "interrupted task run cancelled and requeued",
-        );
-        return;
-      } catch (error) {
-        options.logger?.error(
-          { err: error, taskId: cancelled.taskId, cancelledRunId: cancelled.id },
-          "failed to requeue interrupted task run; leaving it cancelled",
-        );
-      }
-    } else {
-      options.logger?.warn(
-        {
-          taskId: cancelled.taskId,
-          taskRunId: cancelled.id,
-          opencodeSessionId: cancelled.opencodeSessionId,
-          lastAssistantMessageId: details.lastAssistantMessageId,
-          requeueLimitReached: limitReached,
-          requeueLimit: limitReached ? requeue.limit : undefined,
-        },
-        limitReached
-          ? "interrupted task run cancelled; requeue limit reached"
-          : "interrupted task run cancelled",
-      );
-    }
-
-    scheduleAgentDrain(cancelled.agentId);
   }
 
   async function finalizeBlockedInteraction(
     run: TaskRun,
     details: TaskRunBlockedInteractionDetails,
   ): Promise<void> {
-    const latest = await options.taskService.getRunById(run.id);
-
-    if (!latest || latest.status !== "running") {
-      return;
-    }
-
-    await abortOpenCodeTaskRun(latest);
-
-    // A blocked interaction means the agent is parked on a permission/question
-    // that an automatic task run cannot answer — a human genuinely has to step in.
-    // So it ends as an `error` run (it did not complete) but is flagged for human
-    // review, which routes it to `review` and keeps it out of the auto-retry path
-    // (retrying would just re-hit the same wall).
-    const errorMessage = formatBlockedInteractionMessage(details);
-    const errored = await options.taskService.setRunStatus(latest.id, "error", {
-      completedAt: new Date().toISOString(),
-      errorMessage,
-      errorDetails: buildBlockedInteractionErrorDetails(latest, details),
-      needsHumanReview: true,
-      humanReviewReason: errorMessage,
-    });
-
-    if (!errored) {
-      throw new NotFoundError("Task run not found.");
-    }
-
-    notifyRunTerminal(errored);
-    options.logger?.warn(
-      {
-        taskId: errored.taskId,
-        taskRunId: errored.id,
-        opencodeSessionId: errored.opencodeSessionId,
-        interactionType: details.interaction.type,
-        requestId: details.interaction.id,
-      },
-      "task run blocked by pending OpenCode interaction",
+    const stopped = await stopRun(
+      run,
+      formatBlockedInteractionMessage(details),
+      buildBlockedInteractionErrorDetails(run, details),
+      true,
     );
-    scheduleAgentDrain(errored.agentId);
+    if (stopped) finish(stopped);
   }
 
   async function finalizeUsageLimitRun(
     run: TaskRun,
     details: TaskRunUsageLimitDetails,
   ): Promise<void> {
-    const latest = await options.taskService.getRunById(run.id);
-
-    if (!latest || latest.status !== "running") {
-      return;
-    }
-
-    await abortOpenCodeTaskRun(latest);
-
-    // A usage/rate limit is provider-wide, not model-specific, so a fallback on
-    // the *same* provider would just hit the same wall. Only a different
-    // provider's fallback model is worth an automatic retry here.
-    const fallback = selectDifferentProviderFallbackModel(
-      details.attemptedModel,
-      latest.fallbackModels,
+    const stopped = await stopRun(
+      run,
+      formatUsageLimitMessage(details),
+      buildUsageLimitErrorDetails(run, details),
     );
-
-    // The run must be marked terminal *before* queueing a fallback: `queueTask`
-    // rejects a new run for a task that still has an active (running) run.
-    // Label it generically first; if a fallback is actually queued below, the
-    // label is corrected before the single notifyRunTerminal call fires.
-    const errored = await options.taskService.setRunStatus(latest.id, "error", {
-      completedAt: new Date().toISOString(),
-      errorMessage: formatUsageLimitMessage(details),
-      errorDetails: buildUsageLimitErrorDetails(latest, details),
-    });
-
-    if (!errored) {
-      throw new NotFoundError("Task run not found.");
-    }
-
-    let fallbackRun: TaskRun | undefined;
-
-    if (fallback) {
-      try {
-        fallbackRun = await queueTask(errored.taskId, {
-          agentId: errored.agentId,
-          subtaskId: errored.subtaskId,
-          triggerSource: "system",
-          model: fallback.model,
-          fallbackModels: fallback.remaining,
-          retryOfRunId: errored.id,
-          context: {
-            text: [
-              "Previous task run ended because the provider reported a sustained usage/rate limit.",
-              `Previous run id: ${errored.id}`,
-              `Attempted model: ${details.attemptedModel}`,
-              `Provider message: ${details.message}`,
-              "The previous attempt may have already changed workspace files. Inspect the current workspace state before continuing, avoid duplicating completed work, and finish the original task goal.",
-            ].join("\n"),
-            attachments: [],
-          },
-          metadata: {
-            fallbackOfRunId: errored.id,
-            attemptedModel: details.attemptedModel,
-            errorName: "UsageLimitReached",
-          },
-        });
-      } catch (error) {
-        options.logger?.error(
-          { err: error, taskId: errored.taskId, taskRunId: errored.id },
-          "failed to queue usage-limit fallback run; finalizing without fallback",
-        );
-      }
-    }
-
-    const finalized = fallbackRun
-      ? ((await options.taskService.updateRun(errored.id, {
-          errorMessage: formatUsageLimitMessage(details, fallback?.model),
-          errorDetails: buildUsageLimitErrorDetails(latest, details, fallback?.model),
-        })) ?? errored)
-      : errored;
-
-    notifyRunTerminal(finalized);
-
-    if (fallbackRun) {
-      options.logger?.warn(
-        {
-          taskId: finalized.taskId,
-          previousRunId: finalized.id,
-          fallbackRunId: fallbackRun.id,
-          model: fallback?.model,
-        },
-        "task run hit usage limit; queued fallback model run on a different provider",
-      );
-    } else {
-      options.logger?.warn(
-        {
-          taskId: finalized.taskId,
-          taskRunId: finalized.id,
-          opencodeSessionId: finalized.opencodeSessionId,
-          attemptedModel: details.attemptedModel,
-          retryAttempt: details.attempt,
-          retryElapsedMs: details.retryElapsedMs,
-        },
-        "task run finalized: sustained provider retry status treated as usage limit; no fallback available",
-      );
-    }
-
-    scheduleAgentDrain(finalized.agentId);
+    if (!stopped) return;
+    if (
+      !(await queueModelContinuation(
+        stopped,
+        selectDifferentProviderFallbackModel(details.attemptedModel, stopped.fallbackModels),
+      ))
+    )
+      finish(stopped);
   }
 
   async function finalizeModelNotFoundRun(
     run: TaskRun,
     details: TaskRunModelNotFoundDetails,
   ): Promise<void> {
-    const latest = await options.taskService.getRunById(run.id);
-
-    if (!latest || latest.status !== "running") {
-      return;
-    }
-
-    // OpenCode is still actively retrying the missing model, so abort the session
-    // before finalizing or it would keep looping in the background.
-    await abortOpenCodeTaskRun(latest);
-
-    // Synthesize a model/provider error so this routes through the same fallback
-    // machinery as an error surfaced directly in an assistant message. A missing
-    // model is model-specific (not provider-wide), so a valid fallback model —
-    // even on the same provider — is eligible (see selectNextFallbackModel).
-    const error = new TaskRunPromptError({
-      modelError: {
-        name: "APIError",
-        message: details.message,
-        data: {
-          statusCode: 404,
-          isRetryable: false,
-          retryAttempt: details.attempt,
-        },
-      },
-      attemptedModel: details.attemptedModel,
-    });
-
-    // Resolve the fallback up-front so the terminal message can name the model it
-    // hands off to. The run is still labeled generically first; the label is
-    // corrected below only once a fallback has actually been queued.
-    const fallbackInput = buildFallbackRunInput(latest, error);
-
-    const errored = await options.taskService.setRunStatus(latest.id, "error", {
-      completedAt: new Date().toISOString(),
-      errorMessage: formatModelNotFoundMessage(details),
-      errorDetails: buildModelNotFoundErrorDetails(latest, details),
-    });
-
-    if (!errored) {
-      throw new NotFoundError("Task run not found.");
-    }
-
-    let fallbackRun: TaskRun | undefined;
-
-    if (fallbackInput) {
-      try {
-        fallbackRun = await queueTask(errored.taskId, fallbackInput);
-      } catch (queueError) {
-        options.logger?.error(
-          { err: queueError, taskId: errored.taskId, taskRunId: errored.id },
-          "failed to queue model-not-found fallback run; finalizing without fallback",
-        );
-      }
-    }
-
-    const finalized = fallbackRun
-      ? ((await options.taskService.updateRun(errored.id, {
-          errorMessage: formatModelNotFoundMessage(details, fallbackInput?.model),
-        })) ?? errored)
-      : errored;
-
-    notifyRunTerminal(finalized);
-
-    if (fallbackRun) {
-      options.logger?.warn(
-        {
-          taskId: finalized.taskId,
-          previousRunId: finalized.id,
-          fallbackRunId: fallbackRun.id,
-          model: fallbackInput?.model,
-        },
-        "task run targeted a non-existent model; queued fallback model run",
-      );
-    } else {
-      options.logger?.warn(
-        {
-          taskId: finalized.taskId,
-          taskRunId: finalized.id,
-          opencodeSessionId: finalized.opencodeSessionId,
-          attemptedModel: details.attemptedModel,
-          retryAttempt: details.attempt,
-        },
-        "task run finalized: model not found and no eligible fallback model available",
-      );
-    }
-
-    scheduleAgentDrain(finalized.agentId);
-  }
-
-  async function resolveRequeueSettings(): Promise<{ enabled: boolean; limit: number }> {
-    const fallback = { enabled: false, limit: 10 };
-
-    if (!options.monitorSettingsService) {
-      return fallback;
-    }
-
-    try {
-      const settings = await options.monitorSettingsService.get();
-      return {
-        enabled: settings.taskRunMonitorRequeueAfterStall,
-        limit: settings.taskRunMonitorRequeueLimit,
-      };
-    } catch (error) {
-      options.logger?.warn(
-        { err: error },
-        "task run monitor requeue setting read failed; defaulting to no requeue",
-      );
-      return fallback;
-    }
-  }
-
-  function readRequeueCount(run: TaskRun): number {
-    const value = run.triggerMetadata?.["requeueCount"];
-    return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : 0;
-  }
-
-  // Max automatic re-queues per task/subtask chain after a system error/failure.
-  // Bounds the auto-retry path so a repeatedly failing run cannot loop forever.
-  async function resolveAutoRetryLimit(): Promise<number> {
-    const fallback = 10;
-
-    if (!options.monitorSettingsService) {
-      return fallback;
-    }
-
-    try {
-      const settings = await options.monitorSettingsService.get();
-      return settings.taskRunMaxAutoRetries;
-    } catch (error) {
-      options.logger?.warn(
-        { err: error },
-        "task run auto-retry limit read failed; defaulting to 10",
-      );
-      return fallback;
-    }
-  }
-
-  // Queue a fresh run of the same task/subtask after a stall cancellation. A new
-  // run (not the cancelled row) is created so it gets a clean OpenCode session
-  // instead of re-attaching to the wedged one via duplicate-prevention. The
-  // requeue count carries forward so the chain stops at the configured limit.
-  async function requeueStalledRun(cancelled: TaskRun, requeueCount: number): Promise<TaskRun> {
-    return queueTask(cancelled.taskId, {
-      agentId: cancelled.agentId,
-      subtaskId: cancelled.subtaskId,
-      triggerSource: "system",
-      model: cancelled.model,
-      fallbackModels: cancelled.fallbackModels,
-      retryOfRunId: cancelled.id,
-      context: {
-        text: [
-          "The previous run of this task was cancelled automatically because the OpenCode session stalled (it stopped producing output).",
-          `Previous run id: ${cancelled.id}`,
-          "It may have already changed workspace files. Inspect the current state before continuing, avoid redoing completed work, and finish the original task goal.",
-        ].join("\n"),
-        attachments: [],
-      },
-      metadata: {
-        requeuedFromRunId: cancelled.id,
-        requeueReason: "stall_timeout",
-        requeueCount,
-      },
-    });
-  }
-
-  async function requeueInterruptedRun(cancelled: TaskRun, requeueCount: number): Promise<TaskRun> {
-    return queueTask(cancelled.taskId, {
-      agentId: cancelled.agentId,
-      subtaskId: cancelled.subtaskId,
-      triggerSource: "system",
-      model: cancelled.model,
-      fallbackModels: cancelled.fallbackModels,
-      retryOfRunId: cancelled.id,
-      context: {
-        text: [
-          "The previous run was interrupted because OpenCode stopped during an incomplete assistant turn.",
-          `Previous run id: ${cancelled.id}`,
-          "It may have already changed workspace files. Inspect the current state before continuing, avoid redoing completed work, and finish the original task goal.",
-        ].join("\n"),
-        attachments: [],
-      },
-      metadata: {
-        requeuedFromRunId: cancelled.id,
-        requeueReason: "engine_interruption",
-        requeueCount,
-      },
-    });
-  }
-
-  /**
-   * Queue a fallback-model run for a provider/model error when one is eligible.
-   * Used by both the synchronous start path and the async monitor. Returns the
-   * queued fallback run, or undefined when no fallback applies.
-   */
-  async function queueFallbackRun(
-    errored: TaskRun,
-    error: unknown,
-    log: { logMessage?: string } = {},
-  ): Promise<TaskRun | undefined> {
-    const fallback = buildFallbackRunInput(errored, error);
-
-    if (!fallback) {
-      return undefined;
-    }
-
-    notifyRunTerminal(errored);
-    const fallbackRun = await queueTask(errored.taskId, fallback);
-    options.logger?.warn(
-      {
-        taskId: errored.taskId,
-        previousRunId: errored.id,
-        fallbackRunId: fallbackRun.id,
-        model: fallback.model,
-      },
-      log.logMessage ?? "task run monitor observed provider error, queued fallback model run",
+    const stopped = await stopRun(
+      run,
+      formatModelNotFoundMessage(details),
+      buildModelNotFoundErrorDetails(run, details),
     );
-    return fallbackRun;
-  }
-
-  function buildFallbackRunInput(
-    errored: TaskRun,
-    error: unknown,
-  ): QueueTaskExecutionInput | undefined {
-    if (!(error instanceof TaskRunPromptError) || !isFallbackEligible(error)) {
-      return undefined;
-    }
-
-    const selected = selectNextFallbackModel(error, errored.fallbackModels);
-    if (!selected) {
-      return undefined;
-    }
-
-    return {
-      agentId: errored.agentId,
-      subtaskId: errored.subtaskId,
-      triggerSource: "system",
-      model: selected.model,
-      fallbackModels: selected.remaining,
-      retryOfRunId: errored.id,
-      context: {
-        text: [
-          "Previous task run ended with a model/provider error.",
-          `Previous run id: ${errored.id}`,
-          `Attempted model: ${error.attemptedModel}`,
-          `Error: ${error.modelError.name}: ${error.modelError.message}`,
-          "The previous attempt may have already changed workspace files. Inspect the current workspace state before continuing, avoid duplicating completed work, and finish the original task goal.",
-        ].join("\n"),
-        attachments: [],
-      },
-      metadata: {
-        fallbackOfRunId: errored.id,
-        attemptedModel: error.attemptedModel,
-        errorName: error.modelError.name,
-      },
-    };
+    if (!stopped) return;
+    const error = new TaskRunPromptError({
+      attemptedModel: details.attemptedModel,
+      modelError: { name: "APIError", message: details.message, data: { statusCode: 404 } },
+    });
+    if (!(await queueFallbackRun(stopped, error))) finish(stopped);
   }
 
   function selectNextFallbackModel(
@@ -842,7 +401,5 @@ export function createTaskRetryPolicy(ctx: TaskRetryPolicyContext) {
     finalizeBlockedInteraction,
     finalizeUsageLimitRun,
     finalizeModelNotFoundRun,
-    resolveAutoRetryLimit,
-    readRequeueCount,
   };
 }
