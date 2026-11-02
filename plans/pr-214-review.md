@@ -7,7 +7,7 @@ pushed, and its review thread resolved.
 - [x] 4443653115: keep worker reply claims from changing the parent board status.
 - [x] 4443653188: submit mention-only and skill-only task-chat replies.
 - [x] 4443653266: preserve chat drafts changed during queued submission.
-- [ ] 4443653343: preserve task timeline drafts changed during submission.
+- [x] 4443653343: preserve task timeline drafts changed during submission.
 - [ ] 4443653418: allow attachment-sized payloads on both reply endpoints.
 
 Use existing services and components without reuse refactoring or new dependencies.

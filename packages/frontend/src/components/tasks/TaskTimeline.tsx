@@ -47,7 +47,7 @@ export function TaskTimeline(props: {
         taskId: props.taskId,
         input: { body, kind: "operator_reply", requestId: id, attachments: [] },
       });
-      setPrompt(createTaskPromptValue());
+      setPrompt((current) => (current === prompt ? createTaskPromptValue() : current));
       setRequest(undefined);
     } catch (error) {
       setError(error instanceof Error ? error.message : "Reply could not be saved.");

@@ -2551,6 +2551,26 @@ describe("TaskDetailPage", () => {
     expect(replyButtons.every((button) => !button.hasAttribute("disabled"))).toBe(true);
   });
 
+  it("preserves task feedback edited while its previous reply is saving", async () => {
+    const fetchMock = mockFetch();
+    const original = fetchMock.getMockImplementation()!;
+    const pending = Promise.withResolvers<void>();
+    fetchMock.mockImplementation(async (input, init) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url === "/api/tasks/task-1/replies" && init?.method === "POST") await pending.promise;
+      return original(input, init);
+    });
+    renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
+    const input = await screen.findByTestId("task-reply-input");
+    fireEvent.change(input, { target: { value: "First reply" } });
+    fireEvent.click(screen.getByTestId("task-reply-send"));
+    await screen.findByRole("button", { name: "Saving…" });
+    fireEvent.change(input, { target: { value: "Next draft" } });
+    pending.resolve();
+    await waitFor(() => expect(screen.getByTestId("task-reply-send")).toBeEnabled());
+    expect(input).toHaveValue("Next draft");
+  });
+
   it("updates the task detail page title from inline edit mode", async () => {
     const fetchMock = mockFetch();
 
