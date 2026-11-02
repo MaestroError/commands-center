@@ -220,10 +220,10 @@ export function ChatComposer({
           queuedRequest.current = { payload, id: crypto.randomUUID() };
         await onSend({ ...input, requestId: queuedRequest.current.id });
         queuedRequest.current = undefined;
-        setText("");
-        setAttachments([]);
-        setMentionedFiles([]);
-        setSelectedSkill(null);
+        setText((current) => (current === text ? "" : current));
+        setAttachments((current) => (current === attachments ? [] : current));
+        setMentionedFiles((current) => (current === mentionedFiles ? [] : current));
+        setSelectedSkill((current) => (current === selectedSkill ? null : current));
       } catch (error) {
         setSubmissionError(error instanceof Error ? error.message : "Reply could not be queued.");
       } finally {

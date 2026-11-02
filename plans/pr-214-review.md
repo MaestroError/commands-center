@@ -6,7 +6,7 @@ pushed, and its review thread resolved.
 - [ ] 4443653024: reject symlinked artifact destinations and verify containment.
 - [x] 4443653115: keep worker reply claims from changing the parent board status.
 - [x] 4443653188: submit mention-only and skill-only task-chat replies.
-- [ ] 4443653266: preserve chat drafts changed during queued submission.
+- [x] 4443653266: preserve chat drafts changed during queued submission.
 - [ ] 4443653343: preserve task timeline drafts changed during submission.
 - [ ] 4443653418: allow attachment-sized payloads on both reply endpoints.
 
