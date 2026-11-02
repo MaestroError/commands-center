@@ -204,7 +204,7 @@ export function ChatComposer({
     if (submitting) return;
     setSubmissionError(undefined);
     if (queueMode) {
-      if (!text.trim()) return;
+      if (!text.trim() && mentionedFiles.length === 0 && !selectedSkill) return;
       setSubmitting(true);
       try {
         const prefix = buildMentionPrefix(mentionedFiles);

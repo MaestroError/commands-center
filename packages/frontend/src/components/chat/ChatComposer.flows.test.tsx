@@ -194,6 +194,26 @@ describe("ChatComposer escape handling", () => {
 });
 
 describe("ChatComposer file mentions", () => {
+  it("queues a file mention without typed text", async () => {
+    vi.spyOn(api, "searchAgentWorkspaceFiles").mockResolvedValue(["src/app.ts"]);
+    const user = userEvent.setup();
+    const { props } = renderComposer({ queueMode: true });
+    await user.type(screen.getByPlaceholderText(messagePlaceholder), "#app");
+    await user.click(await screen.findByRole("button", { name: /src\/app\.ts/ }));
+    await user.click(screen.getByRole("button", { name: "Queue reply" }));
+    expect(props.onSend).toHaveBeenCalledWith(expect.objectContaining({ text: "#src/app.ts" }));
+  });
+
+  it("queues a selected skill without typed text", async () => {
+    const user = userEvent.setup();
+    const { props } = renderComposer({ queueMode: true });
+    await user.type(screen.getByPlaceholderText(messagePlaceholder), "/review");
+    await user.click(await screen.findByRole("button", { name: /review.*Review code/ }));
+    await user.click(screen.getByRole("button", { name: "Queue reply" }));
+    expect(props.onSend).toHaveBeenCalledWith(
+      expect.objectContaining({ text: 'Use skill "review".' }),
+    );
+  });
   it("selects a file from the mention popover and can remove the pill", async () => {
     const searchSpy = vi.spyOn(api, "searchAgentWorkspaceFiles").mockResolvedValue(["src/app.ts"]);
     const user = userEvent.setup();
