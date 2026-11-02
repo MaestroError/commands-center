@@ -1,9 +1,11 @@
-import { copyFile, mkdir, readFile } from "node:fs/promises";
+import { constants } from "node:fs";
+import { lstat, open, readFile, realpath } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 import type { SendConversationAttachmentInput } from "@cc/shared/schemas";
 import type { AppDb } from "../db/client.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
 import { BadRequestError, NotFoundError } from "../lib/api-error.js";
+import { createSecureDirectory } from "../lib/secure-directory.js";
 import { createArtifactService } from "./artifact-service.js";
 
 export function createTeamArtifactService(options: { db: AppDb; config: RuntimeConfig }) {
@@ -46,8 +48,35 @@ export function createTeamArtifactService(options: { db: AppDb; config: RuntimeC
         id,
         snapshot.originalFilename,
       );
-      await mkdir(dirname(destination), { recursive: true });
-      await copyFile(artifacts.resolveArtifactPath(snapshot.storageKey), destination);
+      const realDirectory = await createSecureDirectory(
+        dirname(destination),
+        options.config.paths.subdirectories.specialists,
+        "Team artifact destination directory is invalid.",
+      );
+      const content = await readFile(artifacts.resolveArtifactPath(snapshot.storageKey));
+      const file = await open(
+        destination,
+        constants.O_WRONLY | constants.O_CREAT | constants.O_NOFOLLOW,
+        0o600,
+      );
+      try {
+        const stat = await file.stat();
+        const destinationStat = await lstat(destination);
+        if (
+          !stat.isFile() ||
+          stat.nlink !== 1 ||
+          !destinationStat.isFile() ||
+          destinationStat.nlink !== 1 ||
+          destinationStat.dev !== stat.dev ||
+          destinationStat.ino !== stat.ino ||
+          (await realpath(destination)) !== join(realDirectory, snapshot.originalFilename)
+        )
+          throw new BadRequestError("Team artifact destination file is invalid.");
+        await file.truncate(0);
+        await file.writeFile(content);
+      } finally {
+        await file.close();
+      }
       return {
         artifactId: id,
         title: artifact.title,
@@ -55,7 +84,7 @@ export function createTeamArtifactService(options: { db: AppDb; config: RuntimeC
         checksum: snapshot.checksum,
         path: relative(options.config.paths.workspaceDir, destination),
         ...(snapshot.mimeType.startsWith("text/") && snapshot.sizeBytes <= 256 * 1024
-          ? { text: await readFile(destination, "utf8") }
+          ? { text: content.toString("utf8") }
           : {}),
       };
     },
