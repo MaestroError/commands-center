@@ -47,6 +47,36 @@ function createTaskExecutionService(
 }
 
 describe("createTaskExecutionService", () => {
+  it("preserves the completed parent board status when an accepted worker receives a reply", async () => {
+    const fixture = await createTeamFixture();
+    try {
+      const assignment = await fixture.execution.teams!.delegate(
+        fixture.root.id,
+        {
+          specialistSlug: fixture.worker.slug,
+          brief: "Report",
+          expectedOutput: "Report",
+        },
+        "worker-reply",
+      );
+      const child = (await fixture.taskService.listRuns(fixture.task.id)).find(
+        (run) => run.subtaskId === assignment.assignmentId,
+      )!;
+      await expect
+        .poll(async () => (await fixture.taskService.getRunById(child.id))?.opencodeSessionId)
+        .toBeTruthy();
+      await fixture.taskService.setRunStatus(child.id, "completed", { finalMessage: "Done" });
+      await fixture.execution.teams!.accept(fixture.root.id, assignment.assignmentId);
+      await fixture.taskService.setRunStatus(fixture.root.id, "completed");
+      const before = (await fixture.taskService.get(fixture.task.id))!.status;
+      await fixture.execution.sendRunReply(child.id, { body: "Explain the result" });
+      await expectRunStatus(fixture.taskService, child.id, "running");
+      expect((await fixture.taskService.get(fixture.task.id))?.status).toBe(before);
+    } finally {
+      fixture.execution.dispose();
+      await fixture.testDb.cleanup();
+    }
+  });
   it("delivers a delayed worker result only after the owner's other queued task finishes", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });

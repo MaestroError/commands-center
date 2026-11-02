@@ -120,10 +120,11 @@ export function createTaskReplyQueueService(db: AppDb) {
           })
           .where(eq(task_run_followups.id, id))
           .run();
-        tx.update(tasks)
-          .set({ status: "queued", updated_at: timestamp })
-          .where(and(eq(tasks.id, run.taskId), isNull(tasks.deleted_at)))
-          .run();
+        if (!current.subtask_id)
+          tx.update(tasks)
+            .set({ status: "queued", updated_at: timestamp })
+            .where(and(eq(tasks.id, run.taskId), isNull(tasks.deleted_at)))
+            .run();
         return true;
       });
     },
