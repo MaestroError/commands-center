@@ -801,6 +801,7 @@ export function registerTaskServiceRoutes(
   app.post(
     "/api/tasks/:id/replies",
     {
+      bodyLimit: 50 * 1024 * 1024,
       schema: {
         params: taskIdParamsSchema,
         body: createTaskRunFollowupInputSchema,
@@ -856,6 +857,7 @@ export function registerTaskServiceRoutes(
   app.post(
     "/api/tasks/:id/runs/:runId/followups",
     {
+      bodyLimit: 50 * 1024 * 1024,
       schema: {
         params: taskRunParamsSchema,
         body: createTaskRunFollowupInputSchema,

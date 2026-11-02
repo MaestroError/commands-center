@@ -522,6 +522,39 @@ describe("task routes", () => {
     }
   });
 
+  it.each(["task", "run"] as const)(
+    "accepts a 1 MiB attachment through the %s reply route",
+    async (target) => {
+      const harness = await createTaskRouteHarness();
+      try {
+        const { task, run } = await createTerminalRunFixture(harness, "Attached reply");
+        const content = Buffer.alloc(1024 * 1024, "a");
+        const response = await harness.server.inject({
+          method: "POST",
+          url:
+            target === "task"
+              ? `/api/tasks/${task.id}/replies`
+              : `/api/tasks/${task.id}/runs/${run.id}/followups`,
+          payload: {
+            body: "Read the attachment",
+            attachments: [
+              {
+                type: "file",
+                filename: "notes.txt",
+                mimeType: "text/plain",
+                sizeBytes: content.length,
+                dataUrl: `data:text/plain;base64,${content.toString("base64")}`,
+              },
+            ],
+          },
+        });
+        expect(response.statusCode).toBe(201);
+      } finally {
+        await harness.close();
+      }
+    },
+  );
+
   it("queues a reply while the run is in progress", async () => {
     const harness = await createTaskRouteHarness();
 
