@@ -1,15 +1,5 @@
 import { randomUUID } from "node:crypto";
-import {
-  chmod,
-  lstat,
-  mkdir,
-  readFile,
-  readdir,
-  realpath,
-  rename,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { chmod, lstat, readFile, readdir, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, extname, relative, resolve, sep } from "node:path";
 
 import { resolvePromptAttachmentMimeType } from "@cc/shared/lib";
@@ -19,6 +9,7 @@ import { z } from "zod";
 
 import { createId } from "../db/ids.js";
 import { BadRequestError } from "../lib/api-error.js";
+import { createSecureDirectory } from "../lib/secure-directory.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
 
 const MANIFEST_FILENAME = "manifest.json";
@@ -646,29 +637,7 @@ async function createSecureUploadDirectory(
   uploadDirectory: string,
   sessionsRoot: string,
 ): Promise<void> {
-  await mkdir(sessionsRoot, { recursive: true });
-  const realRoot = await realpath(sessionsRoot);
-  const segments = relative(sessionsRoot, uploadDirectory).split(sep);
-  let current = sessionsRoot;
-  let expected = realRoot;
-
-  for (const segment of segments) {
-    assertSafeSegment(segment);
-    current = resolve(current, segment);
-    expected = resolve(expected, segment);
-    await mkdir(current).catch((error: unknown) => {
-      if (!isFilesystemError(error, "EEXIST")) throw error;
-    });
-    const directory = await lstat(current);
-    if (!directory.isDirectory() || directory.isSymbolicLink()) {
-      throw new Error("Chat upload directory is invalid.");
-    }
-    const realCurrent = await realpath(current);
-    ensureDescendant(realCurrent, realRoot);
-    if (realCurrent !== expected) {
-      throw new Error("Chat upload directory is invalid.");
-    }
-  }
+  await createSecureDirectory(uploadDirectory, sessionsRoot, "Chat upload directory is invalid.");
 }
 
 // Messages this service raises itself are safe to return to a caller; native

@@ -18,13 +18,11 @@ import {
   type TaskCreationPrefill,
   type TaskTemplateCreationPrefill,
 } from "@/services/task-prefill-service";
-
-export type { TaskTemplateCreationPrefill };
 import {
   MAX_FALLBACK_MODELS,
   recurringTaskScheduleSchema,
-  type BoardTaskStatus,
   type Artifact,
+  type BoardTaskStatus,
   type CreateTaskInput,
   type CreateTaskTemplateInput,
   type Specialist,
@@ -40,17 +38,18 @@ import {
 } from "@cc/shared/schemas";
 import { useEffect, useMemo, useState } from "react";
 
+export type { TaskTemplateCreationPrefill };
+
 export type TasksPageProps = {
   mode?: "list" | "create" | "edit" | "template-create" | "template-edit";
 };
 
-export type DetailSectionId = "overview" | "subtasks" | "runs";
+export type DetailSectionId = "overview" | "runs";
 
 export const TASK_VIEWS = ["board", "templates", "archive"] as const;
 
 export const DETAIL_SECTION_TABS = [
   { id: "overview", label: "Overview" },
-  { id: "subtasks", label: "Subtasks" },
   { id: "runs", label: "Runs" },
 ];
 
@@ -756,10 +755,6 @@ function normalizeFilterText(value: string): string {
   return value.trim().toLowerCase().replace(/_/g, " ");
 }
 
-export function readAgentName(agents: Specialist[], agentId: string): string {
-  return agents.find((agent) => agent.id === agentId)?.name ?? agentId;
-}
-
 export function readCardClassName(status: BoardTaskStatus, draggable: boolean): string {
   const emphasis =
     status === "ready_to_check"
@@ -907,7 +902,7 @@ export function readResultClassName(status: BoardTaskStatus): string {
 export function readLatestRunResult(
   runs: TaskRun[],
 ): { content: string; run: TaskRun } | undefined {
-  const [latestRun] = runs;
+  const latestRun = runs.find((run) => !run.subtaskId);
   const content = latestRun
     ? (latestRun.finalMessage ?? latestRun.resultText ?? latestRun.errorMessage)
     : undefined;

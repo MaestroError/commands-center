@@ -48,8 +48,7 @@ export function createEmbeddedToolCallerResolver(options: {
         if (
           (run &&
             conversation &&
-            (conversation.source === "chat" ||
-              conversation.task_run_id !== run.id ||
+            (conversation.task_run_id !== run.id ||
               conversation.task_id !== run.task_id ||
               conversation.agent_id !== run.agent_id)) ||
           (!run && conversation?.source !== "chat")

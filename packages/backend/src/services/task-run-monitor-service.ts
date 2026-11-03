@@ -7,7 +7,6 @@ import {
   type ConversationService,
   type TaskRunPendingInteraction,
 } from "./conversation-service.js";
-import type { TaskService } from "./task-service.js";
 import {
   buildTaskRunErrorDetails,
   isLatestTurnComplete,
@@ -19,6 +18,7 @@ import {
   type OpencodeMonitorMetadata,
   type TaskRunTransport,
 } from "./task-run-support.js";
+import type { TaskService } from "./task-service.js";
 
 export type TaskRunMonitorOptions = {
   autoStart?: boolean;
@@ -107,7 +107,7 @@ export type TaskRunUsageLimitDetails = {
 export type TaskRunModelNotFoundDetails = TaskRunUsageLimitDetails;
 
 export type TaskRunMonitorHooks = {
-  /** Run terminal handling (archive finalization, feedback subtasks, queue drain). */
+  /** Run terminal handling (archive finalization, team notifications, reply queue drain). */
   handleTerminalRun(run: TaskRun): Promise<void>;
   /**
    * Queue a fallback-model run for a provider/model error when eligible. Returns
@@ -117,14 +117,14 @@ export type TaskRunMonitorHooks = {
   queueFallbackRun(errored: TaskRun, error: TaskRunPromptError): Promise<TaskRun | undefined>;
   /**
    * Finalize a stalled run: best-effort abort the wedged session, cancel the run
-   * with a clear reason, and optionally requeue it (per settings). Owns all the
-   * cancel/requeue policy; the monitor only detects the stall.
+   * with a clear reason, without creating a replacement execution. Owns all the
+   * stop policy; the monitor only detects the stall.
    */
   finalizeStalledRun(run: TaskRun, details: TaskRunStallDetails): Promise<void>;
   /**
    * Finalize a run whose OpenCode session stopped being reported while its
    * latest assistant turn was unfinished — the engine went away mid-turn. Same
-   * cancel/requeue policy as a stall, with an interruption diagnostic.
+   * stop policy as a stall, with an interruption diagnostic.
    */
   finalizeInterruptedRun(run: TaskRun, details: { lastAssistantMessageId?: string }): Promise<void>;
   /** Mark a task run as needing review when OpenCode is waiting for hidden input. */
@@ -571,7 +571,7 @@ export function createTaskRunMonitorService(deps: {
     run: TaskRun,
     noProgressMs: number,
   ): Promise<boolean> {
-    // The execution service owns the cancel + optional-requeue policy; the monitor
+    // The execution service owns the stop policy; the monitor
     // only reports the stall and the diagnostics it observed.
     await hooks.finalizeStalledRun(run, {
       noProgressMs,

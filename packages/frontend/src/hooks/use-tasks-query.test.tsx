@@ -59,24 +59,23 @@ import {
   addConversationArtifact,
   archiveTask,
   cancelTaskRun,
-  createTask,
-  createTaskFeedback,
+  createArtifactShareLink,
   createRunFollowup,
+  createTask,
   createTaskFromTemplate,
   createTaskTemplate,
-  createArtifactShareLink,
   deleteTask,
   disableTask,
   duplicateTask,
   enableTask,
   getTask,
-  getTaskTemplate,
   getTaskRun,
+  getTaskTemplate,
   inspectTaskRunSession,
   listActiveTaskRuns,
   listArchivedTasks,
-  listRunFollowups,
   listConversationArtifacts,
+  listRunFollowups,
   listTaskFeedback,
   listTaskRuns,
   listTaskSchedulerState,
@@ -93,7 +92,6 @@ import {
   runTaskTemplateNow,
   updateTask,
   updateTaskContext,
-  updateTaskFeedback,
   updateTaskTemplate,
   uploadTaskContextAttachment,
 } from "@/lib/api";
@@ -102,12 +100,12 @@ import { queryKeys } from "@/lib/query-keys";
 import {
   useActiveTaskRunsQuery,
   useArchivedTasksQuery,
+  useConversationArtifactsQuery,
   useTaskFeedbackQuery,
   useTaskMutations,
   useTaskQuery,
-  useTaskRunQuery,
   useTaskRunFollowupsQuery,
-  useConversationArtifactsQuery,
+  useTaskRunQuery,
   useTaskRunSessionQuery,
   useTaskRunsQuery,
   useTaskSchedulerStateQuery,
@@ -517,60 +515,12 @@ describe("useTaskMutations", () => {
     });
   });
 
-  it("updates feedback cache and invalidates subtask views for feedback edits", async () => {
-    const queryClient = createQueryClient();
-    const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
-    const original: TaskFeedbackThread = {
-      id: "feedback-1",
-      taskId: "task-1",
-      body: "Old feedback.",
-      targetAgentIds: ["agent-1"],
-      subtasks: [],
-      createdAt: "2026-01-01T00:00:00.000Z",
-    };
-    const updated: TaskFeedbackThread = {
-      ...original,
-      body: "Updated feedback.",
-    };
-
-    queryClient.setQueryData(queryKeys.taskFeedback("task-1"), [original]);
-    vi.mocked(updateTaskFeedback).mockResolvedValue(updated);
-
-    const { result } = renderHook(() => useTaskMutations(), {
-      wrapper: createWrapper(queryClient),
-    });
-
-    await act(async () => {
-      await result.current.updateFeedback.mutateAsync({
-        taskId: "task-1",
-        feedbackId: "feedback-1",
-        input: { body: "Updated feedback." },
-      });
-    });
-
-    expect(updateTaskFeedback).toHaveBeenCalledWith("task-1", "feedback-1", {
-      body: "Updated feedback.",
-    });
-    expect(queryClient.getQueryData(queryKeys.taskFeedback("task-1"))).toEqual([updated]);
-    expect(invalidateQueries).toHaveBeenCalledWith({
-      queryKey: queryKeys.taskSubtasks("task-1"),
-    });
-  });
-
-  it("updates template, feedback, run, and attachment caches", async () => {
+  it("updates template, run, and attachment caches", async () => {
     const queryClient = createQueryClient();
     const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
     const template = makeTemplate({ id: "template-1" });
     const generated = makeTask({ id: "generated", sourceTemplateId: "template-1" });
     const run = makeRun({ id: "run-1", taskId: "task-1" });
-    const feedback: TaskFeedbackThread = {
-      id: "feedback-1",
-      taskId: "task-1",
-      body: "Retest.",
-      targetAgentIds: ["agent-1"],
-      subtasks: [],
-      createdAt: "2026-01-01T00:00:00.000Z",
-    };
 
     vi.mocked(createTaskTemplate).mockResolvedValue(template);
     vi.mocked(updateTaskTemplate).mockResolvedValue(template);
@@ -597,7 +547,6 @@ describe("useTaskMutations", () => {
         ],
       },
     });
-    vi.mocked(createTaskFeedback).mockResolvedValue(feedback);
     vi.mocked(queueTask).mockResolvedValue(run);
     vi.mocked(previewTaskQueue).mockResolvedValue({
       taskId: "task-1",
@@ -649,10 +598,6 @@ describe("useTaskMutations", () => {
           sizeBytes: 4,
         },
       });
-      await result.current.createFeedback.mutateAsync({
-        id: "task-1",
-        input: { body: "Retest." },
-      });
       await result.current.trigger.mutateAsync({ id: "task-1" });
       await result.current.previewQueue.mutateAsync({ id: "task-1" });
       await result.current.runTemplateNow.mutateAsync({ id: "template-1" });
@@ -663,7 +608,6 @@ describe("useTaskMutations", () => {
     expect(queryClient.getQueryData(queryKeys.taskTemplate("template-1"))).toEqual(template);
     expect(queryClient.getQueryData(queryKeys.task("generated"))).toEqual(generated);
     expect(queryClient.getQueryData(queryKeys.taskRun("task-1", "run-1"))).toEqual(run);
-    expect(queryClient.getQueryData(queryKeys.taskFeedback("task-1"))).toEqual([feedback]);
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.taskTemplates });
   });
 });

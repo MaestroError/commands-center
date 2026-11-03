@@ -461,6 +461,7 @@ When making changes that affect the developer experience, update the relevant do
 - For opencode process issues, check the orchestrator's lifecycle logs
 - For MCP issues, inspect the stdio/SSE transport layer
 - CC-provided tools use the shared registry through the embedded SDK, not internal MCP servers. Preserve their group/context metadata and resolve caller identity from the owning chat or task session; never trust tool arguments for ownership.
+- Teams assignments belong to the owner root run; workers retain their own permissions and instructions. Opening a task session in chat preserves its task identity and routes prompts through the durable task reply queue.
 - For WebSocket issues, check both connection establishment and message flow
 - Use the `examples/opencode/` repo to understand upstream API behavior
 

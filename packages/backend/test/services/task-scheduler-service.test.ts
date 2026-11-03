@@ -179,6 +179,9 @@ describe("createTaskSchedulerService", () => {
       await expect.poll(async () => await taskService.listRuns(task.id)).toHaveLength(1);
       await schedulerService.tick(new Date("2026-06-01T12:02:00.000Z"));
 
+      await expect
+        .poll(async () => (await taskService.get(task.id))?.status)
+        .toBe("ready_to_check");
       const runs = await taskService.listRuns(task.id);
       const queued = await taskService.get(task.id);
 

@@ -295,6 +295,27 @@
       "when": 1792396924682,
       "tag": "0041_gray_proudstar",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "6",
+      "when": 1793346549171,
+      "tag": "0042_good_mantis",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "6",
+      "when": 1793347121413,
+      "tag": "0043_dry_the_hand",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "6",
+      "when": 1793373507000,
+      "tag": "0044_big_hedge_knight",
+      "breakpoints": true
     }
   ]
 }

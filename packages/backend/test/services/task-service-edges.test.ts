@@ -2,8 +2,9 @@ import { randomUUID } from "node:crypto";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { eq } from "drizzle-orm";
 import type { AppDb } from "../../src/db/client";
-import { agents } from "../../src/db/schema/index";
+import { agents, task_run_followups } from "../../src/db/schema/index";
 import { BadRequestError, ConflictError, NotFoundError } from "../../src/lib/api-error";
 import { createTaskService } from "../../src/services/task-service";
 import { createTestDatabase } from "../helpers/db";
@@ -98,44 +99,6 @@ describe("task-service edge cases", () => {
     ).rejects.toBeInstanceOf(NotFoundError);
   });
 
-  it("manages subtasks", async () => {
-    const { taskService, agentId } = await setup();
-    const task = await taskService.create({ agentId, title: "With subtasks" });
-
-    const subtask = await taskService.createSubtask(task.id, {
-      description: "Step one",
-      agentId,
-    });
-    expect(subtask.description).toBe("Step one");
-
-    const updated = await taskService.updateSubtask(task.id, subtask.id, {
-      description: "Step 1b",
-    });
-    expect(updated?.description).toBe("Step 1b");
-
-    const subtasks = await taskService.listSubtasks(task.id);
-    expect(subtasks).toHaveLength(1);
-
-    const progress = await taskService.listSubtaskProgress([task.id]);
-    expect(progress[0]?.total).toBe(1);
-  });
-
-  it("manages feedback threads", async () => {
-    const { taskService, agentId } = await setup();
-    const task = await taskService.create({ agentId, title: "Feedback task" });
-
-    const feedback = await taskService.createFeedback(task.id, { body: "Please refine this." });
-    expect(feedback.body).toBe("Please refine this.");
-
-    const threads = await taskService.listFeedback(task.id);
-    expect(threads).toHaveLength(1);
-
-    const updated = await taskService.updateFeedback(task.id, feedback.id, {
-      body: "Refine differently.",
-    });
-    expect(updated?.body).toBe("Refine differently.");
-  });
-
   it("exposes per-agent run queries and starts a queued run", async () => {
     const { taskService, agentId } = await setup();
     const task = await taskService.create({ agentId, title: "Queue mechanics" });
@@ -186,7 +149,7 @@ describe("task-service edge cases", () => {
   });
 
   it("records and resolves run followups", async () => {
-    const { taskService, agentId } = await setup();
+    const { taskService, agentId, testDb } = await setup();
     const task = await taskService.create({ agentId, title: "Followup task" });
     const run = await taskService.createRun({
       taskId: task.id,
@@ -197,6 +160,10 @@ describe("task-service edge cases", () => {
     });
 
     const followup = await taskService.insertFollowup(run, { body: "Need input." });
+    await testDb.client.db
+      .update(task_run_followups)
+      .set({ status: "sending" })
+      .where(eq(task_run_followups.id, followup.id));
     expect(await taskService.listFollowups(run.id)).toHaveLength(1);
     expect(await taskService.findInFlightFollowup(run.id)).toBeDefined();
 
@@ -205,6 +172,10 @@ describe("task-service edge cases", () => {
 
     // A second follow-up can be marked failed instead of answered.
     const second = await taskService.insertFollowup(run, { body: "Still need input." });
+    await testDb.client.db
+      .update(task_run_followups)
+      .set({ status: "sending" })
+      .where(eq(task_run_followups.id, second.id));
     await taskService.markFollowupFailed(second.id, "delivery failed");
     expect(await taskService.findInFlightFollowup(run.id)).toBeUndefined();
   });

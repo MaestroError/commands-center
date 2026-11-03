@@ -46,6 +46,7 @@ export function normalizeSpecialistCapabilities(
   );
 
   return {
+    allowedTeammates: capabilities.allowedTeammates,
     builtInSkills: normalizeBuiltInSkillSlugs(capabilities.builtInSkills),
     workspaceSkills: capabilities.workspaceSkills ?? [],
     customTools: capabilities.customTools ?? [],
@@ -66,6 +67,7 @@ export function removeMcpReferences(
   mcpName: string,
 ): SpecialistCapabilitySelection {
   return {
+    allowedTeammates: capabilities.allowedTeammates,
     builtInSkills: normalizeBuiltInSkillSlugs(capabilities.builtInSkills),
     workspaceSkills: capabilities.workspaceSkills ?? [],
     customTools: capabilities.customTools ?? [],
@@ -94,6 +96,7 @@ export function renameMcpReferences(
     ]),
   ].sort((a, b) => b.length - a.length);
   return {
+    allowedTeammates: capabilities.allowedTeammates,
     builtInSkills: normalizeBuiltInSkillSlugs(capabilities.builtInSkills),
     workspaceSkills: capabilities.workspaceSkills ?? [],
     customTools: capabilities.customTools ?? [],

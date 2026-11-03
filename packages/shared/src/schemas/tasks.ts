@@ -1,17 +1,20 @@
-import { mcpToolPermissionSchema } from "./specialists.js";
 import { z } from "zod";
+import { mcpToolPermissionSchema } from "./specialists.js";
 
+import { artifactSchema } from "./artifacts.js";
 import {
+  conversationDetailSchema,
+  sendConversationAttachmentInputSchema,
+} from "./conversations.js";
+import {
+  permissionActionSchema,
   specialistAppMcpServerSchema,
   specialistMcpServerSchema,
   specialistPermissionRuleSchema,
-  permissionActionSchema,
 } from "./specialists.js";
-import { conversationDetailSchema } from "./conversations.js";
-import { artifactSchema } from "./artifacts.js";
 import {
-  taskTemplateMcpConfigSchema,
   taskTemplateMcpConfigInputSchema,
+  taskTemplateMcpConfigSchema,
 } from "./task-template-mcp.js";
 
 const looseRecordSchema = z.record(z.string(), z.unknown());
@@ -43,6 +46,7 @@ export const taskStatusSchema = z.union([boardTaskStatusSchema, legacyTaskStatus
 export const taskRunStatusSchema = z.enum([
   "queued",
   "running",
+  "waiting",
   "completed",
   "failed",
   "error",
@@ -92,9 +96,25 @@ export const taskRunTriggerSourceSchema = z.enum([
   "system",
 ]);
 
-export const taskRunFollowupKindSchema = z.enum(["operator_reply", "review_answer"]);
+export const taskRunFollowupKindSchema = z.enum([
+  "operator_reply",
+  "review_answer",
+  "team_result",
+  "team_revision",
+  "recovery",
+  "lifecycle",
+]);
 
-export const taskRunFollowupStatusSchema = z.enum(["sending", "answered", "failed"]);
+export const taskRunFollowupStatusSchema = z.enum([
+  "queued",
+  "delivering",
+  "sending",
+  "answered",
+  "failed",
+  "blocked",
+  "cancelled",
+  "handled",
+]);
 
 export const taskTodoStatusSchema = z.enum(["pending", "in_progress", "completed"]);
 
@@ -230,28 +250,18 @@ export const taskSubtaskInputSchema = z.object({
   agentId: z.string().trim().min(1),
 });
 
-export const createTaskFeedbackInputSchema = z.object({
-  body: z.string().trim().min(1),
-  mentionedAgentIds: z.array(z.string().trim().min(1)).max(1).default([]),
-});
-
-export const updateTaskFeedbackInputSchema = z.object({
-  body: z.string().trim().min(1),
-});
-
-export const updateTaskSubtaskInputSchema = z.object({
-  description: z.string().trim().optional(),
-  agentId: z.string().trim().min(1).optional(),
-});
-
 export const taskRunFollowupSchema = z.object({
   id: z.string().min(1),
   taskId: z.string().min(1),
-  runId: z.string().min(1),
+  runId: z.string().min(1).optional(),
   kind: taskRunFollowupKindSchema,
   status: taskRunFollowupStatusSchema,
   body: z.string().min(1),
   createdAt: z.string().datetime(),
+  requestId: z.string().optional(),
+  waitingReason: z.string().optional(),
+  deliveredAt: z.string().datetime().optional(),
+  deliveryStartedAt: z.string().datetime().optional(),
   answerBody: z.string().optional(),
   answeredAt: z.string().datetime().optional(),
   errorMessage: z.string().optional(),
@@ -259,12 +269,20 @@ export const taskRunFollowupSchema = z.object({
 
 export const createTaskRunFollowupInputSchema = z.object({
   body: z.string().trim().min(1),
-  kind: taskRunFollowupKindSchema.default("operator_reply"),
+  kind: z.enum(["operator_reply", "review_answer"]).default("operator_reply"),
+  requestId: z.string().trim().min(1).max(200).optional(),
+  attachments: z.array(sendConversationAttachmentInputSchema).default([]),
+  model: z.string().trim().min(1).optional(),
 });
 
 export const taskSubtaskSchema = taskSubtaskInputSchema.extend({
   id: z.string().min(1),
   taskId: z.string().min(1),
+  ownerRunId: z.string().min(1).optional(),
+  expectedOutput: z.string().optional(),
+  inputArtifactIds: z.array(z.string()).optional(),
+  acceptedAt: z.string().datetime().optional(),
+  revisionCount: z.number().int().optional(),
   feedbackId: z.string().min(1).optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
@@ -711,7 +729,6 @@ export type Task = z.infer<typeof taskSchema>;
 export type TaskContext = z.infer<typeof taskContextSchema>;
 export type TaskContextAttachment = z.infer<typeof taskContextAttachmentSchema>;
 export type AppendTaskContextInput = z.input<typeof appendTaskContextInputSchema>;
-export type CreateTaskFeedbackInput = z.input<typeof createTaskFeedbackInputSchema>;
 export type CreateTaskRunFollowupInput = z.input<typeof createTaskRunFollowupInputSchema>;
 export type ReviewQuestion = z.infer<typeof reviewQuestionSchema>;
 export type TaskFeedbackThread = z.infer<typeof taskFeedbackThreadSchema>;
@@ -740,10 +757,8 @@ export type TaskTodo = z.infer<typeof taskTodoSchema>;
 export type TaskRepeatRule = z.infer<typeof taskRepeatRuleSchema>;
 export type TriggerTaskInput = z.input<typeof triggerTaskInputSchema>;
 export type UpdateTaskContextInput = z.input<typeof updateTaskContextInputSchema>;
-export type UpdateTaskFeedbackInput = z.input<typeof updateTaskFeedbackInputSchema>;
 export type UpdateTaskInput = z.input<typeof updateTaskInputSchema>;
 export type UpdateTaskRunInput = z.input<typeof updateTaskRunInputSchema>;
-export type UpdateTaskSubtaskInput = z.input<typeof updateTaskSubtaskInputSchema>;
 export type UploadTaskContextAttachmentInput = z.input<
   typeof uploadTaskContextAttachmentInputSchema
 >;

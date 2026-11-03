@@ -3,6 +3,9 @@
 import { SpecialistAvatar } from "@/components/specialists/specialist-avatar";
 import { formatDate } from "@/components/tasks/task-format";
 import { StatusBadge } from "@/components/tasks/task-ui";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useTaskSubtaskProgressQuery } from "@/hooks/use-tasks-query";
 import { buildTemplateEndpointDocs } from "@cc/shared/lib";
 import type {
@@ -25,13 +28,13 @@ import {
   Flag,
   Info,
   Link2,
+  type LucideIcon,
   MessageSquareText,
   Pencil,
   Play,
   RotateCcw,
   Save,
   XCircle,
-  type LucideIcon,
 } from "lucide-react";
 import { type DragEvent, useState } from "react";
 import { Link } from "react-router";
@@ -54,9 +57,6 @@ import {
   readTaskCardIconActionClassName,
   taskCardActionTestId,
 } from "./task-helpers";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 export function TaskBoard(props: {
   tasks: Task[];
@@ -445,7 +445,7 @@ function TaskBoardCardMeta(props: { task: Task; progress?: TaskSubtaskProgress }
       ) : null}
       {props.progress?.subtasks.length ? (
         <span
-          aria-label="Subtasks"
+          aria-label="Team assignments"
           className="inline-flex items-center -space-x-1.5 py-1 group-hover/card:space-x-1"
         >
           {props.progress.subtasks.map((subtask) => (
@@ -537,7 +537,7 @@ function TaskCardActions(props: {
             variant="danger"
           />
         ) : null}
-        {!props.activeRun ? (
+        {!props.activeRun && !props.task.latestRunId ? (
           <TaskCardIconButton icon={Play} label="Queue" onClick={props.onQueue} variant="success" />
         ) : null}
         <TaskCardIconLink
@@ -578,12 +578,7 @@ function TaskCardActions(props: {
   if (props.boardStatus === "failed") {
     return (
       <>
-        <TaskCardIconButton
-          icon={RotateCcw}
-          label="Rerun"
-          onClick={props.onQueue}
-          variant="warning"
-        />
+        <TaskCardIconButton icon={Copy} label="Duplicate" onClick={props.onDuplicate} />
         {props.latestRunPath ? (
           <TaskCardIconLink icon={ExternalLink} label="Open run" to={props.latestRunPath} />
         ) : null}
@@ -600,17 +595,12 @@ function TaskCardActions(props: {
   if (props.boardStatus === "review") {
     return (
       <>
+        <TaskCardIconButton icon={Copy} label="Duplicate" onClick={props.onDuplicate} />
         <TaskCardIconButton
           icon={Check}
           label="Accept"
           onClick={props.onAccept}
           variant="success"
-        />
-        <TaskCardIconButton
-          icon={RotateCcw}
-          label="Rerun"
-          onClick={props.onQueue}
-          variant="warning"
         />
         {props.latestRunPath ? (
           <TaskCardIconLink icon={ExternalLink} label="Open run" to={props.latestRunPath} />
@@ -648,13 +638,15 @@ function TaskCardActions(props: {
 
   return (
     <>
-      <TaskCardIconButton
-        icon={Play}
-        label={props.boardStatus === "scheduled" ? "Queue now" : "Queue"}
-        onClick={props.onQueue}
-        testId="task-card-action-queue"
-        variant="success"
-      />
+      {!props.task.latestRunId && (
+        <TaskCardIconButton
+          icon={Play}
+          label={props.boardStatus === "scheduled" ? "Queue now" : "Queue"}
+          onClick={props.onQueue}
+          testId="task-card-action-queue"
+          variant="success"
+        />
+      )}
       <TaskCardIconLink
         icon={props.boardStatus === "scheduled" ? CalendarClock : Pencil}
         label={props.boardStatus === "scheduled" ? "Reschedule" : "Edit"}

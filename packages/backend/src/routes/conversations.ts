@@ -1,3 +1,4 @@
+import { BadRequestError } from "../lib/api-error.js";
 import { z } from "zod";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 
@@ -158,6 +159,20 @@ export function registerConversationRoutes(
       bodyLimit: 50 * 1024 * 1024, // 50 MB for base64 attachments
     },
     async (request, reply) => {
+      const conversation = await context.database.db.query.conversations.findFirst({
+        where: (table, { eq }) => eq(table.id, request.params.conversationId),
+      });
+      if (conversation?.task_run_id) {
+        if (!context.taskExecutionService)
+          throw new BadRequestError("Task execution service is unavailable.");
+        const queued = await context.taskExecutionService.sendRunReply(conversation.task_run_id, {
+          body: request.body.text,
+          attachments: request.body.attachments,
+          model: request.body.model,
+        });
+        reply.code(202);
+        return queued;
+      }
       if (request.query.stream === "true") {
         await service.sendPromptAsync(request.params.conversationId, request.body);
         reply.code(202);
@@ -246,7 +261,14 @@ export function registerConversationRoutes(
       },
     },
     async (request, reply) => {
-      await service.abortConversation(request.params.conversationId);
+      const conversation = await context.database.db.query.conversations.findFirst({
+        where: (table, { eq }) => eq(table.id, request.params.conversationId),
+      });
+      if (conversation?.task_run_id) {
+        if (!context.taskExecutionService)
+          throw new BadRequestError("Task execution service is unavailable.");
+        await context.taskExecutionService.cancel(conversation.task_run_id);
+      } else await service.abortConversation(request.params.conversationId);
       reply.code(204);
     },
   );

@@ -2,57 +2,56 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   abortConversation,
-  addConversationArtifact,
   acceptTask,
-  cancelTaskRun,
+  addConversationArtifact,
   cancelLiveRequest,
+  cancelTaskRun,
   changeOwnerPassword,
-  claimWorkspace,
   checkSystemVersion,
+  claimWorkspace,
   closeTerminalSession,
   completeMcpAuth,
-  connectTerminalWebSocket,
   connectConversationEvents,
+  connectTerminalWebSocket,
   connectWorkspaceEvents,
-  createRunFollowup,
-  createTaskFromTemplate,
   createApiToken,
   createArtifactShareLink,
-  getArtifactDeliveryUrls,
+  createRunFollowup,
+  createTaskFromTemplate,
   createTaskTemplate,
-  getTaskArtifactSharingPreferences,
   deleteConversation,
-  deleteSpecialistCustomTool,
   deleteCustomTool,
   deleteSecret,
+  deleteSpecialistCustomTool,
   deleteTask,
   deleteWorkspaceSkill,
   type FileSaveConflictError,
+  getArtifactDeliveryUrls,
+  getTaskArtifactSharingPreferences,
   getTaskTemplate,
   getWorkspaceTree,
-  listRunFollowups,
   listApiTokens,
   listConversationArtifacts,
+  listRunFollowups,
   listTaskSubtaskProgress,
   listTaskTemplateTasks,
-  loginOwner,
   listTerminalSessions,
+  loginOwner,
   logoutOwner,
-  readApiError,
   previewTaskQueue,
+  readApiError,
   removeMcpAuth,
-  revokeApiToken,
-  revokeArtifactShareLink,
   resizeTerminalSession,
   restartEngine,
-  updateTaskArtifactSharingPreferences,
-  updateTaskFeedback,
+  revokeApiToken,
+  revokeArtifactShareLink,
   runTaskTemplateNow,
   saveFileManagerFileContent,
   searchWorkspaceFiles,
   sendCommand,
   setSecret,
   summarizeConversation,
+  updateTaskArtifactSharingPreferences,
   updateTaskTemplate,
   uploadWorkspaceSkill,
   type WorkspaceSkillUploadRenameError,
@@ -247,33 +246,7 @@ describe("task actions", () => {
     expect(fetchSpy).toHaveBeenCalledWith("/api/tasks/task-1/runs/run-1/followups", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ body: "Answer A", kind: "review_answer" }),
-    });
-  });
-
-  it("updates task feedback", async () => {
-    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      makeJsonResponse({
-        id: "feedback-1",
-        taskId: "task-1",
-        body: "Updated feedback.",
-        targetAgentIds: ["agent-1"],
-        subtasks: [],
-        createdAt: "2026-01-01T00:00:00.000Z",
-      }),
-    );
-
-    await expect(
-      updateTaskFeedback("task-1", "feedback-1", { body: "Updated feedback." }),
-    ).resolves.toMatchObject({
-      id: "feedback-1",
-      body: "Updated feedback.",
-    });
-
-    expect(fetchSpy).toHaveBeenCalledWith("/api/tasks/task-1/feedback/feedback-1", {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ body: "Updated feedback." }),
+      body: JSON.stringify({ body: "Answer A", kind: "review_answer", attachments: [] }),
     });
   });
 

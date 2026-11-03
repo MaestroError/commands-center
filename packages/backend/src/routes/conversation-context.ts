@@ -11,4 +11,5 @@ export type ConversationRouteContext = Pick<
   | "systemPromptService"
   | "interactiveChatWatchdogService"
   | "liveRequestService"
+  | "taskExecutionService"
 > & { opencodeService: ConversationEngine };

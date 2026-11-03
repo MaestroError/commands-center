@@ -136,11 +136,19 @@ export const task_subtasks = sqliteTable(
       .notNull()
       .references(() => agents.id),
     description: text("description").notNull(),
+    owner_run_id: text("owner_run_id").references((): AnySQLiteColumn => task_runs.id),
+    request_id: text("request_id"),
+    expected_output: text("expected_output"),
+    input_artifact_ids: text("input_artifact_ids"),
+    accepted_at: integer("accepted_at", { mode: "timestamp_ms" }),
+    revision_count: integer("revision_count").notNull().default(0),
     created_at: integer("created_at", { mode: "timestamp_ms" }).notNull(),
     updated_at: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
     deleted_at: integer("deleted_at", { mode: "timestamp_ms" }),
   },
   (table) => [
+    uniqueIndex("task_subtasks_owner_request_unique_idx").on(table.owner_run_id, table.request_id),
+    index("task_subtasks_owner_idx").on(table.owner_run_id),
     index("task_subtasks_task_id_idx").on(table.task_id),
     index("task_subtasks_feedback_id_idx").on(table.feedback_id),
     index("task_subtasks_agent_id_idx").on(table.agent_id),
@@ -208,12 +216,15 @@ export const task_run_followups = sqliteTable(
     task_id: text("task_id")
       .notNull()
       .references(() => tasks.id),
-    run_id: text("run_id")
-      .notNull()
-      .references(() => task_runs.id),
+    run_id: text("run_id").references(() => task_runs.id),
     kind: text("kind").notNull(),
     status: text("status").notNull(),
     body: text("body").notNull(),
+    request_id: text("request_id"),
+    payload_json: text("payload_json"),
+    delivery_started_at: integer("delivery_started_at", { mode: "timestamp_ms" }),
+    baseline_message_count: integer("baseline_message_count"),
+    delivered_at: integer("delivered_at", { mode: "timestamp_ms" }),
     answer_body: text("answer_body"),
     answered_at: integer("answered_at", { mode: "timestamp_ms" }),
     error_message: text("error_message"),
@@ -221,6 +232,10 @@ export const task_run_followups = sqliteTable(
     updated_at: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
   },
   (table) => [
+    uniqueIndex("task_run_followups_request_unique_idx").on(table.run_id, table.request_id),
+    uniqueIndex("task_pending_replies_request_unique_idx")
+      .on(table.task_id, table.request_id)
+      .where(sql`${table.run_id} is null`),
     index("task_run_followups_task_id_idx").on(table.task_id),
     index("task_run_followups_run_id_idx").on(table.run_id),
     index("task_run_followups_run_status_idx").on(table.run_id, table.status),

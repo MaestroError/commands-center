@@ -61,6 +61,31 @@ function renderComposer(overrides: Partial<React.ComponentProps<typeof ChatCompo
 }
 
 describe("ChatComposer", () => {
+  it("queues input while a task session is busy", async () => {
+    const user = userEvent.setup();
+    const { props } = renderComposer({ queueMode: true, agentStatus: "busy" });
+    await user.type(screen.getByTestId("chat-message-input"), "Continue after this turn");
+    await user.click(screen.getByRole("button", { name: "Queue reply" }));
+    expect(props.onSend).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "Continue after this turn", requestId: expect.any(String) }),
+    );
+    expect(screen.getByTestId("chat-message-input")).toHaveValue("");
+  });
+
+  it("retains the same request identity when retrying an uncertain queue submission", async () => {
+    const user = userEvent.setup();
+    const onSend = vi
+      .fn<React.ComponentProps<typeof ChatComposer>["onSend"]>()
+      .mockRejectedValueOnce(new Error("Response lost"))
+      .mockResolvedValue(undefined);
+    renderComposer({ queueMode: true, onSend });
+    await user.type(screen.getByTestId("chat-message-input"), "Only send once");
+    await user.click(screen.getByRole("button", { name: "Queue reply" }));
+    expect(screen.getByTestId("chat-message-input")).toHaveValue("Only send once");
+    await user.click(screen.getByRole("button", { name: "Queue reply" }));
+    expect(onSend.mock.calls[1]?.[0].requestId).toBe(onSend.mock.calls[0]?.[0].requestId);
+  });
+
   it("calls onSend with typed text when clicking Send", async () => {
     const user = userEvent.setup();
     const { props } = renderComposer();

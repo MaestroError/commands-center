@@ -1,5 +1,7 @@
+import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { closeSync, constants, openSync } from "node:fs";
+import { link, mkdir, readFile, readdir, symlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -8,6 +10,7 @@ import type { AppDb } from "../../src/db/client";
 import { agents, artifact_share_links, conversations } from "../../src/db/schema/index";
 import { BadRequestError, NotFoundError } from "../../src/lib/api-error";
 import { createArtifactService } from "../../src/services/artifact-service";
+import { createTeamArtifactService } from "../../src/services/team-artifact-service";
 import { createTaskService } from "../../src/services/task-service";
 import { createTestDatabase } from "../helpers/db";
 
@@ -60,6 +63,170 @@ async function setup() {
 }
 
 describe("createArtifactService", () => {
+  it.skipIf(process.platform === "win32")(
+    "rejects a FIFO destination without waiting for a reader",
+    async () => {
+      const { testDb, service } = await setup();
+      let reader: number | undefined;
+      let unblock: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const agentId = await insertAgent(testDb.client.db);
+        const conversationId = await insertConversation(testDb.client.db, agentId);
+        const source = join(
+          testDb.config.paths.subdirectories.specialists,
+          agentId,
+          "Documents",
+          "report.txt",
+        );
+        await mkdir(dirname(source), { recursive: true });
+        await writeFile(source, "shared report");
+        const artifact = await service.create({
+          conversationId,
+          title: "Report",
+          type: "file",
+          link: "report.txt",
+        });
+        const destination = join(
+          testDb.config.paths.subdirectories.specialists,
+          "receiver",
+          ".team-inputs",
+          artifact.id,
+          "report.txt",
+        );
+        await mkdir(dirname(destination), { recursive: true });
+        execFileSync("mkfifo", [destination]);
+        const teams = createTeamArtifactService({ db: testDb.client.db, config: testDb.config });
+        // Release a regressed blocking open so a failing test cannot strand a filesystem worker.
+        unblock = setTimeout(() => {
+          reader = openSync(destination, constants.O_RDONLY | constants.O_NONBLOCK);
+        }, 1000);
+        await expect(teams.read(artifact.id, "receiver")).rejects.toMatchObject({ code: "ENXIO" });
+      } finally {
+        clearTimeout(unblock);
+        if (reader !== undefined) closeSync(reader);
+        await testDb.cleanup();
+      }
+    },
+  );
+  it.each(["specialist", "inputs", "artifact", "file"] as const)(
+    "rejects a symlinked team artifact %s destination",
+    async (component) => {
+      const { testDb, service } = await setup();
+      try {
+        const agentId = await insertAgent(testDb.client.db);
+        const conversationId = await insertConversation(testDb.client.db, agentId);
+        const source = join(
+          testDb.config.paths.subdirectories.specialists,
+          agentId,
+          "Documents",
+          "report.txt",
+        );
+        await mkdir(dirname(source), { recursive: true });
+        await writeFile(source, "shared report");
+        const artifact = await service.create({
+          conversationId,
+          title: "Report",
+          type: "file",
+          link: "report.txt",
+        });
+        const receiver = join(testDb.config.paths.subdirectories.specialists, "receiver");
+        const parts = [
+          receiver,
+          join(receiver, ".team-inputs"),
+          join(receiver, ".team-inputs", artifact.id),
+          join(receiver, ".team-inputs", artifact.id, "report.txt"),
+        ];
+        const destination = parts[["specialist", "inputs", "artifact", "file"].indexOf(component)]!;
+        const outside = join(testDb.config.paths.workspaceDir, "outside-team-inputs");
+        await mkdir(outside, { recursive: true });
+        const target = component === "file" ? join(outside, "victim.txt") : outside;
+        if (component === "file") await writeFile(target, "unchanged");
+        await mkdir(dirname(destination), { recursive: true });
+        await symlink(target, destination);
+        const teams = createTeamArtifactService({ db: testDb.client.db, config: testDb.config });
+        await expect(teams.read(artifact.id, "receiver")).rejects.toThrow();
+        if (component === "file") expect(await readFile(target, "utf8")).toBe("unchanged");
+        else expect(await readdir(outside)).toEqual([]);
+      } finally {
+        await testDb.cleanup();
+      }
+    },
+  );
+  it("refreshes an ordinary team artifact copy from its immutable snapshot", async () => {
+    const { testDb, service } = await setup();
+    try {
+      const agentId = await insertAgent(testDb.client.db);
+      const conversationId = await insertConversation(testDb.client.db, agentId);
+      const source = join(
+        testDb.config.paths.subdirectories.specialists,
+        agentId,
+        "Documents",
+        "report.txt",
+      );
+      await mkdir(dirname(source), { recursive: true });
+      await writeFile(source, "shared report");
+      const artifact = await service.create({
+        conversationId,
+        title: "Report",
+        type: "file",
+        link: "report.txt",
+      });
+      const teams = createTeamArtifactService({ db: testDb.client.db, config: testDb.config });
+      const first = await teams.read(artifact.id, "receiver");
+      if (!("path" in first)) throw new Error("Expected a file result");
+      await writeFile(
+        join(testDb.config.paths.workspaceDir, first.path),
+        "modified local copy with extra text",
+      );
+      const second = await teams.read(artifact.id, "receiver");
+      expect(second).toMatchObject({ path: first.path, text: "shared report" });
+      expect(await readFile(join(testDb.config.paths.workspaceDir, first.path), "utf8")).toBe(
+        "shared report",
+      );
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("does not overwrite a hard-linked team artifact destination", async () => {
+    const { testDb, service } = await setup();
+    try {
+      const agentId = await insertAgent(testDb.client.db);
+      const conversationId = await insertConversation(testDb.client.db, agentId);
+      const source = join(
+        testDb.config.paths.subdirectories.specialists,
+        agentId,
+        "Documents",
+        "report.txt",
+      );
+      await mkdir(dirname(source), { recursive: true });
+      await writeFile(source, "shared report");
+      const artifact = await service.create({
+        conversationId,
+        title: "Report",
+        type: "file",
+        link: "report.txt",
+      });
+      const destination = join(
+        testDb.config.paths.subdirectories.specialists,
+        "receiver",
+        ".team-inputs",
+        artifact.id,
+        "report.txt",
+      );
+      const victim = join(testDb.config.paths.workspaceDir, "victim.txt");
+      await writeFile(victim, "unchanged");
+      await mkdir(dirname(destination), { recursive: true });
+      await link(victim, destination);
+      const teams = createTeamArtifactService({ db: testDb.client.db, config: testDb.config });
+      await expect(teams.read(artifact.id, "receiver")).rejects.toThrow(
+        "destination file is invalid",
+      );
+      expect(await readFile(victim, "utf8")).toBe("unchanged");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
   it("creates and lists artifacts by conversation ordered by newest first", async () => {
     const { testDb, service } = await setup();
     try {
@@ -259,6 +426,32 @@ describe("createArtifactService", () => {
       await expect(
         readFile(service.resolveArtifactPath(published.storageKey!), "utf8"),
       ).resolves.toBe("shared report");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("serializes concurrent snapshot publication across service instances", async () => {
+    const { testDb, service } = await setup();
+    try {
+      const agentId = await insertAgent(testDb.client.db);
+      const conversationId = await insertConversation(testDb.client.db, agentId);
+      await writeFile(join(testDb.config.paths.workspaceDir, "shared.md"), "Shared result");
+      const artifact = await service.create({
+        conversationId,
+        title: "Shared",
+        type: "file",
+        link: "shared.md",
+      });
+      const other = createArtifactService({ db: testDb.client.db, config: testDb.config });
+      const [first, second] = await Promise.all([
+        service.publishArtifact(artifact.id),
+        other.publishArtifact(artifact.id),
+      ]);
+      expect(second.id).toBe(first.id);
+      expect(await readFile(service.resolveArtifactPath(first.storageKey!), "utf8")).toBe(
+        "Shared result",
+      );
     } finally {
       await testDb.cleanup();
     }

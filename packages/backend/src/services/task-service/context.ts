@@ -110,6 +110,31 @@ export function createTaskServiceContext(
   }
 
   async function applyTaskStatusForTerminalRun(run: TaskRun): Promise<void> {
+    if (
+      run.subtaskId &&
+      (await options.db.query.task_subtasks.findFirst({
+        where: (table, { and, eq, isNotNull }) =>
+          and(eq(table.id, run.subtaskId!), isNotNull(table.owner_run_id)),
+      }))
+    )
+      return;
+    if (run.status === "waiting") {
+      await options.db
+        .update(tasks)
+        .set({ status: "queued", updated_at: now() })
+        .where(eq(tasks.id, run.taskId));
+      return;
+    }
+    const pendingReply = await options.db.query.task_run_followups.findFirst({
+      where: (table, { and, eq }) => and(eq(table.run_id, run.id), eq(table.status, "queued")),
+    });
+    if (pendingReply && run.status !== "cancelled") {
+      await options.db
+        .update(tasks)
+        .set({ status: "queued", updated_at: now() })
+        .where(eq(tasks.id, run.taskId));
+      return;
+    }
     const status = run.subtaskId
       ? await getTaskStatusAfterTerminalSubtaskRun(run)
       : getTaskStatusAfterTerminalRun(run);

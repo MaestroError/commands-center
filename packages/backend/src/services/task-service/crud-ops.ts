@@ -14,8 +14,8 @@ import {
 } from "@cc/shared/schemas";
 import { and, eq, isNull } from "drizzle-orm";
 import { createId, now } from "../../db/ids.js";
-import { task_templates, tasks } from "../../db/schema/index.js";
-import { BadRequestError } from "../../lib/api-error.js";
+import { task_runs, task_templates, tasks } from "../../db/schema/index.js";
+import { BadRequestError, ConflictError } from "../../lib/api-error.js";
 import {
   mapTask,
   mapTemplateAsTask,
@@ -165,6 +165,21 @@ export function createTaskCrudOps(ctx: TaskServiceContext, service: TaskServiceR
         return undefined;
       }
 
+      if (
+        parsed.status === "scheduled" ||
+        (parsed.scheduledAt && parsed.scheduledAt !== existing.scheduled_at?.toISOString())
+      ) {
+        const execution = options.db
+          .select({ id: task_runs.id })
+          .from(task_runs)
+          .where(and(eq(task_runs.task_id, id), isNull(task_runs.subtask_id)))
+          .get();
+        if (execution)
+          throw new ConflictError(
+            "This task already has an execution. Reply to continue it, or duplicate it before scheduling a fresh attempt.",
+          );
+      }
+
       if (parsed.agentId) {
         await requireActiveAgent(parsed.agentId);
       }
@@ -205,8 +220,9 @@ export function createTaskCrudOps(ctx: TaskServiceContext, service: TaskServiceR
         enabled,
         archived,
         fallbackStatus: existing.status as TaskStatus,
-        scheduledAt:
-          parsed.scheduledAt === undefined
+        scheduledAt: existing.latest_run_id
+          ? null
+          : parsed.scheduledAt === undefined
             ? existing.scheduled_at
             : parsed.scheduledAt
               ? new Date(parsed.scheduledAt)

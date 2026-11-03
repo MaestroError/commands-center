@@ -3,9 +3,9 @@
 import { Markdown } from "@/components/chat/Markdown";
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
 import { TabBar } from "@/components/common/TabBar";
-import { TaskPromptComposer } from "@/components/tasks/TaskPromptComposer";
 import { ArtifactGeneratedUrls } from "@/components/tasks/ArtifactGeneratedUrls";
 import { ArtifactShareControls } from "@/components/tasks/ArtifactShareControls";
+import { TaskPromptComposer } from "@/components/tasks/TaskPromptComposer";
 import { TaskFeedbackPanelSection } from "@/components/tasks/task-feedback-section";
 import { formatDate, formatToken } from "@/components/tasks/task-format";
 import {
@@ -14,13 +14,11 @@ import {
   type TaskPromptValue,
 } from "@/components/tasks/task-prompt";
 import { StatusBadge } from "@/components/tasks/task-ui";
+import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button-variants";
+import { Input } from "@/components/ui/input";
 import { useSpecialistCatalogQuery } from "@/hooks/use-specialists-query";
-import {
-  useTaskMutations,
-  useTaskQuery,
-  useTaskRunsQuery,
-  useTaskSubtasksQuery,
-} from "@/hooks/use-tasks-query";
+import { useTaskMutations, useTaskQuery, useTaskRunsQuery } from "@/hooks/use-tasks-query";
 import type { Specialist, Task, TaskQueuePreview, TaskRun } from "@cc/shared/schemas";
 import { Check, Pencil, X } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -30,12 +28,10 @@ import {
   TaskContextPanelSection,
   TaskOverviewDetails,
   TaskRunsSection,
-  TaskSubtasksSection,
   TaskTodosPanelSection,
 } from "./TaskDetailSections";
 import {
   DETAIL_SECTION_TABS,
-  type DetailSectionId,
   RESULT_BOX_CLASS,
   aggregateRunArtifacts,
   buildFullPageSearch,
@@ -45,10 +41,8 @@ import {
   readLatestRunResult,
   readResultClassName,
   useTaskComposerSkills,
+  type DetailSectionId,
 } from "./task-helpers";
-import { buttonVariants } from "@/components/ui/button-variants";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 
 export function TaskDetailPanel(props: {
   taskId: string;
@@ -463,22 +457,11 @@ function TaskPanelPrimaryActions(props: {
     );
   }
 
-  if (status === "failed") {
-    return (
-      <Button onClick={props.onQueue} type="button">
-        Rerun
-      </Button>
-    );
-  }
-
   if (status === "review") {
     return (
       <>
         <Button onClick={props.onAccept} type="button">
           Accept
-        </Button>
-        <Button variant="secondary" onClick={props.onQueue} type="button">
-          Rerun
         </Button>
       </>
     );
@@ -497,6 +480,12 @@ function TaskPanelPrimaryActions(props: {
     );
   }
 
+  if (props.task.latestRunId)
+    return (
+      <p className="text-sm text-text-secondary">
+        Reply in the task timeline to continue, or duplicate for a fresh attempt.
+      </p>
+    );
   return (
     <Button onClick={props.onQueue} type="button">
       {status === "scheduled" ? "Queue now" : "Queue"}
@@ -515,24 +504,8 @@ function TaskDetailSectionContent(props: {
   isRunsLoading: boolean;
   runsError: unknown;
 }) {
-  const subtasksQuery = useTaskSubtasksQuery(props.taskId);
-  const isSubtasksSection = props.sectionId === "subtasks";
-
   if (props.sectionId === "overview") {
     return <TaskOverviewDetails agent={props.agent} task={props.task} />;
-  }
-
-  if (isSubtasksSection) {
-    return (
-      <TaskSubtasksSection
-        agents={props.agents}
-        error={subtasksQuery.error}
-        isLoading={subtasksQuery.isLoading}
-        runs={props.runs}
-        taskId={props.taskId}
-        subtasks={subtasksQuery.data ?? []}
-      />
-    );
   }
 
   if (props.sectionId === "runs") {

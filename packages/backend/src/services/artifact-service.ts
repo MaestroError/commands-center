@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { copyFile, mkdir, readFile, stat } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, join, relative, resolve, sep } from "node:path";
 
 import {
@@ -69,6 +69,8 @@ const artifactManifestSchema = z.object({
 type ArtifactRow = typeof artifacts.$inferSelect;
 
 export type ArtifactService = ReturnType<typeof createArtifactService>;
+
+const artifactPublications = new Map<string, Promise<void>>();
 
 export function createArtifactService(options: { db: AppDb; config: RuntimeConfig }) {
   async function getRow(artifactId: string): Promise<ArtifactRow | undefined> {
@@ -238,70 +240,84 @@ export function createArtifactService(options: { db: AppDb; config: RuntimeConfi
     // serves an immutable snapshot. Idempotent: re-publishing returns the
     // existing entry.
     async publishArtifact(artifactId: string): Promise<RegisteredArtifact> {
-      const row = await getRow(artifactId);
+      const key = options.config.paths.workspaceDir;
+      const previous = artifactPublications.get(key) ?? Promise.resolve();
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const tail = previous.then(() => gate);
+      artifactPublications.set(key, tail);
+      await previous;
+      try {
+        const row = await getRow(artifactId);
 
-      if (!row) {
-        throw new NotFoundError("Artifact not found.");
-      }
-
-      if (row.type !== "file" && row.type !== "document") {
-        throw new BadRequestError("Only file and document artifacts can be shared.");
-      }
-
-      const manifest = await readManifest(options.config);
-      const existing = manifest.artifacts.find((entry) => entry.id === artifactId);
-
-      if (existing) {
-        return toRegisteredArtifact(row, existing, []);
-      }
-
-      const filename = validateFilename(row.link);
-      const mimeType = resolveMimeType(filename);
-      const agentSlug = await getArtifactAgentSlug(row.conversation_id);
-      const sourcePath =
-        row.type === "document"
-          ? resolveDocumentSourcePath(
-              options.config,
-              row.link,
-              row.document_scope,
-              row.document_owner_slug,
-            )
-          : await resolveFileSourcePath(options.config, row.link, agentSlug);
-      const sourceStat = await stat(sourcePath).catch((error: unknown) => {
-        if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-          throw new NotFoundError("Artifact source file not found.");
+        if (!row) {
+          throw new NotFoundError("Artifact not found.");
         }
-        throw error;
-      });
 
-      if (!sourceStat.isFile()) {
-        throw new BadRequestError("Artifact source must be a file.");
+        if (row.type !== "file" && row.type !== "document") {
+          throw new BadRequestError("Only file and document artifacts can be shared.");
+        }
+
+        const manifest = await readManifest(options.config);
+        const existing = manifest.artifacts.find((entry) => entry.id === artifactId);
+
+        if (existing) {
+          return toRegisteredArtifact(row, existing, []);
+        }
+
+        const filename = validateFilename(row.link);
+        const mimeType = resolveMimeType(filename);
+        const agentSlug = await getArtifactAgentSlug(row.conversation_id);
+        const sourcePath =
+          row.type === "document"
+            ? resolveDocumentSourcePath(
+                options.config,
+                row.link,
+                row.document_scope,
+                row.document_owner_slug,
+              )
+            : await resolveFileSourcePath(options.config, row.link, agentSlug);
+        const sourceStat = await stat(sourcePath).catch((error: unknown) => {
+          if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+            throw new NotFoundError("Artifact source file not found.");
+          }
+          throw error;
+        });
+
+        if (!sourceStat.isFile()) {
+          throw new BadRequestError("Artifact source must be a file.");
+        }
+
+        const content = await readFile(sourcePath);
+        const checksum = createHash("sha256").update(content).digest("hex");
+        const storageKey = `artifacts/${artifactId}/${filename}`;
+        const destinationPath = resolveArtifactStoragePath(options.config, storageKey);
+
+        await mkdir(dirname(destinationPath), { recursive: true });
+        await writeFile(destinationPath, content);
+
+        const stored = publishedArtifactSchema.parse({
+          id: artifactId,
+          originalFilename: filename,
+          mimeType,
+          sizeBytes: content.length,
+          checksum,
+          storageKey,
+          createdAt: new Date().toISOString(),
+        });
+
+        await writeManifest(options.config, {
+          version: 1,
+          artifacts: [...manifest.artifacts, stored],
+        });
+
+        return toRegisteredArtifact(row, stored, []);
+      } finally {
+        release();
+        if (artifactPublications.get(key) === tail) artifactPublications.delete(key);
       }
-
-      const content = await readFile(sourcePath);
-      const checksum = createHash("sha256").update(content).digest("hex");
-      const storageKey = `artifacts/${artifactId}/${filename}`;
-      const destinationPath = resolveArtifactStoragePath(options.config, storageKey);
-
-      await mkdir(dirname(destinationPath), { recursive: true });
-      await copyFile(sourcePath, destinationPath);
-
-      const stored = publishedArtifactSchema.parse({
-        id: artifactId,
-        originalFilename: filename,
-        mimeType,
-        sizeBytes: sourceStat.size,
-        checksum,
-        storageKey,
-        createdAt: new Date().toISOString(),
-      });
-
-      await writeManifest(options.config, {
-        version: 1,
-        artifacts: [...manifest.artifacts, stored],
-      });
-
-      return toRegisteredArtifact(row, stored, []);
     },
 
     // Download-time lookup: resolves the published file metadata for a shared

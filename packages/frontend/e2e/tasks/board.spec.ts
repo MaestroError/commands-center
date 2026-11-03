@@ -271,7 +271,7 @@ test.describe("tasks board", { tag: "@tasks" }, () => {
 
     await page.goto("/tasks");
 
-    await expect(page.getByLabel("Subtasks")).toBeVisible();
+    await expect(page.getByLabel("Team assignments")).toBeVisible();
     await expect(page.getByLabel("Subtask: Review release notes")).toBeVisible();
   });
 

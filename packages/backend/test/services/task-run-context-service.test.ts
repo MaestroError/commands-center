@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { task_runs } from "../../src/db/schema/tasks";
 
 import type { AppDb } from "../../src/db/client";
 import { agents, artifacts, conversations, task_subtasks } from "../../src/db/schema/index";
@@ -131,15 +132,20 @@ describe("createTaskRunContextService", () => {
         type: "file",
         link: ".cc/artifacts/report.md",
       });
-      await taskService.createRun({
-        id: "duplicate-artifact-run",
-        taskId: task.id,
-        agentId: agent.id,
-        status: "completed",
-        triggerSource: "manual",
-        renderedPrompt: "Duplicate artifact prompt.",
-        finalMessage: "Duplicate artifact summary.",
-      });
+      testDb.client.db
+        .insert(task_runs)
+        .values({
+          id: "duplicate-artifact-run",
+          task_id: task.id,
+          agent_id: agent.id,
+          status: "completed",
+          trigger_source: "manual",
+          rendered_prompt: "Historical duplicate artifact prompt.",
+          final_message: "Duplicate artifact summary.",
+          created_at: new Date(Date.now() + 1),
+          updated_at: new Date(),
+        })
+        .run();
       await seedRunArtifact(testDb.client.db, {
         runId: "duplicate-artifact-run",
         agentId: agent.id,
@@ -225,168 +231,6 @@ describe("createTaskRunContextService", () => {
         },
       ]);
       expect(built.renderedPrompt).toContain("document: design/overview.md");
-    } finally {
-      await testDb.cleanup();
-    }
-  });
-
-  it("includes all previous run history in chronological order", async () => {
-    const testDb = await createTestDatabase();
-    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
-    const contextService = createTaskRunContextService({ db: testDb.client.db });
-
-    try {
-      const agent = await insertAgent(testDb.client.db);
-      const task = await taskService.create({
-        agentId: agent.id,
-        title: "History task",
-      });
-
-      await taskService.createRun({
-        id: "first-terminal-run",
-        taskId: task.id,
-        agentId: agent.id,
-        status: "completed",
-        triggerSource: "manual",
-        renderedPrompt: "First prompt.",
-        finalMessage: "First terminal result.",
-        completedAt: "2026-06-01T10:00:00.000Z",
-      });
-      await taskService.createRun({
-        id: "queued-run",
-        taskId: task.id,
-        agentId: agent.id,
-        status: "queued",
-        triggerSource: "manual",
-        renderedPrompt: "Queued prompt.",
-      });
-      await taskService.createRun({
-        id: "second-terminal-run",
-        taskId: task.id,
-        agentId: agent.id,
-        status: "failed",
-        triggerSource: "manual",
-        renderedPrompt: "Second prompt.",
-        errorMessage: "Second terminal result.",
-        completedAt: "2026-06-01T11:00:00.000Z",
-      });
-      const feedback = await taskService.createFeedback(task.id, {
-        body: "Use terminal history.",
-        mentionedAgentIds: [agent.id],
-      });
-
-      const built = await contextService.build({
-        task,
-        runId: "current-run",
-        runAgentId: agent.id,
-        subtaskId: feedback.subtasks[0]?.id,
-        trigger: { triggerSource: "manual" },
-      });
-
-      const history = built.renderedContext["history"] as { id: string }[];
-      const firstIndex = built.renderedPrompt.indexOf("runId: first-terminal-run");
-      const queuedIndex = built.renderedPrompt.indexOf("runId: queued-run");
-      const secondIndex = built.renderedPrompt.indexOf("runId: second-terminal-run");
-
-      expect(history.map((run) => run.id)).toEqual([
-        "first-terminal-run",
-        "queued-run",
-        "second-terminal-run",
-      ]);
-      expect(firstIndex).toBeGreaterThanOrEqual(0);
-      expect(queuedIndex).toBeGreaterThan(firstIndex);
-      expect(secondIndex).toBeGreaterThan(queuedIndex);
-    } finally {
-      await testDb.cleanup();
-    }
-  });
-
-  it("includes targeted subtask feedback", async () => {
-    const testDb = await createTestDatabase();
-    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
-    const contextService = createTaskRunContextService({ db: testDb.client.db });
-
-    try {
-      const agent = await insertAgent(testDb.client.db);
-      const task = await taskService.create({
-        agentId: agent.id,
-        title: "Feedback task",
-      });
-      const feedback = await taskService.createFeedback(task.id, {
-        body: "Use the latest metrics.",
-        mentionedAgentIds: [agent.id],
-      });
-
-      const built = await contextService.build({
-        task,
-        runId: "run-feedback",
-        runAgentId: agent.id,
-        subtaskId: feedback.subtasks[0]?.id,
-        trigger: { triggerSource: "manual" },
-      });
-
-      expect(built.renderedContext["feedback"]).toEqual(
-        expect.objectContaining({
-          agentId: agent.id,
-          description: "Use the latest metrics.",
-          subtaskId: feedback.subtasks[0]?.id,
-        }),
-      );
-    } finally {
-      await testDb.cleanup();
-    }
-  });
-
-  it("renders feedback runs with feedback before instructions and context last", async () => {
-    const testDb = await createTestDatabase();
-    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
-    const contextService = createTaskRunContextService({ db: testDb.client.db });
-
-    try {
-      const agent = await insertAgent(testDb.client.db);
-      const task = await taskService.create({
-        agentId: agent.id,
-        title: "Feedback prompt task",
-        description: "Original task description.",
-      });
-      await taskService.createRun({
-        id: "previous-run",
-        taskId: task.id,
-        agentId: agent.id,
-        status: "completed",
-        triggerSource: "manual",
-        renderedPrompt: "Previous prompt.",
-        finalMessage: "Previous result summary.",
-      });
-      const feedback = await taskService.createFeedback(task.id, {
-        body: "Use the latest metrics.",
-        mentionedAgentIds: [agent.id],
-      });
-
-      const built = await contextService.build({
-        task,
-        runId: "run-feedback",
-        runAgentId: agent.id,
-        subtaskId: feedback.subtasks[0]?.id,
-        trigger: { triggerSource: "manual" },
-      });
-
-      expect(built.renderedPrompt).toContain(
-        "<Goal>\nplease address the feedback on this task\n</Goal>",
-      );
-      expect(built.renderedPrompt).toContain(
-        "<taskDescription>\nOriginal task description.\n</taskDescription>",
-      );
-      expect(built.renderedPrompt).toContain("<feedback>\nUse the latest metrics.\n</feedback>");
-      expect(built.renderedPrompt).toContain("Previous result summary.");
-      expect(built.renderedPrompt).not.toContain("<past_runs>");
-      expect(built.renderedPrompt.indexOf("<feedback>")).toBeLessThan(
-        built.renderedPrompt.indexOf("<Instructions>"),
-      );
-      expect(built.renderedPrompt.indexOf("<Instructions>")).toBeLessThan(
-        built.renderedPrompt.indexOf("<Context>"),
-      );
-      expect(built.renderedPrompt.trim().endsWith("</Context>")).toBe(true);
     } finally {
       await testDb.cleanup();
     }
@@ -495,7 +339,7 @@ describe("createTaskRunContextService", () => {
       );
       expect(built.renderedPrompt).toContain("<SubtaskId>\nsubtask-1\n</SubtaskId>");
       expect(built.renderedPrompt).toContain(
-        "<feedback>\nWrite the announcement copy.\n</feedback>",
+        "<Assignment>\nWrite the announcement copy.\n</Assignment>",
       );
     } finally {
       await testDb.cleanup();

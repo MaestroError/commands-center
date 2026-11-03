@@ -1,14 +1,12 @@
 // createTaskRunOps: task-service methods split out of the god-file (issue #99).
 
-import type { TaskServiceRef } from "../task-service.js";
-import type { TaskServiceContext } from "./context.js";
 import {
   addTaskRunArtifactInputSchema,
+  type CreateTaskRunInput,
   createTaskRunInputSchema,
   markTaskRunNeedsReviewInputSchema,
   reviewQuestionSchema,
   setTaskRunResultInputSchema,
-  type CreateTaskRunInput,
   type TaskRun,
   type TaskRunArtifact,
   type TaskRunStatus,
@@ -17,8 +15,10 @@ import {
 } from "@cc/shared/schemas";
 import { and, eq, isNull } from "drizzle-orm";
 import { createId, now } from "../../db/ids.js";
-import { task_runs, tasks } from "../../db/schema/index.js";
+import { task_run_followups, task_runs, task_subtasks, tasks } from "../../db/schema/index.js";
 import { BadRequestError, ConflictError, NotFoundError } from "../../lib/api-error.js";
+import type { TaskServiceRef } from "../task-service.js";
+import type { TaskServiceContext } from "./context.js";
 import { type QueueTaskOptions, queueTaskOptionsSchema } from "./context.js";
 import {
   isRunningAgentConstraintError,
@@ -135,7 +135,7 @@ export function createTaskRunOps(ctx: TaskServiceContext, service: TaskServiceRe
         .update(tasks)
         .set({
           status: "queued",
-          latest_run_id: run.id,
+          latest_run_id: run.subtaskId ? task.latest_run_id : run.id,
           updated_at: timestamp,
         })
         .where(and(eq(tasks.id, task.id), isNull(tasks.deleted_at)));
@@ -153,46 +153,90 @@ export function createTaskRunOps(ctx: TaskServiceContext, service: TaskServiceRe
       await requireActiveAgent(parsed.agentId);
 
       const timestamp = now();
-      const [row] = await options.db
-        .insert(task_runs)
-        .values({
-          id: parsed.id ?? createId(),
-          task_id: parsed.taskId,
-          subtask_id: parsed.subtaskId ?? null,
-          agent_id: parsed.agentId,
-          model: parsed.model ?? null,
-          fallback_models: JSON.stringify(
-            normalizeFallbackModels(parsed.fallbackModels, parsed.model ?? undefined),
-          ),
-          retry_of_run_id: parsed.retryOfRunId ?? null,
-          opencode_session_id: parsed.opencodeSessionId ?? null,
-          status: parsed.status,
-          trigger_source: parsed.triggerSource,
-          outcome: parsed.outcome ?? null,
-          context_json: stringifyOptional(parsed.context),
-          trigger_metadata_json: stringifyOptional(parsed.triggerMetadata),
-          rendered_prompt: parsed.renderedPrompt,
-          rendered_context_json: stringifyOptional(parsed.renderedContext),
-          effective_permissions_json: stringifyOptional(parsed.effectivePermissions),
-          final_message: parsed.finalMessage ?? null,
-          result_text: parsed.resultText ?? null,
-          needs_human_review: parsed.needsHumanReview,
-          human_review_reason: parsed.humanReviewReason ?? null,
-          result_json: stringifyOptional(parsed.result),
-          error_message: parsed.errorMessage ?? null,
-          error_details_json: stringifyOptional(parsed.errorDetails),
-          started_at: parsed.startedAt ? new Date(parsed.startedAt) : null,
-          completed_at: parsed.completedAt ? new Date(parsed.completedAt) : null,
-          cancelled_at: parsed.cancelledAt ? new Date(parsed.cancelledAt) : null,
-          cancellation_reason: parsed.cancellationReason ?? null,
-          created_at: timestamp,
-          updated_at: timestamp,
-        })
-        .returning();
-
-      if (!row) {
-        throw new Error("Failed to create task run record.");
-      }
+      const row = options.db.transaction((tx) => {
+        const existing = tx
+          .select()
+          .from(task_runs)
+          .where(
+            and(
+              eq(task_runs.task_id, parsed.taskId),
+              parsed.subtaskId
+                ? eq(task_runs.subtask_id, parsed.subtaskId)
+                : isNull(task_runs.subtask_id),
+            ),
+          )
+          .get();
+        if (existing)
+          throw new ConflictError(
+            "This task or assignment already has an execution. Reply to continue it, or duplicate the task for a fresh attempt.",
+            { runId: existing.id },
+          );
+        if (parsed.subtaskId) {
+          const assignment = tx
+            .select()
+            .from(task_subtasks)
+            .where(
+              and(
+                eq(task_subtasks.id, parsed.subtaskId),
+                eq(task_subtasks.task_id, parsed.taskId),
+                isNull(task_subtasks.deleted_at),
+              ),
+            )
+            .get();
+          if (!assignment?.owner_run_id)
+            throw new BadRequestError("Only owner-delegated team assignments can run.");
+        }
+        const inserted = tx
+          .insert(task_runs)
+          .values({
+            id: parsed.id ?? createId(),
+            task_id: parsed.taskId,
+            subtask_id: parsed.subtaskId ?? null,
+            agent_id: parsed.agentId,
+            model: parsed.model ?? null,
+            fallback_models: JSON.stringify(
+              normalizeFallbackModels(parsed.fallbackModels, parsed.model ?? undefined),
+            ),
+            retry_of_run_id: parsed.retryOfRunId ?? null,
+            opencode_session_id: parsed.opencodeSessionId ?? null,
+            status: parsed.status,
+            trigger_source: parsed.triggerSource,
+            outcome: parsed.outcome ?? null,
+            context_json: stringifyOptional(parsed.context),
+            trigger_metadata_json: stringifyOptional(parsed.triggerMetadata),
+            rendered_prompt: parsed.renderedPrompt,
+            rendered_context_json: stringifyOptional(parsed.renderedContext),
+            effective_permissions_json: stringifyOptional(parsed.effectivePermissions),
+            final_message: parsed.finalMessage ?? null,
+            result_text: parsed.resultText ?? null,
+            needs_human_review: parsed.needsHumanReview,
+            human_review_reason: parsed.humanReviewReason ?? null,
+            result_json: stringifyOptional(parsed.result),
+            error_message: parsed.errorMessage ?? null,
+            error_details_json: stringifyOptional(parsed.errorDetails),
+            started_at: parsed.startedAt ? new Date(parsed.startedAt) : null,
+            completed_at: parsed.completedAt ? new Date(parsed.completedAt) : null,
+            cancelled_at: parsed.cancelledAt ? new Date(parsed.cancelledAt) : null,
+            cancellation_reason: parsed.cancellationReason ?? null,
+            created_at: timestamp,
+            updated_at: timestamp,
+          })
+          .returning()
+          .get();
+        if (!parsed.subtaskId) {
+          tx.update(task_run_followups)
+            .set({ run_id: inserted.id })
+            .where(
+              and(eq(task_run_followups.task_id, parsed.taskId), isNull(task_run_followups.run_id)),
+            )
+            .run();
+          tx.update(tasks)
+            .set({ latest_run_id: inserted.id })
+            .where(eq(tasks.id, parsed.taskId))
+            .run();
+        }
+        return inserted;
+      });
 
       return mapTaskRunWithReplyState(options.db, options.config, row);
     },
@@ -207,12 +251,23 @@ export function createTaskRunOps(ctx: TaskServiceContext, service: TaskServiceRe
         return undefined;
       }
 
+      if (parsed.subtaskId && parsed.subtaskId !== existing.subtask_id)
+        throw new ConflictError("An execution cannot be moved to another assignment.");
+      if (
+        parsed.opencodeSessionId &&
+        existing.opencode_session_id &&
+        parsed.opencodeSessionId !== existing.opencode_session_id
+      )
+        throw new ConflictError(
+          "An execution cannot switch sessions. Duplicate the task for a fresh attempt.",
+        );
+
       // Freeze the run's outcome comment the first time it goes terminal with
       // content, so later reactivation (e.g. answering a reply) can keep
       // rewriting final_message/result_text without retroactively changing
       // what the Feedback timeline already showed as this run's comment.
       const mergedStatus = parsed.status ?? existing.status;
-      const isTerminalStatus = mergedStatus !== "queued" && mergedStatus !== "running";
+      const isTerminalStatus = !["queued", "running"].includes(mergedStatus);
       const mergedOutcomeText =
         parsed.resultText ??
         existing.result_text ??
@@ -223,62 +278,91 @@ export function createTaskRunOps(ctx: TaskServiceContext, service: TaskServiceRe
       const shouldFreezeOutcome =
         isTerminalStatus && Boolean(mergedOutcomeText) && !existing.initial_outcome_text;
 
-      const [row] = await options.db
-        .update(task_runs)
-        .set({
-          opencode_session_id: parsed.opencodeSessionId ?? existing.opencode_session_id,
-          subtask_id: parsed.subtaskId ?? existing.subtask_id,
-          fallback_models:
-            parsed.fallbackModels === undefined
-              ? existing.fallback_models
-              : JSON.stringify(normalizeFallbackModels(parsed.fallbackModels)),
-          retry_of_run_id: parsed.retryOfRunId ?? existing.retry_of_run_id,
-          status: parsed.status ?? existing.status,
-          outcome: parsed.outcome ?? existing.outcome,
-          context_json:
-            parsed.context === undefined
-              ? existing.context_json
-              : stringifyOptional(parsed.context),
-          trigger_metadata_json:
-            parsed.triggerMetadata === undefined
-              ? existing.trigger_metadata_json
-              : stringifyOptional(parsed.triggerMetadata),
-          rendered_prompt: parsed.renderedPrompt ?? existing.rendered_prompt,
-          rendered_context_json:
-            parsed.renderedContext === undefined
-              ? existing.rendered_context_json
-              : stringifyOptional(parsed.renderedContext),
-          effective_permissions_json:
-            parsed.effectivePermissions === undefined
-              ? existing.effective_permissions_json
-              : stringifyOptional(parsed.effectivePermissions),
-          final_message: parsed.finalMessage ?? existing.final_message,
-          result_text: parsed.resultText ?? existing.result_text,
-          initial_outcome_text: shouldFreezeOutcome
-            ? mergedOutcomeText
-            : existing.initial_outcome_text,
-          initial_outcome_at: shouldFreezeOutcome
-            ? parsed.completedAt
-              ? new Date(parsed.completedAt)
-              : (existing.completed_at ?? now())
-            : existing.initial_outcome_at,
-          needs_human_review: parsed.needsHumanReview ?? existing.needs_human_review,
-          human_review_reason: parsed.humanReviewReason ?? existing.human_review_reason,
-          result_json:
-            parsed.result === undefined ? existing.result_json : stringifyOptional(parsed.result),
-          error_message: parsed.errorMessage ?? existing.error_message,
-          error_details_json:
-            parsed.errorDetails === undefined
-              ? existing.error_details_json
-              : stringifyOptional(parsed.errorDetails),
-          started_at: parsed.startedAt ? new Date(parsed.startedAt) : existing.started_at,
-          completed_at: parsed.completedAt ? new Date(parsed.completedAt) : existing.completed_at,
-          cancelled_at: parsed.cancelledAt ? new Date(parsed.cancelledAt) : existing.cancelled_at,
-          cancellation_reason: parsed.cancellationReason ?? existing.cancellation_reason,
-          updated_at: now(),
-        })
-        .where(eq(task_runs.id, id))
-        .returning();
+      const row = options.db.transaction((tx) => {
+        const updated = tx
+          .update(task_runs)
+          .set({
+            opencode_session_id: parsed.opencodeSessionId ?? existing.opencode_session_id,
+            subtask_id: parsed.subtaskId ?? existing.subtask_id,
+            fallback_models:
+              parsed.fallbackModels === undefined
+                ? existing.fallback_models
+                : JSON.stringify(normalizeFallbackModels(parsed.fallbackModels)),
+            retry_of_run_id: parsed.retryOfRunId ?? existing.retry_of_run_id,
+            status: parsed.status ?? existing.status,
+            outcome: parsed.outcome ?? existing.outcome,
+            context_json:
+              parsed.context === undefined
+                ? existing.context_json
+                : stringifyOptional(parsed.context),
+            trigger_metadata_json:
+              parsed.triggerMetadata === undefined
+                ? existing.trigger_metadata_json
+                : stringifyOptional(parsed.triggerMetadata),
+            rendered_prompt: parsed.renderedPrompt ?? existing.rendered_prompt,
+            rendered_context_json:
+              parsed.renderedContext === undefined
+                ? existing.rendered_context_json
+                : stringifyOptional(parsed.renderedContext),
+            effective_permissions_json:
+              parsed.effectivePermissions === undefined
+                ? existing.effective_permissions_json
+                : stringifyOptional(parsed.effectivePermissions),
+            final_message: parsed.finalMessage ?? existing.final_message,
+            result_text: parsed.resultText ?? existing.result_text,
+            initial_outcome_text: shouldFreezeOutcome
+              ? mergedOutcomeText
+              : existing.initial_outcome_text,
+            initial_outcome_at: shouldFreezeOutcome
+              ? parsed.completedAt
+                ? new Date(parsed.completedAt)
+                : (existing.completed_at ?? now())
+              : existing.initial_outcome_at,
+            needs_human_review: parsed.needsHumanReview ?? existing.needs_human_review,
+            human_review_reason: parsed.humanReviewReason ?? existing.human_review_reason,
+            result_json:
+              parsed.result === undefined ? existing.result_json : stringifyOptional(parsed.result),
+            error_message: parsed.errorMessage ?? existing.error_message,
+            error_details_json:
+              parsed.errorDetails === undefined
+                ? existing.error_details_json
+                : stringifyOptional(parsed.errorDetails),
+            started_at: parsed.startedAt ? new Date(parsed.startedAt) : existing.started_at,
+            completed_at: parsed.completedAt ? new Date(parsed.completedAt) : existing.completed_at,
+            cancelled_at: parsed.cancelledAt ? new Date(parsed.cancelledAt) : existing.cancelled_at,
+            cancellation_reason: parsed.cancellationReason ?? existing.cancellation_reason,
+            updated_at: now(),
+          })
+          .where(eq(task_runs.id, id))
+          .returning()
+          .get();
+        if (
+          updated &&
+          existing.status !== updated.status &&
+          (["cancelled", "failed", "error", "skipped"].includes(updated.status) ||
+            existing.status === "cancelled")
+        ) {
+          const timestamp = now();
+          tx.insert(task_run_followups)
+            .values({
+              id: createId(),
+              task_id: updated.task_id,
+              run_id: updated.id,
+              kind: "lifecycle",
+              status: "answered",
+              body:
+                existing.status === "cancelled"
+                  ? "Execution resumed. Further replies continue the same session."
+                  : (updated.cancellation_reason ??
+                    updated.error_message ??
+                    `Execution ${updated.status}.`),
+              created_at: timestamp,
+              updated_at: timestamp,
+            })
+            .run();
+        }
+        return updated;
+      });
 
       if (!row) {
         throw new Error("Failed to update task run record.");
@@ -292,6 +376,13 @@ export function createTaskRunOps(ctx: TaskServiceContext, service: TaskServiceRe
       status: TaskRunStatus,
       input: Omit<UpdateTaskRunInput, "status"> = {},
     ): Promise<TaskRun | undefined> {
+      if (status === "completed") {
+        const outstanding = await options.db.query.task_subtasks.findFirst({
+          where: (table, { and, eq, isNull }) =>
+            and(eq(table.owner_run_id, id), isNull(table.accepted_at), isNull(table.deleted_at)),
+        });
+        if (outstanding) status = "waiting";
+      }
       const run = await service.updateRun(id, { ...input, status });
 
       if (run) {

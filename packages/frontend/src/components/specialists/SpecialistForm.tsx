@@ -269,6 +269,37 @@ export function SpecialistForm(props: SpecialistFormProps) {
       </section>
 
       <CollapsibleSection
+        title="Permitted collaborators"
+        description="Specialists this owner may delegate task assignments to."
+      >
+        <p className="text-sm text-text-secondary">
+          Allow this specialist to delegate task assignments. Collaborators retain their own
+          instructions and permissions.
+        </p>
+        {agents
+          .filter((agent) => agent.id !== props.agentId && agent.status === "active")
+          .map((agent) => (
+            <label key={agent.id} className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={(value.capabilities.allowedTeammates ?? []).includes(agent.slug)}
+                onChange={(event) =>
+                  updateCapabilities({
+                    ...value.capabilities,
+                    allowedTeammates: event.target.checked
+                      ? [...(value.capabilities.allowedTeammates ?? []), agent.slug]
+                      : (value.capabilities.allowedTeammates ?? []).filter(
+                          (slug) => slug !== agent.slug,
+                        ),
+                  })
+                }
+              />
+              {agent.name} — {agent.role}
+            </label>
+          ))}
+      </CollapsibleSection>
+
+      <CollapsibleSection
         action={
           <Link className={buttonVariants({ variant: "secondary" })} to="/skills">
             Browse skills

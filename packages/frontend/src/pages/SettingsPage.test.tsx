@@ -1,21 +1,21 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { QueryClientProvider } from "@tanstack/react-query";
 import type * as ApiModule from "@/lib/api";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SettingsPage } from "./SettingsPage";
 
-import { useSecretMutations, useSecretsQuery } from "@/hooks/use-secrets-query";
 import {
   useEngineRestartMutation,
   useEngineStatusQuery,
   useMarkEngineRestarting,
 } from "@/hooks/use-engine-status-query";
+import { useSecretMutations, useSecretsQuery } from "@/hooks/use-secrets-query";
 import {
-  useSystemVersionCheckMutation,
   useSystemUpdateMutation,
   useSystemUpdatePreferencesMutation,
   useSystemUpdatePreferencesQuery,
+  useSystemVersionCheckMutation,
   useSystemVersionQuery,
 } from "@/hooks/use-system-version-query";
 import { useActiveTaskRunsQuery } from "@/hooks/use-tasks-query";
@@ -513,11 +513,7 @@ describe("SettingsPage", () => {
     fireEvent.change(screen.getByLabelText(/Max run lifetime/i), {
       target: { value: "120" },
     });
-    fireEvent.click(screen.getByRole("checkbox", { name: /Requeue task after stall timeout/i }));
-    // The requeue limit field appears only once requeue is enabled.
-    fireEvent.change(await screen.findByLabelText(/Requeue limit/i), {
-      target: { value: "5" },
-    });
+    expect(screen.queryByRole("checkbox", { name: /Requeue task/ })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Save task settings" }));
 
     await waitFor(() => {
@@ -525,8 +521,8 @@ describe("SettingsPage", () => {
         taskRunMonitorMaxLifetimeMinutes: 120,
         taskRunMonitorNoProgressTimeoutMinutes: 10,
         taskRunMonitorUsageLimitFailFastMinutes: 2,
-        taskRunMonitorRequeueAfterStall: true,
-        taskRunMonitorRequeueLimit: 5,
+        taskRunMonitorRequeueAfterStall: false,
+        taskRunMonitorRequeueLimit: 10,
         taskRunMaxAutoRetries: 10,
       });
     });

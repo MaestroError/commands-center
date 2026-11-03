@@ -73,6 +73,35 @@ function makeDataTransfer(files: File[], mention = ""): DataTransfer {
 }
 
 describe("ChatComposer attachments", () => {
+  it("preserves a new draft while a queued reply is saving", async () => {
+    const pending = Promise.withResolvers<void>();
+    const user = userEvent.setup();
+    renderComposer({ queueMode: true, onSend: () => pending.promise });
+    const textarea = screen.getByPlaceholderText(messagePlaceholder);
+    await user.type(textarea, "First reply");
+    await user.click(screen.getByRole("button", { name: "Queue reply" }));
+    await user.clear(textarea);
+    await user.type(textarea, "Next draft");
+    pending.resolve();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Queue reply" })).toBeEnabled());
+    expect(textarea).toHaveValue("Next draft");
+  });
+
+  it("preserves an attachment added while a queued reply is saving", async () => {
+    const pending = Promise.withResolvers<void>();
+    const user = userEvent.setup();
+    renderComposer({ queueMode: true, onSend: () => pending.promise });
+    const textarea = screen.getByPlaceholderText(messagePlaceholder);
+    await user.type(textarea, "First reply");
+    await user.click(screen.getByRole("button", { name: "Queue reply" }));
+    fireEvent.drop(textarea.closest(".relative")!, {
+      dataTransfer: makeDataTransfer([new File(["draft"], "next.txt", { type: "text/plain" })]),
+    });
+    await screen.findByText("next.txt");
+    pending.resolve();
+    await waitFor(() => expect(textarea).toHaveValue(""));
+    expect(screen.getByText("next.txt")).toBeInTheDocument();
+  });
   it("attaches a dropped file and can remove it before sending", async () => {
     const user = userEvent.setup();
     renderComposer();
@@ -194,6 +223,26 @@ describe("ChatComposer escape handling", () => {
 });
 
 describe("ChatComposer file mentions", () => {
+  it("queues a file mention without typed text", async () => {
+    vi.spyOn(api, "searchAgentWorkspaceFiles").mockResolvedValue(["src/app.ts"]);
+    const user = userEvent.setup();
+    const { props } = renderComposer({ queueMode: true });
+    await user.type(screen.getByPlaceholderText(messagePlaceholder), "#app");
+    await user.click(await screen.findByRole("button", { name: /src\/app\.ts/ }));
+    await user.click(screen.getByRole("button", { name: "Queue reply" }));
+    expect(props.onSend).toHaveBeenCalledWith(expect.objectContaining({ text: "#src/app.ts" }));
+  });
+
+  it("queues a selected skill without typed text", async () => {
+    const user = userEvent.setup();
+    const { props } = renderComposer({ queueMode: true });
+    await user.type(screen.getByPlaceholderText(messagePlaceholder), "/review");
+    await user.click(await screen.findByRole("button", { name: /review.*Review code/ }));
+    await user.click(screen.getByRole("button", { name: "Queue reply" }));
+    expect(props.onSend).toHaveBeenCalledWith(
+      expect.objectContaining({ text: 'Use skill "review".' }),
+    );
+  });
   it("selects a file from the mention popover and can remove the pill", async () => {
     const searchSpy = vi.spyOn(api, "searchAgentWorkspaceFiles").mockResolvedValue(["src/app.ts"]);
     const user = userEvent.setup();

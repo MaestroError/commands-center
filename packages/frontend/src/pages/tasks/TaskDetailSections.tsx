@@ -1,11 +1,12 @@
 // Split out of TasksPage.tsx (issue #99).
 
-import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
 import { AcceptanceCriteriaList } from "@/components/tasks/AcceptanceCriteria";
 import { formatDate, formatToken } from "@/components/tasks/task-format";
-import { StatusBadge } from "@/components/tasks/task-ui";
+import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button-variants";
+import { Textarea } from "@/components/ui/textarea";
 import { useTaskMutations } from "@/hooks/use-tasks-query";
-import type { Specialist, Task, TaskRun, TaskSubtask } from "@cc/shared/schemas";
+import type { Specialist, Task, TaskRun } from "@cc/shared/schemas";
 import { ChevronDown, ChevronRight, Trash2 } from "lucide-react";
 import { type ChangeEvent, useEffect, useState } from "react";
 import { Link } from "react-router";
@@ -20,91 +21,12 @@ import {
   formatTaskModel,
   formatTodoItemsText,
   formatTodoProgress,
-  readAgentName,
   readBoardStatus,
   readError,
   readResultClassName,
   usePersistentTaskContextOpen,
   usePersistentTaskSectionOpen,
 } from "./task-helpers";
-import { buttonVariants } from "@/components/ui/button-variants";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-
-export function TaskSubtasksSection(props: {
-  agents: Specialist[];
-  subtasks: TaskSubtask[];
-  runs: TaskRun[];
-  taskId: string;
-  isLoading: boolean;
-  error: unknown;
-}) {
-  return (
-    <section aria-label="Task subtasks" className="grid gap-4">
-      {props.isLoading ? <LoadingState testId="task-subtasks-loading" /> : null}
-      {props.error ? (
-        <ErrorState
-          description={readError(props.error) ?? "Request failed."}
-          title="Subtasks could not be loaded."
-        />
-      ) : null}
-      {!props.isLoading && props.subtasks.length === 0 ? (
-        <EmptyState
-          description="Feedback creates simple subtasks assigned to the mentioned specialists."
-          title="No subtasks yet"
-        />
-      ) : null}
-      {props.subtasks.length > 0 ? (
-        <div className="grid gap-3">
-          {props.subtasks.map((subtask) => {
-            const subtaskRuns = props.runs.filter((run) => run.subtaskId === subtask.id);
-            const latestRun = subtaskRuns[0];
-
-            return (
-              <article className="rounded-lg border border-border bg-surface p-3" key={subtask.id}>
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="font-medium text-text-primary">
-                    {readAgentName(props.agents, subtask.agentId)}
-                  </span>
-                  <StatusBadge status={latestRun?.status ?? "backlog"} />
-                </div>
-                <p className="mt-2 text-sm leading-6 text-text-secondary">{subtask.description}</p>
-                {subtaskRuns.length > 0 ? (
-                  <div className="mt-3 grid gap-2">
-                    {subtaskRuns.map((run) => (
-                      <div
-                        className="rounded-lg border border-border bg-surface-muted p-3"
-                        key={run.id}
-                      >
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div className="flex flex-wrap items-center gap-2 text-xs text-text-secondary">
-                            <StatusBadge status={run.status} />
-                            <span>{formatDate(run.completedAt ?? run.updatedAt)}</span>
-                          </div>
-                          <Link
-                            className="font-medium text-accent underline-offset-4 hover:underline"
-                            to={`/tasks/${props.taskId}/runs/${run.id}`}
-                          >
-                            Open run
-                          </Link>
-                        </div>
-                        {run.finalMessage || run.resultText || run.errorMessage ? (
-                          <p className="mt-2 text-sm leading-6 text-text-secondary">
-                            {run.finalMessage ?? run.resultText ?? run.errorMessage}
-                          </p>
-                        ) : null}
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-              </article>
-            );
-          })}
-        </div>
-      ) : null}
-    </section>
-  );
-}
 
 export function TaskOverviewDetails(props: { task: Task; agent?: Specialist }) {
   const rows = [

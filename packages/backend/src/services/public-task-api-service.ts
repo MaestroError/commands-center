@@ -222,7 +222,10 @@ export function createPublicTaskApiService(deps: {
       taskId: string,
       body: PublicScheduleTaskBody,
     ): Promise<PublicTask | undefined> {
-      const updated = await taskService.update(taskId, { scheduledAt: body.runAt });
+      const updated = await taskService.update(taskId, {
+        status: "scheduled",
+        scheduledAt: body.runAt,
+      });
       return updated ? toPublicTask(updated) : undefined;
     },
 

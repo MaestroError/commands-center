@@ -1,55 +1,33 @@
 import { createTaskState, expect, mockTaskApi, test } from "./fixtures";
 
-test.describe("task feedback", { tag: "@tasks" }, () => {
-  test("submits feedback and renders it as a comment", async ({ page }) => {
+test.describe("task replies", { tag: "@tasks" }, () => {
+  test("saves pre-run feedback in the single task timeline", async ({ page }) => {
     const state = createTaskState();
     await mockTaskApi(page, state);
-
     await page.goto("/tasks?task=task-backlog");
-
     const panel = page.getByTestId("task-detail-panel");
-    await expect(panel.getByTestId("task-feedback-section")).toBeVisible();
-
-    await panel.getByTestId("task-feedback-open").click();
-    await panel.getByTestId("task-feedback-input").fill("Please retest the release flow.");
-
-    const create = page.waitForResponse(
-      (response) =>
-        response.url().endsWith("/api/tasks/task-backlog/feedback") &&
-        response.request().method() === "POST",
+    await expect(panel.getByTestId("task-timeline")).toBeVisible();
+    await panel.getByTestId("task-reply-input").fill("Please retest the release flow.");
+    await panel.getByTestId("task-reply-send").click();
+    await expect(panel.getByTestId("task-timeline")).toContainText(
+      "Please retest the release flow.",
     );
-    await panel.getByTestId("task-feedback-submit").click();
-    await create;
-
-    const comment = panel.getByTestId("task-feedback-comment-feedback-1");
-    await expect(comment).toBeVisible();
-    await expect(comment).toContainText("Please retest the release flow.");
+    await page.reload();
+    await expect(page.getByTestId("task-timeline")).toContainText(
+      "Waiting for the task’s first execution",
+    );
   });
 
-  test("submits feedback with a specialist mention", async ({ page }) => {
+  test("cancels a pending reply without creating an assignment", async ({ page }) => {
     const state = createTaskState();
     await mockTaskApi(page, state);
-
     await page.goto("/tasks?task=task-backlog");
-
-    const panel = page.getByTestId("task-detail-panel");
-    await panel.getByTestId("task-feedback-open").click();
-    await panel.getByTestId("task-feedback-input").fill("Please retest @");
-
-    // The "@" opens the specialist mention popover; selecting a specialist adds a chip.
-    await panel.getByTestId("task-specialist-mention-option-agent-2").click();
-    await expect(panel.getByTestId("task-specialist-mention-chip-agent-2")).toBeVisible();
-
-    const create = page.waitForResponse(
-      (response) =>
-        response.url().endsWith("/api/tasks/task-backlog/feedback") &&
-        response.request().method() === "POST",
-    );
-    await panel.getByTestId("task-feedback-submit").click();
-    const request = (await create).request();
-
-    const payload = JSON.parse(request.postData() ?? "{}") as { mentionedAgentIds?: string[] };
-    expect(payload.mentionedAgentIds).toContain("agent-2");
-    await expect(panel.getByTestId("task-feedback-comment-feedback-1")).toBeVisible();
+    const timeline = page.getByTestId("task-timeline");
+    await timeline.getByTestId("task-reply-input").fill("Prepare additional evidence");
+    await timeline.getByTestId("task-reply-send").click();
+    await timeline.getByRole("button", { name: "Cancel queued reply" }).click();
+    await expect(timeline.getByRole("button", { name: "Cancel queued reply" })).toHaveCount(0);
+    expect(state.repliesByTaskId["task-backlog"]?.[0]?.status).toBe("cancelled");
+    expect(state.runsByTaskId["task-backlog"] ?? []).toHaveLength(0);
   });
 });

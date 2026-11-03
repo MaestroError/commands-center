@@ -5,8 +5,11 @@ import { AcceptanceCriteriaList } from "@/components/tasks/AcceptanceCriteria";
 import { ArtifactGeneratedUrls } from "@/components/tasks/ArtifactGeneratedUrls";
 import { ArtifactShareControls } from "@/components/tasks/ArtifactShareControls";
 import { TaskFeedbackPanelSection } from "@/components/tasks/task-feedback-section";
-import { formatDate, formatToken, readAgentName } from "@/components/tasks/task-format";
+import { formatDate, formatToken } from "@/components/tasks/task-format";
 import { StatusBadge } from "@/components/tasks/task-ui";
+import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button-variants";
+import { Input } from "@/components/ui/input";
 import { useSpecialistsQuery } from "@/hooks/use-specialists-query";
 import {
   useTaskMutations,
@@ -14,7 +17,7 @@ import {
   useTaskRunsQuery,
   useTaskSubtasksQuery,
 } from "@/hooks/use-tasks-query";
-import type { Specialist, Task, TaskRun, TaskSubtask } from "@cc/shared/schemas";
+import type { Specialist, Task, TaskRun } from "@cc/shared/schemas";
 import { Check, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
@@ -36,19 +39,15 @@ import {
   TaskRunDetail,
   TextBlock,
 } from "./task-detail/task-run-detail";
-import { buttonVariants } from "@/components/ui/button-variants";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 
 type TaskDetailPageProps = {
   mode?: "task" | "run";
 };
 
-type DetailSectionId = "overview" | "subtasks" | "runs" | "context";
+type DetailSectionId = "overview" | "runs" | "context";
 
 const DETAIL_SECTION_TABS = [
   { id: "overview", label: "Overview" },
-  { id: "subtasks", label: "Subtasks" },
   { id: "runs", label: "Runs" },
   { id: "context", label: "Context" },
 ];
@@ -211,9 +210,11 @@ function TaskOverview(props: {
               >
                 Duplicate
               </Button>
-              <Button onClick={() => mutations.trigger.mutate({ id: task.id })} type="button">
-                Run now
-              </Button>
+              {!task.latestRunId && (
+                <Button onClick={() => mutations.trigger.mutate({ id: task.id })} type="button">
+                  Run now
+                </Button>
+              )}
             </div>
           ) : null}
         </div>
@@ -409,8 +410,6 @@ function TaskDetailSectionContent(props: {
   runsError: unknown;
 }) {
   const subtasksQuery = useTaskSubtasksQuery(props.taskId);
-  const isSubtasksSection = props.sectionId === "subtasks";
-
   if (props.sectionId === "overview") {
     return (
       <div className="grid gap-4">
@@ -428,19 +427,6 @@ function TaskDetailSectionContent(props: {
         <PermissionSummary profile={props.task.permissionProfile} />
         <TaskTodos task={props.task} />
       </div>
-    );
-  }
-
-  if (isSubtasksSection) {
-    return (
-      <TaskSubtasksSection
-        agents={props.agents}
-        error={subtasksQuery.error}
-        isLoading={subtasksQuery.isLoading}
-        runs={props.runs}
-        taskId={props.taskId}
-        subtasks={subtasksQuery.data ?? []}
-      />
     );
   }
 
@@ -499,78 +485,6 @@ function TaskDetailSectionContent(props: {
   }
 
   return null;
-}
-
-function TaskSubtasksSection(props: {
-  agents: Specialist[];
-  subtasks: TaskSubtask[];
-  runs: TaskRun[];
-  taskId: string;
-  isLoading: boolean;
-  error: unknown;
-}) {
-  return (
-    <div className="grid gap-4">
-      {props.isLoading ? <LoadingState testId="task-subtasks-loading" /> : null}
-      {props.error ? (
-        <ErrorState description={readError(props.error)} title="Subtasks could not be loaded." />
-      ) : null}
-      {!props.isLoading && props.subtasks.length === 0 ? (
-        <EmptyState
-          description="Feedback creates simple subtasks assigned to the mentioned specialists."
-          title="No subtasks yet"
-        />
-      ) : null}
-      {props.subtasks.length > 0 ? (
-        <div className="grid gap-3">
-          {props.subtasks.map((subtask) => {
-            const subtaskRuns = props.runs.filter((run) => run.subtaskId === subtask.id);
-            const latestRun = subtaskRuns[0];
-
-            return (
-              <article className="rounded-lg border border-border bg-surface p-3" key={subtask.id}>
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="font-medium text-text-primary">
-                    {readAgentName(props.agents, subtask.agentId)}
-                  </span>
-                  <StatusBadge status={latestRun?.status ?? "backlog"} />
-                </div>
-                <p className="mt-2 text-sm leading-6 text-text-secondary">{subtask.description}</p>
-                {subtaskRuns.length > 0 ? (
-                  <div className="mt-3 grid gap-2">
-                    {subtaskRuns.map((run) => (
-                      <div
-                        className="rounded-lg border border-border bg-surface-muted p-3"
-                        key={run.id}
-                      >
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div className="flex flex-wrap items-center gap-2 text-xs text-text-secondary">
-                            <StatusBadge status={run.status} />
-                            <span>{formatDate(run.completedAt ?? run.updatedAt)}</span>
-                          </div>
-                          <Link
-                            className="font-medium text-accent underline-offset-4 hover:underline"
-                            to={`/tasks/${props.taskId}/runs/${run.id}`}
-                          >
-                            Open run
-                          </Link>
-                        </div>
-                        {run.finalMessage || run.resultText || run.errorMessage ? (
-                          <p className="mt-2 text-sm leading-6 text-text-secondary">
-                            {run.finalMessage ?? run.resultText ?? run.errorMessage}
-                          </p>
-                        ) : null}
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-              </article>
-            );
-          })}
-        </div>
-      ) : null}
-    </div>
-  );
 }
 
 function TaskTodos(props: { task: Task }) {

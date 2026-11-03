@@ -1,3 +1,7 @@
+import {
+  createTeamToolDefinitions,
+  teamToolMetadata,
+} from "./groups/cc-default/tools/team-tools.js";
 import type { AnySchema } from "@modelcontextprotocol/sdk/server/zod-compat";
 import type { EmbeddedToolCaller } from "../../opencode/embedded-tool-caller.js";
 
@@ -305,6 +309,9 @@ export function createCcManagedMcpServerRegistry(options: {
   }
 
   const defaultTools: CcManagedToolDefinition[] = [
+    ...(options.taskExecutionService?.teams
+      ? createTeamToolDefinitions(options.taskExecutionService.teams)
+      : []),
     ...(options.secretService && options.activityService
       ? [
           createRequestSecretDefinition({
@@ -396,6 +403,7 @@ export function createCcManagedMcpServerRegistry(options: {
       // fast while leaving headroom — far below the 10-min interactive window.
       toolCallTimeoutMs: 15 * 1000,
       catalogTools: [
+        ...teamToolMetadata,
         requestSecretToolMetadata,
         listSpecialistsToolMetadata,
         getSelfProfileToolMetadata,

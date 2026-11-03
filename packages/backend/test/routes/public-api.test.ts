@@ -382,6 +382,19 @@ describe("public task API", () => {
       expect(backlog.statusCode).toBe(200);
       expect(backlog.json<{ tasks: Array<{ id: string }> }>().tasks).toHaveLength(1);
 
+      // Schedule for the future.
+      const scheduled = await server.inject({
+        method: "POST",
+        url: `/api/public/v1/tasks/${task.id}/schedule`,
+        headers: auth,
+        payload: { runAt: "2999-01-01T00:00:00.000Z" },
+      });
+      expect(scheduled.statusCode).toBe(200);
+      expect(scheduled.json()).toMatchObject({
+        status: "scheduled",
+        scheduledAt: "2999-01-01T00:00:00.000Z",
+      });
+
       // Trigger now.
       const triggered = await server.inject({
         method: "POST",
@@ -435,18 +448,13 @@ describe("public task API", () => {
       expect(expandedBody.runs.length).toBeGreaterThan(0);
       expect(Array.isArray(expandedBody.feedback)).toBe(true);
 
-      // Schedule for the future.
-      const scheduled = await server.inject({
+      const rescheduled = await server.inject({
         method: "POST",
         url: `/api/public/v1/tasks/${task.id}/schedule`,
         headers: auth,
         payload: { runAt: "2999-01-01T00:00:00.000Z" },
       });
-      expect(scheduled.statusCode).toBe(200);
-      expect(scheduled.json()).toMatchObject({
-        status: "scheduled",
-        scheduledAt: "2999-01-01T00:00:00.000Z",
-      });
+      expect(rescheduled.statusCode).toBe(409);
 
       // Past runAt rejected; unknown task 404.
       const pastSchedule = await server.inject({

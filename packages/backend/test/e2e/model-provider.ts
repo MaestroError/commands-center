@@ -16,12 +16,31 @@ export async function createLocalModelProvider() {
           messages: z.array(z.object({ role: z.string(), content: z.unknown().optional() })),
         })
         .parse(JSON.parse(body));
-      const lastUser = input.messages.findLastIndex(
-        (message) => message.role === "user" && JSON.stringify(message.content)?.includes("CALL:"),
-      );
-      const target = (JSON.stringify(input.messages[lastUser]?.content) ?? "").match(
-        /CALL:([A-Za-z0-9_-]+)/,
-      )?.[1];
+      const lastUser = input.messages.findLastIndex((message) => message.role === "user");
+      const content = input.messages[lastUser]?.content;
+      const userText =
+        typeof content === "string"
+          ? content
+          : Array.isArray(content)
+            ? content
+                .map(
+                  (part: unknown) =>
+                    z.object({ text: z.string().optional() }).passthrough().parse(part).text ?? "",
+                )
+                .join("\n")
+            : "";
+      const assignmentId = userText.includes("CC team result")
+        ? userText.match(/"assignmentId":"([^"]+)"/)?.[1]
+        : undefined;
+      const target = assignmentId
+        ? "cc_default_accept_team_assignment"
+        : userText.match(/CALL:([A-Za-z0-9_-]+)/)?.[1];
+      const encodedArgs = userText.match(/ARGS:([A-Za-z0-9+/=]+)/)?.[1];
+      const toolArguments = assignmentId
+        ? JSON.stringify({ assignmentId })
+        : encodedArgs
+          ? Buffer.from(encodedArgs, "base64").toString()
+          : "{}";
       const toolResult = input.messages
         .slice(lastUser + 1)
         .findLast((message) => message.role === "tool");
@@ -42,7 +61,7 @@ export async function createLocalModelProvider() {
                       index: 0,
                       id: "call-local",
                       type: "function",
-                      function: { name: target, arguments: "{}" },
+                      function: { name: target, arguments: toolArguments },
                     },
                   ],
                 },

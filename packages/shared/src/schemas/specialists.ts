@@ -91,6 +91,15 @@ export const mcpToolPermissionSchema = z.object({
 });
 
 export const specialistCapabilitySelectionSchema = z.object({
+  allowedTeammates: z
+    .array(
+      z
+        .string()
+        .trim()
+        .regex(/^[a-z0-9][a-z0-9-]*$/),
+    )
+    .max(50)
+    .optional(),
   builtInSkills: z.array(z.string().min(1)).default([]),
   workspaceSkills: z.array(z.string().min(1)).default([]),
   customTools: z.array(z.string().min(1)).default([]),

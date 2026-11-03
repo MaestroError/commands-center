@@ -11,13 +11,13 @@ import {
   type TaskSchedulerState,
 } from "@cc/shared/schemas";
 
-import type { TaskTemplateMetadata } from "./task-service/mappers.js";
 import type { AppDb } from "../db/client.js";
 import { getSetting } from "../db/helpers.js";
 import { now } from "../db/ids.js";
 import { task_scheduler_state } from "../db/schema/index.js";
 import type { TaskExecutionService } from "./task-execution-service.js";
 import type { TaskService } from "./task-service.js";
+import type { TaskTemplateMetadata } from "./task-service/mappers.js";
 
 const DEFAULT_TICK_MS = 30_000;
 const DEFAULT_DONE_AUTO_ARCHIVE_WEEKS = 1;
@@ -191,6 +191,14 @@ export function createTaskSchedulerService(options: {
       return;
     }
 
+    if ((await options.taskService.listRuns(task.id)).some((run) => !run.subtaskId)) {
+      await upsertState(
+        task,
+        undefined,
+        "This task already has an execution. Reply to continue it or duplicate it.",
+      );
+      return;
+    }
     const scheduledAt = dueAt;
 
     try {
@@ -275,6 +283,7 @@ export function createTaskSchedulerService(options: {
     scheduledAt: Date,
     error: unknown,
   ): Promise<void> {
+    if ((await options.taskService.listRuns(task.id)).some((run) => !run.subtaskId)) return;
     await options.taskService.createRun({
       taskId: task.id,
       agentId: task.agentId,
