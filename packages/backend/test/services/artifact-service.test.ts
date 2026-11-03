@@ -1,4 +1,6 @@
+import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { closeSync, constants, openSync } from "node:fs";
 import { link, mkdir, readFile, readdir, symlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
@@ -61,6 +63,51 @@ async function setup() {
 }
 
 describe("createArtifactService", () => {
+  it.skipIf(process.platform === "win32")(
+    "rejects a FIFO destination without waiting for a reader",
+    async () => {
+      const { testDb, service } = await setup();
+      let reader: number | undefined;
+      let unblock: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const agentId = await insertAgent(testDb.client.db);
+        const conversationId = await insertConversation(testDb.client.db, agentId);
+        const source = join(
+          testDb.config.paths.subdirectories.specialists,
+          agentId,
+          "Documents",
+          "report.txt",
+        );
+        await mkdir(dirname(source), { recursive: true });
+        await writeFile(source, "shared report");
+        const artifact = await service.create({
+          conversationId,
+          title: "Report",
+          type: "file",
+          link: "report.txt",
+        });
+        const destination = join(
+          testDb.config.paths.subdirectories.specialists,
+          "receiver",
+          ".team-inputs",
+          artifact.id,
+          "report.txt",
+        );
+        await mkdir(dirname(destination), { recursive: true });
+        execFileSync("mkfifo", [destination]);
+        const teams = createTeamArtifactService({ db: testDb.client.db, config: testDb.config });
+        // Release a regressed blocking open so a failing test cannot strand a filesystem worker.
+        unblock = setTimeout(() => {
+          reader = openSync(destination, constants.O_RDONLY | constants.O_NONBLOCK);
+        }, 1000);
+        await expect(teams.read(artifact.id, "receiver")).rejects.toMatchObject({ code: "ENXIO" });
+      } finally {
+        clearTimeout(unblock);
+        if (reader !== undefined) closeSync(reader);
+        await testDb.cleanup();
+      }
+    },
+  );
   it.each(["specialist", "inputs", "artifact", "file"] as const)(
     "rejects a symlinked team artifact %s destination",
     async (component) => {

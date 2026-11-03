@@ -9,6 +9,7 @@ pushed, and its review thread resolved.
 - [x] 4443653266: preserve chat drafts changed during queued submission.
 - [x] 4443653343: preserve task timeline drafts changed during submission.
 - [x] 4443653418: allow attachment-sized payloads on both reply endpoints.
+- [x] 4444028260: open artifact destinations nonblocking and verify FIFO rejection.
 
 The user approved extracting the upload service's directory validation for reuse
 by team artifact materialization. Validate each directory and the final file before
@@ -23,3 +24,8 @@ original bug and now pass. Hard-link rejection and normal snapshot refresh are
 covered. Artifact, upload and execution suites passed 142 tests; final artifact
 checks were rerun after adding file identity verification. ESLint --fix, backend
 typecheck and diff whitespace validation passed.
+
+FIFO fix verification: the named-pipe regression reproduced the blocking open before
+the fix and now rejects without a reader. Its fallback reader releases a regressed
+open so test failure cannot strand a filesystem worker. All 143 artifact, upload,
+and execution tests passed, along with ESLint --fix and backend typecheck.

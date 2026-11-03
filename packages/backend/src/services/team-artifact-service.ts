@@ -56,7 +56,7 @@ export function createTeamArtifactService(options: { db: AppDb; config: RuntimeC
       const content = await readFile(artifacts.resolveArtifactPath(snapshot.storageKey));
       const file = await open(
         destination,
-        constants.O_WRONLY | constants.O_CREAT | constants.O_NOFOLLOW,
+        constants.O_WRONLY | constants.O_CREAT | constants.O_NOFOLLOW | constants.O_NONBLOCK,
         0o600,
       );
       try {
