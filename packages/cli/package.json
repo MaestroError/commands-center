@@ -22,7 +22,7 @@
     "README.md"
   ],
   "engines": {
-    "node": ">=24.0.0"
+    "node": ">=26.13.1"
   },
   "publishConfig": {
     "access": "public",
@@ -42,7 +42,7 @@
     "@fastify/static": "^10.1.1",
     "@opencode/sdk": "2.1.4",
     "@vscode/ripgrep": "1.18.0",
-    "better-sqlite3": "^12.0.0",
+    "better-sqlite3": "^12.11.1",
     "fastify": "^5.12.2",
     "node-pty": "1.2.0-beta.14",
     "pino-pretty": "^13.0.0",

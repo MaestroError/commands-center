@@ -34,16 +34,16 @@ health() { curl -fsS -m 3 "$HEALTH" && echo " OK" || echo " UNHEALTHY"; }
 
 ---
 
-## Scenario 1 — Fresh install on Node 22
+## Scenario 1 — Fresh install from Node 24
 
-**Setup:** Clean Ubuntu with Node 22 (or no Node), no commandscenter installed.
+**Setup:** Clean Ubuntu with Node 24 (or no Node), no commandscenter installed.
 
 ```bash
-node -v                 # v22.x or absent
+node -v                 # v24.x or absent
 bash "$INSTALLER"
 ```
 
-**Pass:** installer upgrades Node to 24 (`node -v` → v24.x), installs the latest
+**Pass:** installer upgrades Node to 26 (`node -v` → v26.13.1 or newer), installs the latest
 commandscenter, `health` returns `OK`, `svc` shows `active (running)`.
 
 ---
@@ -53,29 +53,18 @@ commandscenter, `health` returns `OK`, `svc` shows `active (running)`.
 Simulates "Node cannot be upgraded" — the gate must refuse **before** mutating
 anything.
 
-**Setup:** A working instance already installed and healthy on Node 24.
+**Setup:** A healthy previous installation on Node 26.13.1. In a disposable
+test registry, select a target package whose engines require Node 27 or newer.
+Run the installer with that target via `CCENTER_PACKAGE_SPEC`.
 
-```bash
-ccver; health        # record baseline version + healthy
-# Force the preflight to consider the host too old without changing Node:
-CCENTER_NODE_MAJOR=24 ... # (only relevant on a 22 host; on 24 use a build that needs >24)
-```
-
-On a Node 22 host, instead run the installer with auto-upgrade disabled by
-pointing it at a target whose engines exceed the local Node, or temporarily set
-`CCENTER_NODE_MAJOR` below the published requirement so `ensure_node_and_npm`
-does not upgrade. The intent: reach `preflight_checks` with local Node below the
-target requirement.
-
-**Pass:** installer exits non-zero with `requires Node >=… your current install
-was left untouched`; `ccver` is unchanged; `health` still `OK`; the service was
-never restarted.
+**Pass:** preflight refuses the target before replacing the installed package.
+The installed version stays unchanged and the existing service remains healthy.
 
 ---
 
-## Scenario 3 — Normal upgrade on Node 24
+## Scenario 3 — Normal upgrade on Node 26
 
-**Setup:** Previous version installed and healthy on Node 24.
+**Setup:** Previous version installed and healthy on Node 26.
 
 ```bash
 ccver                  # e.g. 0.15.0
@@ -135,19 +124,19 @@ a stand-in for any runtime regression.)
 
 ## Scenario 6 — Regression test for the original outage
 
-Reproduce the exact failure: Node 22, install latest (which requires Node 24),
+Reproduce the exact failure: Node 24, install latest (which requires Node 26.13.1),
 no build toolchain.
 
-**Setup:** Node 22 host, `build-essential`/`python3` removed if present.
+**Setup:** Node 24 host, `build-essential`/`python3` removed if present.
 
 ```bash
-node -v                                 # v22.x
+node -v                                 # v24.x
 bash "$INSTALLER"
 ```
 
 **Pass — one of:**
 
-- installer upgrades Node to 24, installs the build toolchain, installs latest,
+- installer upgrades Node to 26, installs the build toolchain, installs latest,
   `health` → `OK`; **or**
 - if Node cannot be upgraded, installer refuses at preflight without removing any
   existing binary.

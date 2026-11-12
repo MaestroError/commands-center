@@ -287,7 +287,7 @@ Only the `commandscenter` CLI package (`packages/cli`) is published to npm. Its 
 
 - npm package `commandscenter` must have a trusted publisher configured for this repository and workflow filename (`publish.yml`).
 - The workflow already requests `id-token: write`, which npm trusted publishing requires.
-- The publish job uses Node.js 24 with `actions/setup-node@v6` and validates Node.js/npm meet npm's trusted publishing minimums before publishing.
+- The publish job uses Node.js 26 LTS with `actions/setup-node@v6` and validates Node.js/npm meet npm's trusted publishing minimums before publishing.
 - No npm publish token is required for the `npm publish` step.
 - `packages/cli/package.json` must define `repository.url`, and it must match the GitHub repository URL exactly for trusted publishing to succeed.
 
@@ -321,10 +321,7 @@ including SQLite, bundled ripgrep, node-pty and CLI startup/shutdown/reopen.
 Keep Pino external to esbuild alongside `pino-pretty`: its logging worker uses
 package-relative assets and cannot run correctly inside the single ESM bundle.
 
-The transitive `@opentui/core@0.5.17` package declares Node >=26.4.0. Ordinary
-Node 24 installations warn but the tested embedded runtime works; an
-`engine-strict` installation can reject the dependency. Resolve that upstream
-metadata compatibility before claiming warning-free installation support.
+Use the Node 26 LTS version in `.nvmrc` for new builds and installs.
 Windows installation/runtime remains unverified; Linux x64 checks used emulation rather than physical x64 hardware.
 
 Use the same Node executable for installation, native rebuilds and running CC.

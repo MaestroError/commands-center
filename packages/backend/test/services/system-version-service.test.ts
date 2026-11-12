@@ -297,11 +297,11 @@ describe("createSystemVersionService", () => {
     }
   });
 
-  it("refuses npm global update when target requires a newer Node major", async () => {
+  it("refuses npm global update when target requires a newer Node patch", async () => {
     const cwd = await mkdtemp(join(tmpdir(), "cc-version-"));
     const config = loadRuntimeConfig({ cwd, env: { NODE_ENV: "test" } });
     const runCommand = vi.fn(() => Promise.resolve());
-    const runOutputCommand = vi.fn(() => Promise.resolve({ stdout: ">=24.0.0", stderr: "" }));
+    const runOutputCommand = vi.fn(() => Promise.resolve({ stdout: ">=26.13.1", stderr: "" }));
     const service = createSystemVersionService({
       config,
       logger: createLogger(config),
@@ -311,13 +311,13 @@ describe("createSystemVersionService", () => {
       runCommand,
       runOutputCommand,
       detectMode: () => "npm-global",
-      getNodeMajor: () => 22,
+      getNodeVersion: () => "26.13.0",
     });
 
     try {
       await expect(service.update()).resolves.toMatchObject({
         applied: false,
-        message: expect.stringContaining("requires Node >=24"),
+        message: expect.stringContaining("requires Node >=26.13.1"),
         restartRequired: false,
       });
       expect(runCommand).not.toHaveBeenCalled();
@@ -351,7 +351,7 @@ describe("createSystemVersionService", () => {
       runOutputCommand,
       exitProcess: vi.fn(),
       detectMode: () => "npm-global",
-      getNodeMajor: () => 20,
+      getNodeVersion: () => "20.0.0",
     });
 
     try {
@@ -380,7 +380,7 @@ describe("createSystemVersionService", () => {
       runCommand,
       runOutputCommand,
       detectMode: () => "npm-global",
-      getNodeMajor: () => 22,
+      getNodeVersion: () => "22.0.0",
     });
 
     try {
@@ -505,7 +505,7 @@ describe("createSystemVersionService", () => {
       runOutputCommand,
       exitProcess: vi.fn(),
       detectMode: () => "npm-global",
-      getNodeMajor: () => 22,
+      getNodeVersion: () => "22.0.0",
     });
 
     try {

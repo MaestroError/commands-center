@@ -26,7 +26,7 @@ await build({
     ),
   },
   platform: "node",
-  target: "node22",
+  target: "node26",
   format: "esm",
   outfile: resolve(distDir, "bin.mjs"),
   external: [

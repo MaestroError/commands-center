@@ -1,0 +1,32 @@
+name: Packed CLI on Linux x64
+on:
+  pull_request:
+    branches: [codex/opencode-v2-migration, main, staging]
+    paths:
+      - ".nvmrc"
+      - "pnpm-lock.yaml"
+      - "packages/cli/**"
+      - "scripts/test-packed-runtime.sh"
+      - ".github/workflows/packed-runtime.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 26.13.1
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build:cli
+      - name: Install and exercise the packed CLI
+        working-directory: packages/cli
+        run: |
+          archive=$(npm pack --silent --pack-destination "$RUNNER_TEMP")
+          bash ../../scripts/test-packed-runtime.sh "$RUNNER_TEMP/$archive"

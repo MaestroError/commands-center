@@ -12,7 +12,8 @@ PACKAGE_SPEC="${CCENTER_PACKAGE_SPEC:-commandscenter}"
 INSTALL_DIR="${CCENTER_INSTALL_DIR:-$HOME/.cc}"
 ENV_FILE="${CCENTER_ENV_FILE:-$INSTALL_DIR/.env}"
 PUBLIC_HOST="${CCENTER_PUBLIC_HOST:-127.0.0.1}"
-NODE_MAJOR="${CCENTER_NODE_MAJOR:-24}"
+NODE_MAJOR="${CCENTER_NODE_MAJOR:-26}"
+MIN_NODE_VERSION="26.13.1"
 SERVICE_USER="${CCENTER_SERVICE_USER:-$(id -un)}"
 SERVICE_GROUP="${CCENTER_SERVICE_GROUP:-}"
 CREATE_USER="${CCENTER_CREATE_USER:-false}"
@@ -165,19 +166,19 @@ ensure_node_and_npm() {
   fi
 
   if ! command_exists node || ! command_exists npm || ! node_major_ok; then
-    fail "Node.js $NODE_MAJOR+ is required, but the active node on PATH is still: $(node -v 2>/dev/null || printf 'not found'). Update PATH or install Node.js $NODE_MAJOR+ manually, then rerun."
+    fail "Node.js $MIN_NODE_VERSION or newer (configured major: $NODE_MAJOR) is required, but the active node on PATH is still: $(node -v 2>/dev/null || printf 'not found'). Update PATH or install Node.js $NODE_MAJOR+ manually, then rerun."
   fi
 }
 
 node_major_ok() {
-  local major
-  major="$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || printf '0')"
-  [[ "$major" -ge "$NODE_MAJOR" ]]
+  node -e 'const version = process.versions.node;
+    process.exit(Number.parseInt(version, 10) >= Number(process.argv[1]) &&
+      version.localeCompare(process.argv[2], "en", { numeric: true }) >= 0 ? 0 : 1)' "$NODE_MAJOR" "$MIN_NODE_VERSION"
 }
 
 install_node_linux() {
   if ! command_exists apt-get; then
-    fail "Node.js $NODE_MAJOR+ is required and automatic install currently expects apt-get on Linux. Install Node.js $NODE_MAJOR+ manually, then rerun."
+    fail "Node.js $MIN_NODE_VERSION or newer (configured major: $NODE_MAJOR) is required and automatic install currently expects apt-get on Linux. Install Node.js $NODE_MAJOR+ manually, then rerun."
   fi
 
   info "Installing Node.js $NODE_MAJOR on Ubuntu/Linux."
@@ -192,28 +193,26 @@ install_node_linux() {
 
 install_node_macos() {
   if ! command_exists brew; then
-    fail "Node.js $NODE_MAJOR+ is required. Install Homebrew from https://brew.sh or install Node.js manually, then rerun."
+    fail "Node.js $MIN_NODE_VERSION or newer (configured major: $NODE_MAJOR) is required. Install Homebrew from https://brew.sh or install Node.js manually, then rerun."
   fi
 
   info "Installing Node.js with Homebrew."
-  if brew list node >/dev/null 2>&1; then
-    brew upgrade node || true
+  local formula="node@$NODE_MAJOR"
+  if brew list "$formula" >/dev/null 2>&1; then
+    brew upgrade "$formula"
   else
-    brew install node
+    brew install "$formula"
   fi
+  export PATH="$(brew --prefix "$formula")/bin:$PATH"
 }
 
-# Print the major version Node requires for the install target, parsed from the
-# published package's engines.node (e.g. ">=24.0.0" -> "24"). Empty when it
-# cannot be resolved (offline, registry error, or no engines field).
-target_required_node_major() {
-  local spec engines major
-  spec="$PACKAGE_SPEC"
-  # A bare name means "latest"; npm view resolves the dist-tag for us.
-  engines="$(npm view "$spec" engines.node 2>/dev/null || true)"
-  [[ -n "$engines" ]] || return 0
-  major="$(printf '%s' "$engines" | grep -oE '[0-9]+' | head -n1 || true)"
-  printf '%s' "$major"
+# CommandsCenter publishes its minimum Node version as a single >= constraint.
+target_required_node_version() {
+  local engines
+  engines="$(npm view "$PACKAGE_SPEC" engines.node 2>/dev/null || true)"
+  if [[ "$engines" =~ ^\>=[[:space:]]*([0-9]+(\.[0-9]+){0,2})$ ]]; then
+    printf '%s' "${BASH_REMATCH[1]}"
+  fi
 }
 
 # Print the currently-installed global commandscenter version, or empty when not
@@ -239,15 +238,10 @@ process.stdin.on("end", () => {
 # existing install. Refuses clearly when the upgrade cannot succeed, leaving the
 # running service and its binary untouched.
 preflight_checks() {
-  local local_major required_major
-  local_major="$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || printf '0')"
-
-  # Cross-check the install target's real published requirement against the
-  # local runtime. ensure_node_and_npm already enforced NODE_MAJOR; this catches
-  # a target that needs an even newer Node than we provisioned.
-  required_major="$(target_required_node_major)"
-  if [[ -n "$required_major" && "$local_major" -lt "$required_major" ]]; then
-    fail "$PACKAGE_SPEC requires Node >=$required_major, but this host runs Node v$(node -v 2>/dev/null | sed 's/^v//'). Upgrade Node to $required_major (set CCENTER_NODE_MAJOR=$required_major to let this installer do it on Linux), then re-run. Your current install was left untouched."
+  local required_version
+  required_version="$(target_required_node_version)"
+  if [[ -n "$required_version" ]] && ! node -e 'process.exit(process.versions.node.localeCompare(process.argv[1], "en", { numeric: true }) >= 0 ? 0 : 1)' "$required_version"; then
+    fail "$PACKAGE_SPEC requires Node >=$required_version, but this host runs $(node -v). Upgrade Node and rerun the installer. Your current install was left untouched."
   fi
 
   # The native dependency (better-sqlite3) compiles via node-gyp when no prebuilt
