@@ -117,3 +117,42 @@ Zod 3 without checking their contracts.
 The earlier MCP/braces advisories were not reported by this fresh install's
 audit. That observation is not a declaration that all previous release gates
 are cleared. Evidence: `/tmp/cc-21-package-audit.json`.
+
+## November security branch
+
+- [x] Compare fresh workspace, CLI consumer and upstream SDK dependency graphs.
+- [x] Patch compatible bundled dependencies; preserve Zod 3 contracts.
+- [x] Rebuild, test, audit and record remaining publication blockers on Node 24.
+
+Base: migration commit dbf08546; runtime: Node 24.21.0. The production pnpm
+audit went from 0 critical / 12 high / 54 moderate / 16 low to 0 / 1 / 34 / 9.
+CC now builds against Zod 4.6.7; DOMPurify, body-parser and both Undici majors
+resolve to patched versions. The scoped OpenCode core override applies only to
+the workspace. None of these overrides are claimed as npm consumer fixes.
+
+- MCP client: clean CLI installation resolves 2.3.1, above the 2.2.0 fix.
+- Braces: 3.0.3 is still installed; GitHub withdrew GHSA-vfj7-8cjw-p6xm
+  on October 23. No exception or override is required for that advisory.
+- Zod: the published SDK 2.1.4 graph resolves core's pin to 4.1.8 and the
+  GitLab provider's dependency to 3.25.76. Both match GHSA-mrhx-c7xc-m3w5.
+  2.1.4 is the newest 2.1.x core. Probing the stable SDK 2.2.7 with a fresh npm
+  lockfile showed core on 4.6.7 but its GitLab provider still requires Zod 3.
+  Even the separately published gitlab-ai-provider 6.24.0 declares ^3.25.76.
+  Keep v1 blocked pending a fixed upstream graph and repeat the consumer audit.
+  Do not replace Zod 3 with 4 across an incompatible dependency contract.
+- The low provider-utils advisory remains in the SDK 2.1.4 consumer install.
+- The release checker now recognizes the POSIX mkfifo test utility in the
+  backend workspace; the Teams regression invokes the OS utility, not an npm package.
+
+The CI audit additionally flagged Vite, brace-expansion, js-yaml and smol-toml
+in development tooling. Compatible patches leave the full audit with the same
+single high advisory (Zod 3). No audit exceptions were added. In a clean npm
+installation, the CLI graph still reports three high package entries arising
+from the same Zod advisory. The CLI bundle source map contains only Zod 4.6.7.
+Do not present the workspace patch as a fix for the separately installed SDK.
+
+Node 24 release:check passed. Package suites passed: 1,842 backend, 1,644
+frontend, 251 shared and 45 CLI tests. A fresh macOS npm install of the rebuilt
+tarball (scripts disabled for dependency inventory) reported 0 critical, 3 high,
+28 moderate and 6 low. This is not a native portability smoke test. Diagnostic
+tarball SHA-256: 993b2dcb44cfbfdf8c3710f8a2b915c650f25a53b03c689f23a186a2a93b2acf.
