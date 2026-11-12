@@ -2,7 +2,7 @@
 
 - [x] Align package requirements, CI, containers, build target, provisioning and docs.
 - [x] Exercise the release gate and package tests with freshly installed native dependencies.
-- [ ] Test strict packed installs, native tools and embedded startup/reopen on available platforms; record limitations before merge.
+- [x] Test strict packed installs, native tools and embedded startup/reopen on available platforms; record limitations before merge.
 
 Base: migration branch 58a61913, including the merged security patches. Runtime:
 Node 26.13.1, npm 11.20.0, pnpm 10.33.0. The SQLite lockfile previously used
@@ -24,3 +24,8 @@ Strict packed-install and lifecycle smoke passed on macOS arm64 and Docker
 Linux arm64. Local Docker cannot execute even /bin/uname on amd64 images; the
 packed-runtime workflow covers the same check on native GitHub-hosted Linux x64.
 Windows is outside this acceptance. No live user service was upgraded.
+
+All 42 embedded browser tests passed on Node 26.13.1. The
+[native Ubuntu x64 workflow](https://github.com/MaestroError/commands-center/actions/runs/43200080769)
+passed the packed-install, native-tool and workspace-reopening smoke as well.
+This validates the runtime upgrade; the upstream Zod publication blocker remains.
