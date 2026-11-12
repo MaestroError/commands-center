@@ -21,6 +21,7 @@
       ]
     },
     "packages/backend": {
+      "ignoreBinaries": ["mkfifo"],
       "ignoreDependencies": ["pino-pretty"]
     },
     "packages/frontend": {
