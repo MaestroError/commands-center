@@ -14,98 +14,38 @@ import { dirname, resolve } from "node:path";
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (rel) => readFileSync(resolve(repoRoot, rel), "utf8");
 
-// Canonical major lives in .nvmrc (e.g. "24" or "24.1.0" -> 24).
-const expectedMajor = Number.parseInt(read(".nvmrc").trim(), 10);
-if (!Number.isInteger(expectedMajor)) {
-  console.error(`Error: .nvmrc does not contain a valid Node major: "${read(".nvmrc").trim()}"`);
-  process.exit(1);
-}
-
+const version = read(".nvmrc").trim();
+if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error(".nvmrc must contain an exact Node version");
+const major = version.split(".")[0];
 const problems = [];
-
-// Compares an extracted major against the canonical one.
-function expect(label, file, actualMajor) {
-  if (actualMajor === null || Number.isNaN(actualMajor)) {
-    problems.push(`${label} (${file}): could not determine a Node major`);
-    return;
-  }
-  if (actualMajor !== expectedMajor) {
-    problems.push(`${label} (${file}): Node ${actualMajor}, expected ${expectedMajor}`);
-  }
+function check(file, actual, expected) {
+  if (actual !== expected) problems.push(`${file}: expected ${expected}, found ${actual}`);
 }
 
-// engines.node like ">=24.0.0" -> 24
-function enginesMajor(rel) {
-  const pkg = JSON.parse(read(rel));
-  const spec = pkg.engines?.node;
-  if (typeof spec !== "string") return null;
-  const m = spec.match(/(\d+)/);
-  return m ? Number.parseInt(m[1], 10) : null;
+for (const file of ["package.json", "packages/cli/package.json"]) {
+  check(file, JSON.parse(read(file)).engines?.node, `>=${version}`);
 }
-
-// All matches of a regex's first capture group must agree; returns that major
-// or null. `label` is used to report internal disagreement (e.g. CI jobs that
-// differ from each other).
-function singleMajorFromMatches(label, file, content, regex) {
-  const majors = [...content.matchAll(regex)].map((m) => Number.parseInt(m[1], 10));
-  if (majors.length === 0) return null;
-  const unique = [...new Set(majors)];
-  if (unique.length > 1) {
-    problems.push(`${label} (${file}): mixed Node majors ${unique.join(", ")} — must all match`);
-    return null;
-  }
-  return unique[0];
+for (const file of ["Dockerfile", "Dockerfile.full"]) {
+  check(file, read(file).match(/^FROM node:([^-]+)/m)?.[1], version);
 }
-
-expect("root engines.node", "package.json", enginesMajor("package.json"));
-expect("cli engines.node", "packages/cli/package.json", enginesMajor("packages/cli/package.json"));
-
-// Dockerfile: FROM node:24-bookworm-slim
-expect(
-  "Dockerfile base image",
-  "Dockerfile",
-  singleMajorFromMatches(
-    "Dockerfile base image",
-    "Dockerfile",
-    read("Dockerfile"),
-    /^FROM\s+node:(\d+)/gm,
-  ),
+for (const name of readdirSync(resolve(repoRoot, ".github/workflows"))) {
+  if (!/\.ya?ml$/.test(name)) continue;
+  const file = `.github/workflows/${name}`;
+  for (const match of read(file).matchAll(/node-version:\s*['"]?([^\s'"]+)/g))
+    check(file, match[1], version);
+}
+const installer = "scripts/install-ccenter-service.sh";
+check(installer, read(installer).match(/MIN_NODE_VERSION="([^"]+)"/)?.[1], version);
+check(installer, read(installer).match(/CCENTER_NODE_MAJOR:-(\d+)/)?.[1], major);
+check(
+  ".env.prod.example",
+  read(".env.prod.example").match(/^CCENTER_NODE_MAJOR=(\d+)$/m)?.[1],
+  major,
 );
-
-// Workflows: every `.github/workflows/*.yml` that pins `node-version: 24`.
-// Discovered dynamically so a newly added workflow is covered automatically.
-const workflowsDir = ".github/workflows";
-for (const file of readdirSync(resolve(repoRoot, workflowsDir)).sort()) {
-  if (!/\.ya?ml$/.test(file)) continue;
-  const wf = `${workflowsDir}/${file}`;
-  const content = read(wf);
-  if (!/node-version:/.test(content)) continue;
-  expect(
-    `workflow ${wf}`,
-    wf,
-    singleMajorFromMatches(`workflow ${wf}`, wf, content, /node-version:\s*['"]?(\d+)/g),
-  );
-}
-
-// Installer default: NODE_MAJOR="${CCENTER_NODE_MAJOR:-24}"
-expect(
-  "installer NODE_MAJOR default",
-  "scripts/install-ccenter-service.sh",
-  singleMajorFromMatches(
-    "installer NODE_MAJOR default",
-    "scripts/install-ccenter-service.sh",
-    read("scripts/install-ccenter-service.sh"),
-    /NODE_MAJOR="\$\{CCENTER_NODE_MAJOR:-(\d+)\}"/g,
-  ),
+check(
+  "packages/cli/build.ts",
+  read("packages/cli/build.ts").match(/target: "node(\d+)"/)?.[1],
+  major,
 );
-
-if (problems.length > 0) {
-  console.error(`Node version drift detected (canonical major from .nvmrc = ${expectedMajor}):`);
-  for (const p of problems) console.error(`  - ${p}`);
-  console.error(
-    "\nAll consumers must agree. Update the offending file(s) or .nvmrc so the Node major matches everywhere.",
-  );
-  process.exit(1);
-}
-
-console.log(`Node version consistency OK — all consumers target Node ${expectedMajor}.`);
+if (problems.length) throw new Error(`Node version drift:\n${problems.join("\n")}`);
+console.log(`Node version consistency OK: ${version}`);

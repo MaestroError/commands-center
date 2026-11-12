@@ -178,7 +178,7 @@ Your `/workspace` volume survives, so it is a clean in-place upgrade.
 
 Both provided Dockerfiles bake this base toolchain into the image:
 
-- **Node.js 24** and **npm** (from the `node:24-bookworm-slim` base)
+- **Node.js 26 LTS** and **npm** (from the `node:26.13.1-bookworm-slim` base)
 - **git** and **gh** (GitHub CLI)
 - **curl**, **ca-certificates**, **openssh-client**
 - **Python 3** (`python3`, with `python` aliased to it)

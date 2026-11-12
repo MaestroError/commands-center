@@ -110,7 +110,7 @@ export function createSystemVersionService(options: {
   exitProcess?: (code: number) => never | void;
   detectMode?: () => InstallMode;
   npmGlobalRoot?: string;
-  getNodeMajor?: () => number;
+  getNodeVersion?: () => string;
 }): SystemVersionService {
   const env = options.env ?? process.env;
   const installMode = options.detectMode
@@ -387,18 +387,18 @@ export function createSystemVersionService(options: {
       };
     }
 
-    const requiredMajor = await targetRequiredNodeMajor(runOutputCommand, targetVersion);
-    const currentMajor = options.getNodeMajor?.() ?? Number.parseInt(process.versions.node, 10);
-    if (requiredMajor !== undefined && currentMajor < requiredMajor) {
+    const requiredVersion = await targetRequiredNodeVersion(runOutputCommand, targetVersion);
+    const currentVersion = options.getNodeVersion?.() ?? process.versions.node;
+    if (requiredVersion !== undefined && compareVersions(currentVersion, requiredVersion) < 0) {
       return {
         applied: false,
         installMode,
-        message: `commandscenter@${targetVersion} requires Node >=${String(requiredMajor)}, but this process is running Node ${process.version}.`,
+        message: `commandscenter@${targetVersion} requires Node >=${String(requiredVersion)}, but this process is running Node v${currentVersion}.`,
         previousVersion: options.packageInfo.version,
         targetVersion,
         restartRequired: false,
         instructions: [
-          `Upgrade Node to ${String(requiredMajor)} or newer, then rerun the CommandsCenter service installer.`,
+          `Upgrade Node to ${String(requiredVersion)} or newer, then rerun the CommandsCenter service installer.`,
           "Recommended repair command: curl -fsSL https://raw.githubusercontent.com/MaestroError/commands-center/main/scripts/install-ccenter-service.sh | bash",
         ],
       };
@@ -491,37 +491,35 @@ async function runNpmInstall(
   await runCommand("npm", ["install", `commandscenter@${version}`]);
 }
 
-async function targetRequiredNodeMajor(
+async function targetRequiredNodeVersion(
   runOutputCommand: OutputCommandRunner,
   targetVersion: string,
-): Promise<number | undefined> {
+): Promise<string | undefined> {
   try {
     const result = await runOutputCommand("npm", [
       "view",
       `commandscenter@${targetVersion}`,
       "engines.node",
     ]);
-    return parseNodeMajorLowerBound(result.stdout);
+    return parseNodeVersionLowerBound(result.stdout);
   } catch {
     return undefined;
   }
 }
 
-function parseNodeMajorLowerBound(range: string): number | undefined {
-  const majors = new Set<number>();
-  const operatorPattern = /(?:^|[\s|])(?:>=|>|\^|~)\s*v?(\d+)/g;
+function parseNodeVersionLowerBound(range: string): string | undefined {
+  const versions: string[] = [];
+  const operatorPattern = /(?:^|[\s|])(?:>=|>|\^|~)\s*v?(\d+(?:\.\d+){0,2})/g;
   let match: RegExpExecArray | null;
 
   while ((match = operatorPattern.exec(range)) !== null) {
-    majors.add(Number.parseInt(match[1] ?? "", 10));
+    if (match[1]) versions.push(match[1]);
   }
 
-  const leadingMajor = range.match(/^\s*v?(\d+)/);
-  if (leadingMajor) {
-    majors.add(Number.parseInt(leadingMajor[1] ?? "", 10));
-  }
+  const leading = range.match(/^\s*v?(\d+(?:\.\d+){0,2})/);
+  if (leading?.[1]) versions.push(leading[1]);
 
-  return majors.size > 0 ? Math.min(...majors) : undefined;
+  return versions.sort(compareVersions)[0];
 }
 
 async function verifyInstalledCcenter(

@@ -28,7 +28,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 24
+          node-version: 26.13.1
           registry-url: https://registry.npmjs.org
           package-manager-cache: false
 
@@ -42,10 +42,11 @@ jobs:
           npm --version
           node --input-type=module <<'EOF'
           import { execFileSync } from 'node:child_process';
+          import { readFileSync } from 'node:fs';
 
-          const [nodeMajor, nodeMinor] = process.versions.node.split('.').map(Number);
-          if (nodeMajor < 24) {
-            throw new Error(`CommandsCenter releases require Node.js 24.0.0 or newer, found ${process.version}`);
+          const required = readFileSync('.nvmrc', 'utf8').trim();
+          if (process.versions.node.localeCompare(required, "en", { numeric: true }) < 0) {
+            throw new Error(`CommandsCenter releases require Node.js ${required} or newer, found ${process.version}`);
           }
 
           const npmVersion = execFileSync('npm', ['--version'], { encoding: 'utf8' }).trim();

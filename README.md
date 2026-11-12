@@ -22,7 +22,7 @@ Frontend contributors should start with the
 
 ## Prerequisites
 
-- Node.js >= 24
+- Node.js >= 26.13.1 (26 LTS recommended)
 - pnpm (`npm install -g pnpm`)
 
 ## Quick Start
@@ -333,7 +333,7 @@ Configuration variables fall into two groups:
 | `CCENTER_SERVICE_USER` / `CCENTER_SERVICE_GROUP`                                                                                | Dedicated service account to run under.                                                                                                                      |
 | `CCENTER_CREATE_USER=true`                                                                                                      | Create the service user (a system account) if it does not exist, and fix ownership of the runtime dirs.                                                      |
 | `CCENTER_PACKAGE_SPEC`                                                                                                          | npm spec to install (e.g. pin `commandscenter@0.8.1`).                                                                                                       |
-| `CCENTER_NODE_MAJOR`                                                                                                            | Minimum Node.js major version to ensure (default `24`).                                                                                                      |
+| `CCENTER_NODE_MAJOR`                                                                                                            | Minimum Node.js major version to ensure (default `26`).                                                                                                      |
 
 `CCENTER_HOST`, `CCENTER_PORT`, and `CCENTER_WORKSPACE_DIR` are still accepted as deprecated fallbacks for `CC_HOST`, `CC_PORT`, and `CC_WORKSPACE_DIR`.
 
